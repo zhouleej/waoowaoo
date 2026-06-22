@@ -3,7 +3,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams } from 'next/navigation'
+import { useRouter } from '@/i18n/navigation'
 import Navbar from '@/components/Navbar'
 import { AppIcon } from '@/components/ui/icons'
 import { Link } from '@/i18n/navigation'
@@ -26,7 +27,7 @@ export default function OrganizationDetailPage() {
 
   useEffect(() => {
     if (status === 'loading') return
-    if (!session) router.push('/auth/signin')
+    if (!session) router.push({ pathname: '/auth/signin' })
   }, [session, status, router])
 
   const fetchOrg = useCallback(async () => {
