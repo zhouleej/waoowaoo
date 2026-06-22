@@ -5,6 +5,7 @@ export type RouteCategory =
   | 'projects'
   | 'tasks'
   | 'user'
+  | 'organization'
   | 'auth'
   | 'infra'
   | 'system'
@@ -17,6 +18,7 @@ export type RouteContractGroup =
   | 'crud-novel-promotion-routes'
   | 'task-infra-routes'
   | 'user-project-routes'
+  | 'organization-routes'
   | 'auth-routes'
   | 'infra-routes'
 
@@ -168,6 +170,13 @@ const ROUTE_FILES = [
   'src/app/api/user/ai-story-expand/route.ts',
   'src/app/api/user/models/route.ts',
   'src/app/api/user/transactions/route.ts',
+  'src/app/api/organizations/route.ts',
+  'src/app/api/organizations/[id]/route.ts',
+  'src/app/api/organizations/[id]/members/route.ts',
+  'src/app/api/organizations/[id]/members/[userId]/route.ts',
+  'src/app/api/organizations/[id]/balance/route.ts',
+  'src/app/api/organizations/[id]/usage/route.ts',
+  'src/app/api/organizations/[id]/members/[userId]/usage/route.ts',
 ] as const
 
 function resolveCategory(routeFile: string): RouteCategory {
@@ -182,6 +191,7 @@ function resolveCategory(routeFile: string): RouteCategory {
   ) {
     return 'tasks'
   }
+  if (routeFile.startsWith('src/app/api/organizations/')) return 'organization'
   if (routeFile.startsWith('src/app/api/user/') || routeFile === 'src/app/api/user-preference/route.ts') return 'user'
   if (routeFile.startsWith('src/app/api/auth/')) return 'auth'
   if (routeFile.startsWith('src/app/api/system/')) return 'system'
@@ -236,6 +246,9 @@ function resolveContractGroup(routeFile: string): RouteContractGroup {
   }
   if (routeFile.startsWith('src/app/api/projects/') || routeFile.startsWith('src/app/api/user/')) {
     return 'user-project-routes'
+  }
+  if (routeFile.startsWith('src/app/api/organizations/')) {
+    return 'organization-routes'
   }
   if (routeFile.startsWith('src/app/api/auth/')) return 'auth-routes'
   return 'infra-routes'
