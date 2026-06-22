@@ -110,6 +110,17 @@ export const queryKeys = {
      */
     episodeData: (projectId: string, episodeId: string) =>
         ['episode-data', projectId, episodeId] as const,
+
+    // ============ 组织管理 ============
+    organizations: {
+        all: () => ['organizations'] as const,
+        detail: (id: string) => ['organizations', id] as const,
+        members: (orgId: string) => ['organizations', orgId, 'members'] as const,
+        member: (orgId: string, userId: string) => ['organizations', orgId, 'members', userId] as const,
+        balance: (orgId: string) => ['organizations', orgId, 'balance'] as const,
+        usage: (orgId: string) => ['organizations', orgId, 'usage'] as const,
+        memberUsage: (orgId: string, userId: string) => ['organizations', orgId, 'members', userId, 'usage'] as const,
+    },
 } as const
 
 /**

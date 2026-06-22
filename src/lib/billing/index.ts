@@ -4,6 +4,21 @@ export { InsufficientBalanceError } from './errors'
 export { getProjectCostDetails, getProjectTotalCost, getUserCostDetails, getUserCostSummary } from './reporting'
 export { addBalance, getBalance } from './ledger'
 export {
+  getOrganizationBalance,
+  addOrganizationBalance,
+  freezeOrganizationBalance,
+  confirmOrganizationCharge,
+  rollbackOrganizationFreeze,
+  checkOrganizationBalance,
+  getOrganizationMemberQuota,
+  checkMemberQuota,
+  recordOrganizationUsage,
+  getOrganizationUsage,
+  getMemberUsage,
+  getUserOrganization,
+  checkOrganizationRole,
+} from './organization'
+export {
   handleBillingError,
   prepareTaskBilling,
   rollbackTaskBilling,
