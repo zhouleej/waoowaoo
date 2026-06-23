@@ -103,6 +103,16 @@ export default function Navbar() {
                 </div>
               ) : session ? (
                 <>
+                  {(session.user as any)?.isPlatformAdmin && (
+                    <Link
+                      href={{ pathname: '/admin/platform' }}
+                      className="text-sm text-[var(--glass-tone-warning-fg)] hover:text-[var(--glass-tone-warning-fg)] font-medium transition-colors flex items-center gap-1"
+                      title={t('admin')}
+                    >
+                      <AppIcon name="unplug" className="w-4 h-4" />
+                      {t('admin') || 'Admin'}
+                    </Link>
+                  )}
                   <Link
                     href={{ pathname: '/workspace' }}
                     className="text-sm text-[var(--glass-text-secondary)] hover:text-[var(--glass-text-primary)] font-medium transition-colors flex items-center gap-1"

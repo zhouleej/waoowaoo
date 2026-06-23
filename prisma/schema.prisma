@@ -429,7 +429,43 @@ model User {
   organizationMemberships OrganizationMember[]
   ownedOrganizations      Organization[]      @relation("OrganizationOwner")
 
+  // 平台管理
+  isPlatformAdmin Boolean @default(false)   // 平台管理员标识
+  isGlobalLocked  Boolean @default(false)   // 全局锁定
+  adminAuditLogs  AdminAuditLog[]
+
   @@map("user")
+}
+
+// 管理员操作日志
+model AdminAuditLog {
+  id          String   @id @default(uuid())
+  adminId     String
+  action      String   // 操作类型: disable_organization, enable_organization, update_config, etc.
+  targetType  String   // 目标类型: Organization, User, SystemConfig
+  targetId    String?  // 目标ID
+  details     String?  @db.Text // 操作详情 JSON
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+
+  admin User @relation(fields: [adminId], references: [id], onDelete: Cascade)
+
+  @@index([adminId])
+  @@index([targetType, targetId])
+  @@index([createdAt])
+  @@map("admin_audit_logs")
+}
+
+// 系统配置
+model SystemConfig {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  value       String   @db.Text
+  description String?  @db.Text
+  updatedAt   DateTime @updatedAt
+  updatedBy   String?
+
+  @@map("system_configs")
 }
 
 // Organization 模型 - 支持多租户
@@ -437,6 +473,7 @@ model Organization {
   id          String   @id @default(uuid())
   name        String
   slug        String   @unique
+  status      String   @default("active") // active, disabled
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   ownerId     String

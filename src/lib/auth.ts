@@ -64,6 +64,8 @@ export const authOptions: any = {
     async jwt({ token, user }: any) {
       if (user) {
         token.id = user.id
+        token.isPlatformAdmin = user.isPlatformAdmin
+        token.isGlobalLocked = user.isGlobalLocked
       }
       return token
     },
@@ -71,6 +73,8 @@ export const authOptions: any = {
     async session({ session, token }: any) {
       if (token && session.user) {
         session.user.id = token.id as string
+        session.user.isPlatformAdmin = token.isPlatformAdmin as boolean
+        session.user.isGlobalLocked = token.isGlobalLocked as boolean
       }
       return session
     }
