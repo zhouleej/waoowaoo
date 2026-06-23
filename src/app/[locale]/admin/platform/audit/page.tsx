@@ -25,7 +25,7 @@ export default function PlatformAuditPage() {
     if (!isPlatformAdmin) return
     apiFetch('/api/platform/audit-logs')
       .then(res => res.json())
-      .then(data => setLogs(Array.isArray(data) ? data : []))
+      .then(data => setLogs(Array.isArray(data) ? data : (data?.data || [])))
       .catch(console.error)
       .finally(() => setLoading(false))
   }, [isPlatformAdmin])

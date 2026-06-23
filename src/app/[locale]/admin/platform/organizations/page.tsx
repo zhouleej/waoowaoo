@@ -25,7 +25,7 @@ export default function PlatformOrganizationsPage() {
     if (!isPlatformAdmin) return
     apiFetch('/api/platform/organizations')
       .then(res => res.json())
-      .then(setOrganizations)
+      .then(data => setOrganizations(Array.isArray(data) ? data : (data?.data || [])))
       .catch(console.error)
       .finally(() => setLoading(false))
   }, [isPlatformAdmin])

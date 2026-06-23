@@ -25,7 +25,7 @@ export default function PlatformUsersPage() {
     if (!isPlatformAdmin) return
     apiFetch('/api/platform/users')
       .then(res => res.json())
-      .then(setUsers)
+      .then(data => setUsers(Array.isArray(data) ? data : (data?.data || [])))
       .catch(console.error)
       .finally(() => setLoading(false))
   }, [isPlatformAdmin])
