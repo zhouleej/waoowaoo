@@ -65,6 +65,13 @@ export default function PlatformUsersPage() {
   const [showAdminConfirm, setShowAdminConfirm] = useState(false)
   const [adminTarget, setAdminTarget] = useState<{ id: string; isAdmin: boolean } | null>(null)
 
+  // Create user modal state
+  const [showCreateModal, setShowCreateModal] = useState(false)
+  const [createUserName, setCreateUserName] = useState('')
+  const [createUserEmail, setCreateUserEmail] = useState('')
+  const [createUserPassword, setCreateUserPassword] = useState('')
+  const [creatingUser, setCreatingUser] = useState(false)
+
   const isPlatformAdmin = (session?.user as any)?.isPlatformAdmin
 
   useEffect(() => {
@@ -187,6 +194,51 @@ export default function PlatformUsersPage() {
     setAdminTarget(null)
   }
 
+  const openCreateModal = () => {
+    setCreateUserName('')
+    setCreateUserEmail('')
+    setCreateUserPassword('')
+    setShowCreateModal(true)
+  }
+
+  const closeCreateModal = () => {
+    setShowCreateModal(false)
+    setCreateUserName('')
+    setCreateUserEmail('')
+    setCreateUserPassword('')
+  }
+
+  const handleCreateUser = async () => {
+    if (!createUserName.trim() || !createUserPassword) {
+      alert('用户名和密码为必填项')
+      return
+    }
+    setCreatingUser(true)
+    try {
+      const res = await apiFetch('/api/platform/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: createUserName.trim(),
+          email: createUserEmail.trim() || undefined,
+          password: createUserPassword,
+        }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => null)
+        throw new Error(err?.error || '创建失败')
+      }
+      alert('用户创建成功')
+      closeCreateModal()
+      fetchUsers(1, searchQuery)
+    } catch (e: any) {
+      console.error(e)
+      alert(e?.message || '创建失败')
+    } finally {
+      setCreatingUser(false)
+    }
+  }
+
   if (status === 'loading' || !session) {
     return (
       <div className="min-h-screen bg-[var(--glass-bg-root)]">
@@ -216,7 +268,12 @@ export default function PlatformUsersPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-3xl font-bold text-[var(--glass-text-primary)]">{t('users') || 'Users'}</h1>
-          <a href="/admin/platform" className="glass-btn-base px-4 py-2">{t('back') || 'Back'}</a>
+          <div className="flex items-center gap-3">
+            <button onClick={openCreateModal} className="glass-btn-base glass-btn-primary px-4 py-2">
+              新建用户
+            </button>
+            <a href="/admin/platform" className="glass-btn-base px-4 py-2">{t('back') || 'Back'}</a>
+          </div>
         </div>
 
         {/* 搜索栏 */}
@@ -506,6 +563,61 @@ export default function PlatformUsersPage() {
               ) : (
                 <div className="py-8 text-center text-[var(--glass-text-secondary)]">{t('noData')}</div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create User Modal */}
+      {showCreateModal && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 sm:p-6">
+          <div className="glass-overlay absolute inset-0" onClick={closeCreateModal} />
+          <div className="glass-surface-modal relative z-10 w-full max-w-md overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-5 py-4 sm:px-6 border-b border-[var(--glass-stroke-base)]">
+              <h2 className="text-lg font-semibold text-[var(--glass-text-primary)]">新建用户</h2>
+              <button onClick={closeCreateModal} className="text-[var(--glass-text-secondary)] hover:text-[var(--glass-text-primary)] text-2xl leading-none">&times;</button>
+            </div>
+            <div className="px-5 py-4 sm:px-6 space-y-4">
+              <div>
+                <label className="block text-sm text-[var(--glass-text-secondary)] mb-1">用户名 *</label>
+                <input
+                  type="text"
+                  value={createUserName}
+                  onChange={(e) => setCreateUserName(e.target.value)}
+                  placeholder="请输入用户名"
+                  className="glass-input-base w-full px-3 py-2"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-[var(--glass-text-secondary)] mb-1">邮箱（可选）</label>
+                <input
+                  type="email"
+                  value={createUserEmail}
+                  onChange={(e) => setCreateUserEmail(e.target.value)}
+                  placeholder="请输入邮箱"
+                  className="glass-input-base w-full px-3 py-2"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-[var(--glass-text-secondary)] mb-1">密码 *</label>
+                <input
+                  type="password"
+                  value={createUserPassword}
+                  onChange={(e) => setCreateUserPassword(e.target.value)}
+                  placeholder="请输入密码"
+                  className="glass-input-base w-full px-3 py-2"
+                />
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-3 px-5 py-4 sm:px-6 border-t border-[var(--glass-stroke-base)]">
+              <button onClick={closeCreateModal} className="glass-btn-base px-4 py-2">取消</button>
+              <button
+                onClick={handleCreateUser}
+                disabled={creatingUser}
+                className="glass-btn-base glass-btn-primary px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {creatingUser ? '创建中...' : '创建'}
+              </button>
             </div>
           </div>
         </div>

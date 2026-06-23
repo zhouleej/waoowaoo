@@ -79,3 +79,66 @@ export async function GET(req: NextRequest) {
     },
   })
 }
+
+/**
+ * POST /api/platform/organizations
+ * 创建组织
+ */
+export async function POST(req: NextRequest) {
+  const authResult = await requirePlatformAdmin()
+  if (authResult instanceof NextResponse) return authResult
+  const { user } = authResult
+
+  const body = await req.json()
+  const { name, slug, ownerId } = body
+
+  if (!name || !slug) {
+    return NextResponse.json({ error: 'name and slug are required' }, { status: 400 })
+  }
+
+  const existing = await prisma.organization.findUnique({ where: { slug } })
+  if (existing) {
+    return NextResponse.json({ error: 'slug already exists' }, { status: 409 })
+  }
+
+  const organization = await prisma.$transaction(async (tx) => {
+    const org = await tx.organization.create({
+      data: {
+        name,
+        slug,
+        ownerId: ownerId || user.id,
+        status: 'active',
+      },
+    })
+
+    await tx.organizationBalance.create({
+      data: {
+        organizationId: org.id,
+        balance: 0,
+        frozenAmount: 0,
+        totalSpent: 0,
+      },
+    })
+
+    await tx.organizationMember.create({
+      data: {
+        organizationId: org.id,
+        userId: ownerId || user.id,
+        role: 'owner',
+        status: 'active',
+      },
+    })
+
+    return org
+  })
+
+  await createAdminAuditLog({
+    adminId: user.id,
+    action: 'create_organization',
+    targetType: 'Organization',
+    targetId: organization.id,
+    details: { name, slug },
+  })
+
+  return NextResponse.json({ data: organization }, { status: 201 })
+}

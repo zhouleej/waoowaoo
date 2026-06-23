@@ -57,6 +57,12 @@ export default function PlatformOrganizationsPage() {
   const [rechargeAmount, setRechargeAmount] = useState('')
   const [recharging, setRecharging] = useState(false)
 
+  // Create modal state
+  const [showCreateModal, setShowCreateModal] = useState(false)
+  const [createName, setCreateName] = useState('')
+  const [createSlug, setCreateSlug] = useState('')
+  const [creating, setCreating] = useState(false)
+
   const isPlatformAdmin = (session?.user as any)?.isPlatformAdmin
 
   useEffect(() => {
@@ -181,6 +187,49 @@ export default function PlatformOrganizationsPage() {
     }
   }
 
+  const openCreateModal = () => {
+    setCreateName('')
+    setCreateSlug('')
+    setShowCreateModal(true)
+  }
+
+  const closeCreateModal = () => {
+    setShowCreateModal(false)
+    setCreateName('')
+    setCreateSlug('')
+  }
+
+  const handleCreate = async () => {
+    if (!createName.trim() || !createSlug.trim()) {
+      alert('组织名称和Slug为必填项')
+      return
+    }
+    if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(createSlug)) {
+      alert('Slug只能包含小写字母、数字和连字符，且不能以连字符开头或结尾')
+      return
+    }
+    setCreating(true)
+    try {
+      const res = await apiFetch('/api/platform/organizations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: createName.trim(), slug: createSlug.trim() }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => null)
+        throw new Error(err?.error || '创建失败')
+      }
+      alert('组织创建成功')
+      closeCreateModal()
+      fetchOrganizations(1)
+    } catch (e: any) {
+      console.error(e)
+      alert(e?.message || '创建失败')
+    } finally {
+      setCreating(false)
+    }
+  }
+
   if (status === 'loading' || !session) {
     return (
       <div className="min-h-screen bg-[var(--glass-bg-root)]">
@@ -210,7 +259,12 @@ export default function PlatformOrganizationsPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-3xl font-bold text-[var(--glass-text-primary)]">{t('organizations') || 'Organizations'}</h1>
-          <a href="/admin/platform" className="glass-btn-base px-4 py-2">{t('back') || 'Back'}</a>
+          <div className="flex items-center gap-3">
+            <button onClick={openCreateModal} className="glass-btn-base glass-btn-primary px-4 py-2">
+              新建组织
+            </button>
+            <a href="/admin/platform" className="glass-btn-base px-4 py-2">{t('back') || 'Back'}</a>
+          </div>
         </div>
 
         {/* Search & Filter Bar */}
@@ -459,6 +513,51 @@ export default function PlatformOrganizationsPage() {
                     </table>
                   </div>
                 )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Create Organization Modal */}
+        {showCreateModal && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 sm:p-6">
+            <div className="glass-overlay absolute inset-0" onClick={closeCreateModal} />
+            <div className="glass-surface-modal relative z-10 w-full max-w-md overflow-hidden flex flex-col">
+              <div className="flex items-center justify-between px-5 py-4 sm:px-6 border-b border-[var(--glass-stroke-base)]">
+                <h2 className="text-lg font-semibold text-[var(--glass-text-primary)]">新建组织</h2>
+                <button onClick={closeCreateModal} className="text-[var(--glass-text-secondary)] hover:text-[var(--glass-text-primary)] text-2xl leading-none">&times;</button>
+              </div>
+              <div className="px-5 py-4 sm:px-6 space-y-4">
+                <div>
+                  <label className="block text-sm text-[var(--glass-text-secondary)] mb-1">组织名称 *</label>
+                  <input
+                    type="text"
+                    value={createName}
+                    onChange={(e) => setCreateName(e.target.value)}
+                    placeholder="请输入组织名称"
+                    className="glass-input-base w-full px-3 py-2"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-[var(--glass-text-secondary)] mb-1">组织 Slug *</label>
+                  <input
+                    type="text"
+                    value={createSlug}
+                    onChange={(e) => setCreateSlug(e.target.value)}
+                    placeholder="例如：my-org（小写字母、数字、连字符）"
+                    className="glass-input-base w-full px-3 py-2"
+                  />
+                </div>
+              </div>
+              <div className="flex items-center justify-end gap-3 px-5 py-4 sm:px-6 border-t border-[var(--glass-stroke-base)]">
+                <button onClick={closeCreateModal} className="glass-btn-base px-4 py-2">取消</button>
+                <button
+                  onClick={handleCreate}
+                  disabled={creating}
+                  className="glass-btn-base glass-btn-primary px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {creating ? '创建中...' : '创建'}
+                </button>
               </div>
             </div>
           </div>
