@@ -1,6 +1,28 @@
 [
   {
     "apiType": "text",
+    "provider": "china-mobile",
+    "modelId": "cm-code-latest",
+    "pricing": {
+      "mode": "capability",
+      "tiers": [
+        {
+          "when": {
+            "tokenType": "input"
+          },
+          "amount": 2
+        },
+        {
+          "when": {
+            "tokenType": "output"
+          },
+          "amount": 8
+        }
+      ]
+    }
+  },
+  {
+    "apiType": "text",
     "provider": "openrouter",
     "modelId": "google/gemini-3.1-pro-preview",
     "pricing": {
