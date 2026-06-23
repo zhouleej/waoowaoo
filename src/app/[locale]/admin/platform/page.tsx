@@ -108,6 +108,20 @@ export default function PlatformAdminPage() {
             </div>
           </a>
 
+          <a href="/admin/platform/stats" className="glass-surface p-6 hover:brightness-110 transition-all group">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-lg bg-[var(--glass-tone-info-bg)] flex items-center justify-center">
+                <svg className="w-6 h-6 text-[var(--glass-tone-info-fg)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+              </div>
+              <div>
+                <div className="font-semibold text-[var(--glass-text-primary)] group-hover:text-[var(--glass-tone-info-fg)]">平台统计</div>
+                <div className="text-sm text-[var(--glass-text-secondary)]">查看平台总消费和排行</div>
+              </div>
+            </div>
+          </a>
+
           <a href="/admin/platform/config" className="glass-surface p-6 hover:brightness-110 transition-all group">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 rounded-lg bg-[var(--glass-tone-success-bg)] flex items-center justify-center">
@@ -119,6 +133,20 @@ export default function PlatformAdminPage() {
               <div>
                 <div className="font-semibold text-[var(--glass-text-primary)] group-hover:text-[var(--glass-tone-success-fg)]">{t('systemConfig') || 'System Config'}</div>
                 <div className="text-sm text-[var(--glass-text-secondary)]">{t('systemConfigDesc') || 'Configure system settings'}</div>
+              </div>
+            </div>
+          </a>
+
+          <a href="/admin/platform/audit" className="glass-surface p-6 hover:brightness-110 transition-all group">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-lg bg-[var(--glass-tone-warning-bg)] flex items-center justify-center">
+                <svg className="w-6 h-6 text-[var(--glass-tone-warning-fg)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                </svg>
+              </div>
+              <div>
+                <div className="font-semibold text-[var(--glass-text-primary)] group-hover:text-[var(--glass-tone-warning-fg)]">操作日志</div>
+                <div className="text-sm text-[var(--glass-text-secondary)]">查看管理员操作记录</div>
               </div>
             </div>
           </a>

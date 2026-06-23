@@ -177,6 +177,15 @@ const ROUTE_FILES = [
   'src/app/api/organizations/[id]/balance/route.ts',
   'src/app/api/organizations/[id]/usage/route.ts',
   'src/app/api/organizations/[id]/members/[userId]/usage/route.ts',
+  'src/app/api/platform/admin/check/route.ts',
+  'src/app/api/platform/organizations/route.ts',
+  'src/app/api/platform/organizations/[id]/disable/route.ts',
+  'src/app/api/platform/organizations/[id]/enable/route.ts',
+  'src/app/api/platform/users/route.ts',
+  'src/app/api/platform/users/[id]/route.ts',
+  'src/app/api/platform/stats/route.ts',
+  'src/app/api/platform/config/route.ts',
+  'src/app/api/platform/audit-logs/route.ts',
 ] as const
 
 function resolveCategory(routeFile: string): RouteCategory {
@@ -192,6 +201,7 @@ function resolveCategory(routeFile: string): RouteCategory {
     return 'tasks'
   }
   if (routeFile.startsWith('src/app/api/organizations/')) return 'organization'
+  if (routeFile.startsWith('src/app/api/platform/')) return 'system'
   if (routeFile.startsWith('src/app/api/user/') || routeFile === 'src/app/api/user-preference/route.ts') return 'user'
   if (routeFile.startsWith('src/app/api/auth/')) return 'auth'
   if (routeFile.startsWith('src/app/api/system/')) return 'system'
@@ -248,6 +258,9 @@ function resolveContractGroup(routeFile: string): RouteContractGroup {
     return 'user-project-routes'
   }
   if (routeFile.startsWith('src/app/api/organizations/')) {
+    return 'organization-routes'
+  }
+  if (routeFile.startsWith('src/app/api/platform/')) {
     return 'organization-routes'
   }
   if (routeFile.startsWith('src/app/api/auth/')) return 'auth-routes'
