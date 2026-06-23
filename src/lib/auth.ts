@@ -49,6 +49,8 @@ export const authOptions: any = {
         return {
           id: user.id,
           name: user.name,
+          isPlatformAdmin: user.isPlatformAdmin,
+          isGlobalLocked: user.isGlobalLocked,
         }
       }
     })
