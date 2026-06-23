@@ -15,6 +15,9 @@ export default function PlatformConfigPage() {
   const [loading, setLoading] = useState(true)
   const [editingKey, setEditingKey] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
+  const [showModal, setShowModal] = useState(false)
+  const [newConfig, setNewConfig] = useState({ key: '', value: '', description: '' })
+  const [creating, setCreating] = useState(false)
 
   const isPlatformAdmin = (session?.user as any)?.isPlatformAdmin
 
@@ -23,14 +26,47 @@ export default function PlatformConfigPage() {
     if (!session) router.push('/auth/signin')
   }, [session, status, router])
 
-  useEffect(() => {
-    if (!isPlatformAdmin) return
+  const fetchConfigs = () => {
     apiFetch('/api/platform/config')
       .then(res => res.json())
       .then(data => setConfigs(Array.isArray(data) ? data : []))
       .catch(console.error)
-      .finally(() => setLoading(false))
+  }
+
+  useEffect(() => {
+    if (!isPlatformAdmin) return
+    fetchConfigs()
+    setLoading(false)
   }, [isPlatformAdmin])
+
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!newConfig.key.trim() || !newConfig.value.trim()) return
+    setCreating(true)
+    try {
+      await apiFetch('/api/platform/config', {
+        method: 'POST',
+        body: JSON.stringify(newConfig),
+      })
+      setShowModal(false)
+      setNewConfig({ key: '', value: '', description: '' })
+      fetchConfigs()
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('确定要删除该配置项吗？')) return
+    try {
+      await apiFetch(`/api/platform/config/${id}`, { method: 'DELETE' })
+      fetchConfigs()
+    } catch (e) {
+      console.error(e)
+    }
+  }
 
   const handleSave = async (key: string) => {
     try {
@@ -74,7 +110,10 @@ export default function PlatformConfigPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-3xl font-bold text-[var(--glass-text-primary)]">{t('systemConfig')}</h1>
-          <a href="/admin/platform" className="glass-btn-base px-4 py-2">{t('back')}</a>
+          <div className="flex gap-3">
+            <button onClick={() => setShowModal(true)} className="glass-btn-base glass-btn-primary px-4 py-2">{'新增配置'}</button>
+            <a href="/admin/platform" className="glass-btn-base px-4 py-2">{t('back')}</a>
+          </div>
         </div>
 
         <div className="glass-surface overflow-hidden">
@@ -130,12 +169,20 @@ export default function PlatformConfigPage() {
                           </button>
                         </div>
                       ) : (
-                        <button
-                          onClick={() => { setEditingKey(config.key); setEditValue(config.value) }}
-                          className="text-sm text-[var(--glass-tone-info-fg)] hover:underline"
-                        >
-                          {t('edit')}
-                        </button>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => { setEditingKey(config.key); setEditValue(config.value) }}
+                            className="text-sm text-[var(--glass-tone-info-fg)] hover:underline"
+                          >
+                            {t('edit')}
+                          </button>
+                          <button
+                            onClick={() => handleDelete(config.id)}
+                            className="text-sm text-[var(--glass-tone-danger-fg)] hover:underline"
+                          >
+                            {t('delete') || '删除'}
+                          </button>
+                        </div>
                       )}
                     </td>
                   </tr>
@@ -145,6 +192,49 @@ export default function PlatformConfigPage() {
           )}
         </div>
       </div>
+
+      {showModal && (
+        <div className="fixed inset-0 glass-overlay flex items-center justify-center z-50 backdrop-blur-sm">
+          <div className="glass-surface-modal p-6 w-full max-w-md">
+            <h2 className="text-xl font-bold text-[var(--glass-text-primary)] mb-4">{'新增配置'}</h2>
+            <form onSubmit={handleCreate}>
+              <div className="mb-4">
+                <label className="block mb-2 text-sm text-[var(--glass-text-secondary)]">{'配置键'}</label>
+                <input
+                  type="text"
+                  value={newConfig.key}
+                  onChange={e => setNewConfig(p => ({ ...p, key: e.target.value }))}
+                  className="glass-input-base w-full px-3 py-2"
+                  required
+                />
+              </div>
+              <div className="mb-4">
+                <label className="block mb-2 text-sm text-[var(--glass-text-secondary)]">{'配置值'}</label>
+                <input
+                  type="text"
+                  value={newConfig.value}
+                  onChange={e => setNewConfig(p => ({ ...p, value: e.target.value }))}
+                  className="glass-input-base w-full px-3 py-2"
+                  required
+                />
+              </div>
+              <div className="mb-4">
+                <label className="block mb-2 text-sm text-[var(--glass-text-secondary)]">{'描述'}</label>
+                <input
+                  type="text"
+                  value={newConfig.description}
+                  onChange={e => setNewConfig(p => ({ ...p, description: e.target.value }))}
+                  className="glass-input-base w-full px-3 py-2"
+                />
+              </div>
+              <div className="flex justify-end gap-3">
+                <button type="button" onClick={() => setShowModal(false)} className="glass-btn-base glass-btn-secondary px-4 py-2">{t('cancel')}</button>
+                <button type="submit" className="glass-btn-base glass-btn-primary px-4 py-2" disabled={creating}>{creating ? '创建中...' : t('save')}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

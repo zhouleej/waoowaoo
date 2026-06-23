@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requirePlatformAdmin } from '@/lib/platform-admin'
+import { requirePlatformAdmin, createAdminAuditLog } from '@/lib/platform-admin'
 
 interface RouteParams {
   params: Promise<{ id: string }>
@@ -128,5 +128,82 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
     },
     organizations,
     recentUsage,
+  })
+}
+
+/**
+ * PATCH /api/platform/users/[id]
+ * 更新用户平台属性
+ * 请求体：{ isPlatformAdmin?: boolean, isGlobalLocked?: boolean }
+ */
+export async function PATCH(req: NextRequest, { params }: RouteParams) {
+  const authResult = await requirePlatformAdmin()
+  if (authResult instanceof NextResponse) return authResult
+
+  const { user } = authResult
+  const { id } = await params
+
+  const body = await req.json()
+  const { isPlatformAdmin, isGlobalLocked } = body
+
+  // 验证至少有一个有效字段
+  if (isPlatformAdmin === undefined && isGlobalLocked === undefined) {
+    return NextResponse.json(
+      { error: 'At least one of isPlatformAdmin or isGlobalLocked is required' },
+      { status: 400 }
+    )
+  }
+
+  // 检查用户是否存在
+  const existingUser = await prisma.user.findUnique({
+    where: { id },
+    select: { id: true, name: true, email: true, isPlatformAdmin: true, isGlobalLocked: true },
+  })
+
+  if (!existingUser) {
+    return NextResponse.json(
+      { error: 'User not found' },
+      { status: 404 }
+    )
+  }
+
+  // 构建更新数据
+  const updateData: { isPlatformAdmin?: boolean; isGlobalLocked?: boolean } = {}
+  if (isPlatformAdmin !== undefined) updateData.isPlatformAdmin = isPlatformAdmin
+  if (isGlobalLocked !== undefined) updateData.isGlobalLocked = isGlobalLocked
+
+  const updatedUser = await prisma.user.update({
+    where: { id },
+    data: updateData,
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      image: true,
+      createdAt: true,
+      updatedAt: true,
+      isPlatformAdmin: true,
+      isGlobalLocked: true,
+    },
+  })
+
+  // 记录操作日志
+  await createAdminAuditLog({
+    adminId: user.id,
+    action: 'update_user',
+    targetType: 'User',
+    targetId: id,
+    details: {
+      changes: updateData,
+      previousValues: {
+        isPlatformAdmin: existingUser.isPlatformAdmin,
+        isGlobalLocked: existingUser.isGlobalLocked,
+      },
+    },
+  })
+
+  return NextResponse.json({
+    message: 'User updated successfully',
+    user: updatedUser,
   })
 }

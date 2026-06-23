@@ -104,3 +104,77 @@ export async function PATCH(req: NextRequest) {
     },
   })
 }
+
+/**
+ * POST /api/platform/config
+ * 创建新的系统配置
+ * 请求体：{ key: string, value: string, description?: string }
+ * 如果 key 已存在则返回错误
+ */
+export async function POST(req: NextRequest) {
+  const authResult = await requirePlatformAdmin()
+  if (authResult instanceof NextResponse) return authResult
+
+  const { user } = authResult
+
+  const body = await req.json()
+  const { key, value, description } = body
+
+  if (!key || typeof key !== 'string') {
+    return NextResponse.json(
+      { error: 'Missing or invalid key' },
+      { status: 400 }
+    )
+  }
+
+  if (value === undefined || typeof value !== 'string') {
+    return NextResponse.json(
+      { error: 'Missing or invalid value' },
+      { status: 400 }
+    )
+  }
+
+  // 检查 key 是否已存在
+  const existingConfig = await prisma.systemConfig.findUnique({
+    where: { key },
+  })
+
+  if (existingConfig) {
+    return NextResponse.json(
+      { error: `Config key "${key}" already exists` },
+      { status: 409 }
+    )
+  }
+
+  const config = await prisma.systemConfig.create({
+    data: {
+      key,
+      value,
+      description: description || null,
+      updatedBy: user.id,
+    },
+  })
+
+  // 记录操作日志
+  await createAdminAuditLog({
+    adminId: user.id,
+    action: 'create_config',
+    targetType: 'SystemConfig',
+    targetId: config.id,
+    details: {
+      key,
+      description: description || null,
+    },
+  })
+
+  return NextResponse.json({
+    message: 'Config created successfully',
+    config: {
+      id: config.id,
+      key: config.key,
+      value: config.value,
+      description: config.description,
+      updatedAt: config.updatedAt,
+    },
+  })
+}

@@ -1,18 +1,61 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
 import { useRouter } from '@/i18n/navigation'
 import Navbar from '@/components/Navbar'
 import { apiFetch } from '@/lib/api-fetch'
 
+interface Organization {
+  id: string
+  name: string
+  slug: string
+  status: string
+  createdAt: string
+  updatedAt: string
+  owner: { id: string; name: string | null; email: string }
+  balance: { balance: number; frozenAmount: number; totalSpent: number } | null
+  memberCount: number
+}
+
+interface Pagination {
+  page: number
+  limit: number
+  total: number
+  totalPages: number
+}
+
+interface Member {
+  id: string
+  organizationId: string
+  userId: string
+  role: string
+  quota: number
+  status: string
+  joinedAt: string
+  user: { id: string; name: string | null; email: string; image: string | null }
+}
+
 export default function PlatformOrganizationsPage() {
   const { data: session, status } = useSession()
   const t = useTranslations('platform')
   const router = useRouter()
-  const [organizations, setOrganizations] = useState<any[]>([])
+  const [organizations, setOrganizations] = useState<Organization[]>([])
   const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')
+  const [pagination, setPagination] = useState<Pagination>({ page: 1, limit: 10, total: 0, totalPages: 0 })
+
+  // Detail modal state
+  const [selectedOrg, setSelectedOrg] = useState<Organization | null>(null)
+  const [members, setMembers] = useState<Member[]>([])
+  const [membersLoading, setMembersLoading] = useState(false)
+  const [detailBalance, setDetailBalance] = useState<{ balance: number; frozenAmount: number; totalSpent: number } | null>(null)
+
+  // Recharge state
+  const [rechargeAmount, setRechargeAmount] = useState('')
+  const [recharging, setRecharging] = useState(false)
 
   const isPlatformAdmin = (session?.user as any)?.isPlatformAdmin
 
@@ -21,23 +64,51 @@ export default function PlatformOrganizationsPage() {
     if (!session) router.push('/auth/signin')
   }, [session, status, router])
 
-  useEffect(() => {
+  const fetchOrganizations = useCallback(async (page: number = 1) => {
     if (!isPlatformAdmin) return
-    apiFetch('/api/platform/organizations')
-      .then(res => res.json())
-      .then(data => setOrganizations(Array.isArray(data) ? data : (data?.data || [])))
-      .catch(console.error)
-      .finally(() => setLoading(false))
-  }, [isPlatformAdmin])
+    setLoading(true)
+    try {
+      const params = new URLSearchParams({ page: String(page), limit: '10' })
+      if (search) params.set('search', search)
+      if (statusFilter) params.set('status', statusFilter)
+      const res = await apiFetch(`/api/platform/organizations?${params.toString()}`)
+      const data = await res.json()
+      setOrganizations(Array.isArray(data) ? data : (data?.data || []))
+      if (data?.pagination) {
+        setPagination(data.pagination)
+      }
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setLoading(false)
+    }
+  }, [isPlatformAdmin, search, statusFilter])
+
+  useEffect(() => {
+    fetchOrganizations(1)
+  }, [fetchOrganizations])
+
+  const handleSearch = () => {
+    fetchOrganizations(1)
+  }
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') handleSearch()
+  }
+
+  const handlePageChange = (newPage: number) => {
+    fetchOrganizations(newPage)
+  }
 
   const handleDisable = async (orgId: string) => {
-    if (!confirm(t('confirmDisable') || 'Are you sure you want to disable this organization?')) return
+    if (!confirm(t('confirmDisable') || '确定要禁用该组织吗？')) return
     try {
       await apiFetch(`/api/platform/organizations/${orgId}/disable`, { method: 'POST' })
       setOrganizations(orgs => orgs.map(o => o.id === orgId ? { ...o, status: 'disabled' } : o))
+      if (selectedOrg?.id === orgId) setSelectedOrg(prev => prev ? { ...prev, status: 'disabled' } : prev)
     } catch (e) {
       console.error(e)
-      alert(t('disableFailed') || 'Failed to disable organization')
+      alert(t('disableFailed') || '禁用失败')
     }
   }
 
@@ -45,9 +116,68 @@ export default function PlatformOrganizationsPage() {
     try {
       await apiFetch(`/api/platform/organizations/${orgId}/enable`, { method: 'POST' })
       setOrganizations(orgs => orgs.map(o => o.id === orgId ? { ...o, status: 'active' } : o))
+      if (selectedOrg?.id === orgId) setSelectedOrg(prev => prev ? { ...prev, status: 'active' } : prev)
     } catch (e) {
       console.error(e)
-      alert(t('enableFailed') || 'Failed to enable organization')
+      alert(t('enableFailed') || '启用失败')
+    }
+  }
+
+  const openDetail = async (org: Organization) => {
+    setSelectedOrg(org)
+    setMembersLoading(true)
+    setMembers([])
+    setDetailBalance(org.balance)
+    setRechargeAmount('')
+    try {
+      const membersRes = await apiFetch(`/api/organizations/${org.id}/members`)
+      if (membersRes.ok) {
+        const membersData = await membersRes.json()
+        setMembers(Array.isArray(membersData) ? membersData : [])
+      }
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setMembersLoading(false)
+    }
+  }
+
+  const closeDetail = () => {
+    setSelectedOrg(null)
+    setMembers([])
+    setDetailBalance(null)
+    setRechargeAmount('')
+  }
+
+  const handleRecharge = async () => {
+    if (!selectedOrg || !rechargeAmount) return
+    const amount = parseFloat(rechargeAmount)
+    if (isNaN(amount) || amount <= 0) {
+      alert('请输入有效的充值金额')
+      return
+    }
+    setRecharging(true)
+    try {
+      const res = await apiFetch(`/api/platform/organizations/${selectedOrg.id}/balance`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => null)
+        throw new Error(err?.error || '充值失败')
+      }
+      const data = await res.json()
+      const newBalance = data.balance?.current ?? data.balance?.balance ?? 0
+      setDetailBalance(prev => prev ? { ...prev, balance: newBalance } : null)
+      setOrganizations(orgs => orgs.map(o => o.id === selectedOrg.id ? { ...o, balance: { ...o.balance, balance: newBalance } as Organization['balance'] } : o))
+      setRechargeAmount('')
+      alert(t('rechargeSuccess') || '充值成功')
+    } catch (e: any) {
+      console.error(e)
+      alert(e?.message || '充值失败')
+    } finally {
+      setRecharging(false)
     }
   }
 
@@ -83,6 +213,35 @@ export default function PlatformOrganizationsPage() {
           <a href="/admin/platform" className="glass-btn-base px-4 py-2">{t('back') || 'Back'}</a>
         </div>
 
+        {/* Search & Filter Bar */}
+        <div className="glass-surface p-4 mb-6">
+          <div className="flex flex-wrap gap-4 items-center">
+            <div className="flex-1 min-w-[200px]">
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={handleSearchKeyDown}
+                placeholder={t('searchPlaceholder') || '搜索组织名称或Slug...'}
+                className="glass-input-base w-full px-3 py-2"
+              />
+            </div>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="glass-input-base px-3 py-2"
+            >
+              <option value="">{t('allStatus') || '全部状态'}</option>
+              <option value="active">{t('active') || '正常'}</option>
+              <option value="disabled">{t('disabled') || '已禁用'}</option>
+            </select>
+            <button onClick={handleSearch} className="glass-btn-base glass-btn-primary px-4 py-2">
+              {t('search') || '搜索'}
+            </button>
+          </div>
+        </div>
+
+        {/* Table */}
         <div className="glass-surface overflow-hidden">
           {loading ? (
             <div className="p-8 text-center text-[var(--glass-text-secondary)]">{t('loading') || 'Loading...'}</div>
@@ -103,24 +262,28 @@ export default function PlatformOrganizationsPage() {
               </thead>
               <tbody className="divide-y divide-[var(--glass-stroke-base)]">
                 {organizations.map((org) => (
-                  <tr key={org.id} className="hover:bg-[var(--glass-bg-muted)]/50">
+                  <tr
+                    key={org.id}
+                    className="hover:bg-[var(--glass-bg-muted)]/50 cursor-pointer"
+                    onClick={() => openDetail(org)}
+                  >
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-[var(--glass-text-primary)]">{org.name}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-[var(--glass-text-secondary)]">{org.slug}</td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`px-2 py-1 text-xs rounded-full ${
-                        org.status === 'active' 
-                          ? 'bg-[var(--glass-tone-success-bg)] text-[var(--glass-tone-success-fg)]' 
+                        org.status === 'active'
+                          ? 'bg-[var(--glass-tone-success-bg)] text-[var(--glass-tone-success-fg)]'
                           : 'bg-[var(--glass-tone-danger-bg)] text-[var(--glass-tone-danger-fg)]'
                       }`}>
                         {org.status === 'active' ? (t('active') || 'Active') : (t('disabled') || 'Disabled')}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-[var(--glass-text-secondary)]">{org.members?.length || 0}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-[var(--glass-text-secondary)]">{org.memberCount || 0}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-[var(--glass-text-secondary)]">¥{org.balance?.balance?.toFixed(2) || '0.00'}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-[var(--glass-text-secondary)]">
                       {new Date(org.createdAt).toLocaleDateString()}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-6 py-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                       {org.status === 'active' ? (
                         <button
                           onClick={() => handleDisable(org.id)}
@@ -143,6 +306,163 @@ export default function PlatformOrganizationsPage() {
             </table>
           )}
         </div>
+
+        {/* Pagination */}
+        {pagination.totalPages > 1 && (
+          <div className="flex items-center justify-between mt-4">
+            <div className="text-sm text-[var(--glass-text-secondary)]">
+              {t('pageInfo') || '第'} {pagination.page} {t('pageOf') || '/'} {pagination.totalPages} {t('pageTotal') || '页'} ({t('total') || '共'} {pagination.total} {t('items') || '条'})
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => handlePageChange(pagination.page - 1)}
+                disabled={pagination.page <= 1}
+                className="glass-btn-base px-3 py-1.5 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {t('prevPage') || '上一页'}
+              </button>
+              <button
+                onClick={() => handlePageChange(pagination.page + 1)}
+                disabled={pagination.page >= pagination.totalPages}
+                className="glass-btn-base px-3 py-1.5 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {t('nextPage') || '下一页'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Detail Modal */}
+        {selectedOrg && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm bg-black/50" onClick={closeDetail}>
+            <div className="glass-surface w-full max-w-2xl max-h-[85vh] overflow-y-auto mx-4 p-6" onClick={(e) => e.stopPropagation()}>
+              {/* Header */}
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-bold text-[var(--glass-text-primary)]">{selectedOrg.name}</h2>
+                <button onClick={closeDetail} className="text-[var(--glass-text-secondary)] hover:text-[var(--glass-text-primary)] text-2xl leading-none">&times;</button>
+              </div>
+
+              {/* Basic Info */}
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                <div>
+                  <div className="text-xs text-[var(--glass-text-secondary)] mb-1">Slug</div>
+                  <div className="text-sm font-mono text-[var(--glass-text-primary)]">{selectedOrg.slug}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-[var(--glass-text-secondary)] mb-1">{t('status') || '状态'}</div>
+                  <span className={`px-2 py-1 text-xs rounded-full ${
+                    selectedOrg.status === 'active'
+                      ? 'bg-[var(--glass-tone-success-bg)] text-[var(--glass-tone-success-fg)]'
+                      : 'bg-[var(--glass-tone-danger-bg)] text-[var(--glass-tone-danger-fg)]'
+                  }`}>
+                    {selectedOrg.status === 'active' ? (t('active') || '正常') : (t('disabled') || '已禁用')}
+                  </span>
+                </div>
+                <div>
+                  <div className="text-xs text-[var(--glass-text-secondary)] mb-1">{t('createdAt') || '创建时间'}</div>
+                  <div className="text-sm text-[var(--glass-text-primary)]">{new Date(selectedOrg.createdAt).toLocaleString()}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-[var(--glass-text-secondary)] mb-1">{t('owner') || '拥有者'}</div>
+                  <div className="text-sm text-[var(--glass-text-primary)]">{selectedOrg.owner?.name || selectedOrg.owner?.email || '-'}</div>
+                </div>
+              </div>
+
+              {/* Balance Info */}
+              <div className="glass-surface p-4 mb-6 bg-[var(--glass-bg-muted)]/30">
+                <h3 className="text-sm font-semibold text-[var(--glass-text-primary)] mb-3">{t('balance') || '余额信息'}</h3>
+                <div className="grid grid-cols-3 gap-4 text-center">
+                  <div>
+                    <div className="text-lg font-bold text-[var(--glass-tone-success-fg)]">¥{detailBalance?.balance?.toFixed(2) || '0.00'}</div>
+                    <div className="text-xs text-[var(--glass-text-secondary)]">{t('currentBalance') || '当前余额'}</div>
+                  </div>
+                  <div>
+                    <div className="text-lg font-bold text-[var(--glass-text-primary)]">¥{detailBalance?.frozenAmount?.toFixed(2) || '0.00'}</div>
+                    <div className="text-xs text-[var(--glass-text-secondary)]">{t('frozenAmount') || '冻结金额'}</div>
+                  </div>
+                  <div>
+                    <div className="text-lg font-bold text-[var(--glass-text-secondary)]">¥{detailBalance?.totalSpent?.toFixed(2) || '0.00'}</div>
+                    <div className="text-xs text-[var(--glass-text-secondary)]">{t('totalSpent') || '累计消费'}</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Recharge */}
+              <div className="glass-surface p-4 mb-6 bg-[var(--glass-bg-muted)]/30">
+                <h3 className="text-sm font-semibold text-[var(--glass-text-primary)] mb-3">{t('recharge') || '充值'}</h3>
+                <div className="flex gap-3">
+                  <input
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={rechargeAmount}
+                    onChange={(e) => setRechargeAmount(e.target.value)}
+                    placeholder={t('enterAmount') || '请输入充值金额'}
+                    className="glass-input-base flex-1 px-3 py-2"
+                  />
+                  <button
+                    onClick={handleRecharge}
+                    disabled={recharging || !rechargeAmount}
+                    className="glass-btn-base glass-btn-primary px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                  >
+                    {recharging ? (t('recharging') || '充值中...') : (t('recharge') || '充值')}
+                  </button>
+                </div>
+              </div>
+
+              {/* Members List */}
+              <div>
+                <h3 className="text-sm font-semibold text-[var(--glass-text-primary)] mb-3">{t('members') || '成员列表'}</h3>
+                {membersLoading ? (
+                  <div className="text-center py-4 text-[var(--glass-text-secondary)]">{t('loading') || 'Loading...'}</div>
+                ) : members.length === 0 ? (
+                  <div className="text-center py-4 text-[var(--glass-text-secondary)]">{t('noMembers') || '暂无成员'}</div>
+                ) : (
+                  <div className="overflow-hidden rounded-lg border border-[var(--glass-stroke-base)]">
+                    <table className="w-full">
+                      <thead className="bg-[var(--glass-bg-muted)]">
+                        <tr>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-[var(--glass-text-secondary)]">{t('name') || '名称'}</th>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-[var(--glass-text-secondary)]">{t('email') || '邮箱'}</th>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-[var(--glass-text-secondary)]">{t('role') || '角色'}</th>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-[var(--glass-text-secondary)]">{t('status') || '状态'}</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[var(--glass-stroke-base)]">
+                        {members.map((m) => (
+                          <tr key={m.id} className="hover:bg-[var(--glass-bg-muted)]/50">
+                            <td className="px-4 py-2 text-sm text-[var(--glass-text-primary)]">{m.user?.name || '-'}</td>
+                            <td className="px-4 py-2 text-sm text-[var(--glass-text-secondary)]">{m.user?.email || '-'}</td>
+                            <td className="px-4 py-2">
+                              <span className={`px-2 py-0.5 text-xs rounded-full ${
+                                m.role === 'owner'
+                                  ? 'bg-blue-500/20 text-blue-500'
+                                  : m.role === 'admin'
+                                    ? 'bg-purple-500/20 text-purple-500'
+                                    : 'bg-gray-500/20 text-gray-500'
+                              }`}>
+                                {m.role}
+                              </span>
+                            </td>
+                            <td className="px-4 py-2">
+                              <span className={`px-2 py-0.5 text-xs rounded-full ${
+                                m.status === 'active'
+                                  ? 'bg-[var(--glass-tone-success-bg)] text-[var(--glass-tone-success-fg)]'
+                                  : 'bg-[var(--glass-tone-danger-bg)] text-[var(--glass-tone-danger-fg)]'
+                              }`}>
+                                {m.status}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
