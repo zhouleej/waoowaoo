@@ -81,16 +81,16 @@ export default function PlatformConfigPage() {
           {loading ? (
             <div className="p-8 text-center text-[var(--glass-text-secondary)]">{t('loading')}</div>
           ) : configs.length === 0 ? (
-            <div className="p-8 text-center text-[var(--glass-text-secondary)]">暂无配置项</div>
+            <div className="p-8 text-center text-[var(--glass-text-secondary)]">{t('noConfigItems')}</div>
           ) : (
             <table className="w-full">
               <thead className="bg-[var(--glass-bg-muted)]">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">配置键</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">值</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">描述</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">更新时间</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">操作</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">{t('configKey')}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">{t('value')}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">{t('description')}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">{t('updatedAt')}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">{t('actions')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--glass-stroke-base)]">
@@ -120,13 +120,13 @@ export default function PlatformConfigPage() {
                             onClick={() => handleSave(config.key)}
                             className="text-sm text-[var(--glass-tone-success-fg)] hover:underline"
                           >
-                            保存
+                            {t('save')}
                           </button>
                           <button
                             onClick={() => setEditingKey(null)}
                             className="text-sm text-[var(--glass-text-secondary)] hover:underline"
                           >
-                            取消
+                            {t('cancel')}
                           </button>
                         </div>
                       ) : (
@@ -134,7 +134,7 @@ export default function PlatformConfigPage() {
                           onClick={() => { setEditingKey(config.key); setEditValue(config.value) }}
                           className="text-sm text-[var(--glass-tone-info-fg)] hover:underline"
                         >
-                          编辑
+                          {t('edit')}
                         </button>
                       )}
                     </td>

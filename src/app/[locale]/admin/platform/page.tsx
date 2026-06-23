@@ -116,8 +116,8 @@ export default function PlatformAdminPage() {
                 </svg>
               </div>
               <div>
-                <div className="font-semibold text-[var(--glass-text-primary)] group-hover:text-[var(--glass-tone-info-fg)]">平台统计</div>
-                <div className="text-sm text-[var(--glass-text-secondary)]">查看平台总消费和排行</div>
+                <div className="font-semibold text-[var(--glass-text-primary)] group-hover:text-[var(--glass-tone-info-fg)]">{t('platformStats')}</div>
+                <div className="text-sm text-[var(--glass-text-secondary)]">{t('platformStatsDesc')}</div>
               </div>
             </div>
           </a>
@@ -145,8 +145,8 @@ export default function PlatformAdminPage() {
                 </svg>
               </div>
               <div>
-                <div className="font-semibold text-[var(--glass-text-primary)] group-hover:text-[var(--glass-tone-warning-fg)]">操作日志</div>
-                <div className="text-sm text-[var(--glass-text-secondary)]">查看管理员操作记录</div>
+                <div className="font-semibold text-[var(--glass-text-primary)] group-hover:text-[var(--glass-tone-warning-fg)]">{t('auditLog')}</div>
+                <div className="text-sm text-[var(--glass-text-secondary)]">{t('auditLogDesc')}</div>
               </div>
             </div>
           </a>

@@ -58,7 +58,7 @@ export default function PlatformStatsPage() {
       <Navbar />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex items-center justify-between mb-8">
-          <h1 className="text-3xl font-bold text-[var(--glass-text-primary)]">平台统计</h1>
+          <h1 className="text-3xl font-bold text-[var(--glass-text-primary)]">{t('platformStats')}</h1>
           <a href="/admin/platform" className="glass-btn-base px-4 py-2">{t('back')}</a>
         </div>
 
@@ -89,16 +89,16 @@ export default function PlatformStatsPage() {
             {/* 组织消费排行 */}
             <div className="glass-surface overflow-hidden mb-8">
               <div className="px-6 py-4 border-b border-[var(--glass-stroke-base)]">
-                <h2 className="text-lg font-semibold text-[var(--glass-text-primary)]">组织消费排行</h2>
+                <h2 className="text-lg font-semibold text-[var(--glass-text-primary)]">{t('orgSpendingRank')}</h2>
               </div>
               {stats?.organizationStats?.length > 0 ? (
                 <table className="w-full">
                   <thead className="bg-[var(--glass-bg-muted)]">
                     <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">排名</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">组织名称</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">总消费</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">成员数</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">{t('rank')}</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">{t('orgName')}</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">{t('totalSpent')}</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">{t('memberCount')}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[var(--glass-stroke-base)]">
@@ -113,22 +113,22 @@ export default function PlatformStatsPage() {
                   </tbody>
                 </table>
               ) : (
-                <div className="p-8 text-center text-[var(--glass-text-secondary)]">暂无数据</div>
+                <div className="p-8 text-center text-[var(--glass-text-secondary)]">{t('noData')}</div>
               )}
             </div>
 
             {/* 用户消费排行 */}
             <div className="glass-surface overflow-hidden">
               <div className="px-6 py-4 border-b border-[var(--glass-stroke-base)]">
-                <h2 className="text-lg font-semibold text-[var(--glass-text-primary)]">用户消费排行</h2>
+                <h2 className="text-lg font-semibold text-[var(--glass-text-primary)]">{t('userSpendingRank')}</h2>
               </div>
               {stats?.userStats?.length > 0 ? (
                 <table className="w-full">
                   <thead className="bg-[var(--glass-bg-muted)]">
                     <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">排名</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">用户名</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">总消费</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">{t('rank')}</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">{t('username')}</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">{t('totalSpent')}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[var(--glass-stroke-base)]">
@@ -142,7 +142,7 @@ export default function PlatformStatsPage() {
                   </tbody>
                 </table>
               ) : (
-                <div className="p-8 text-center text-[var(--glass-text-secondary)]">暂无数据</div>
+                <div className="p-8 text-center text-[var(--glass-text-secondary)]">{t('noData')}</div>
               )}
             </div>
           </>
