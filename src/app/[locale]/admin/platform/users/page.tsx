@@ -130,7 +130,14 @@ export default function PlatformUsersPage() {
       const res = await apiFetch(`/api/platform/users/${userId}`)
       if (res.ok) {
         const data = await res.json()
-        setSelectedUser(data)
+        // API 返回 { user: {...}, organizations: [...], recentUsage: [...] }
+        // 需要展平为前端使用的格式
+        const userData = data.user || data
+        setSelectedUser({
+          ...userData,
+          organizations: data.organizations || [],
+          consumption: data.recentUsage || [],
+        })
       }
     } catch (e) {
       console.error(e)
@@ -543,13 +550,16 @@ export default function PlatformUsersPage() {
                           {selectedUser.consumption.map((record) => (
                             <div key={record.id} className="flex items-center justify-between py-2 border-b border-[var(--glass-stroke-base)] last:border-b-0">
                               <div>
-                                <span className="text-sm text-[var(--glass-text-primary)]">{record.description}</span>
+                                <span className="text-sm text-[var(--glass-text-primary)]">
+                                  {record.action || record.apiType || record.description || '-'}
+                                  {record.model && <span className="text-xs text-[var(--glass-text-tertiary)] ml-1">({record.model})</span>}
+                                </span>
                                 <span className="ml-2 text-xs text-[var(--glass-text-tertiary)]">
                                   {new Date(record.createdAt).toLocaleDateString()}
                                 </span>
                               </div>
                               <span className="text-sm font-medium text-[var(--glass-tone-danger-fg)]">
-                                -¥{typeof record.amount === 'number' ? record.amount.toFixed(2) : record.amount}
+                                -¥{typeof record.cost === 'number' ? record.cost.toFixed(4) : (typeof record.amount === 'number' ? record.amount.toFixed(2) : (record.cost || record.amount || '0'))}
                               </span>
                             </div>
                           ))}
