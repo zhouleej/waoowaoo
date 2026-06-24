@@ -93,7 +93,9 @@ export default function PlatformAuditPage() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-[var(--glass-text-secondary)]">{log.targetType}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-[var(--glass-text-secondary)] font-mono text-xs">{log.targetId || '-'}</td>
-                    <td className="px-6 py-4 text-sm text-[var(--glass-text-secondary)] max-w-xs truncate">{log.details || '-'}</td>
+                    <td className="px-6 py-4 text-sm text-[var(--glass-text-secondary)] max-w-xs truncate">
+                      {log.details ? (typeof log.details === 'string' ? log.details : JSON.stringify(log.details)) : '-'}
+                    </td>
                   </tr>
                 ))}
               </tbody>
