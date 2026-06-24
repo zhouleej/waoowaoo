@@ -25,8 +25,12 @@ interface UserOrganization {
 
 interface ConsumptionRecord {
   id: string
-  amount: number
-  description: string
+  amount?: number
+  cost?: number
+  description?: string
+  action?: string
+  apiType?: string
+  model?: string
   createdAt: string
 }
 
@@ -71,6 +75,12 @@ export default function PlatformUsersPage() {
   const [createUserEmail, setCreateUserEmail] = useState('')
   const [createUserPassword, setCreateUserPassword] = useState('')
   const [creatingUser, setCreatingUser] = useState(false)
+
+  // Link user to organization state
+  const [showLinkOrgModal, setShowLinkOrgModal] = useState(false)
+  const [allOrganizations, setAllOrganizations] = useState<any[]>([])
+  const [selectedOrgId, setSelectedOrgId] = useState('')
+  const [linkingOrg, setLinkingOrg] = useState(false)
 
   const isPlatformAdmin = (session?.user as any)?.isPlatformAdmin
 
@@ -243,6 +253,69 @@ export default function PlatformUsersPage() {
       alert(e?.message || '创建失败')
     } finally {
       setCreatingUser(false)
+    }
+  }
+
+  const openLinkOrgModal = async () => {
+    if (!selectedUser) return
+    setShowLinkOrgModal(true)
+    setSelectedOrgId('')
+    try {
+      const res = await apiFetch('/api/platform/organizations?limit=100')
+      const data = await res.json()
+      const orgs = Array.isArray(data) ? data : (data?.data || [])
+      // 过滤掉用户已经在的组织
+      const userOrgIds = (selectedUser.organizations || []).map((o: any) => o.id)
+      setAllOrganizations(orgs.filter((o: any) => !userOrgIds.includes(o.id)))
+    } catch (e) {
+      console.error(e)
+      setAllOrganizations([])
+    }
+  }
+
+  const handleLinkOrg = async () => {
+    if (!selectedUser || !selectedOrgId) return
+    setLinkingOrg(true)
+    try {
+      const res = await apiFetch(`/api/platform/users/${selectedUser.id}/organizations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ organizationId: selectedOrgId, role: 'member' }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => null)
+        throw new Error(err?.error || '关联失败')
+      }
+      alert('关联成功')
+      setShowLinkOrgModal(false)
+      // 刷新用户详情
+      handleRowClick(selectedUser.id)
+    } catch (e: any) {
+      console.error(e)
+      alert(e?.message || '关联失败')
+    } finally {
+      setLinkingOrg(false)
+    }
+  }
+
+  const handleUnlinkOrg = async (organizationId: string) => {
+    if (!selectedUser) return
+    if (!confirm('确定要将此用户从该组织移除吗？')) return
+    try {
+      const res = await apiFetch(`/api/platform/users/${selectedUser.id}/organizations`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ organizationId }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => null)
+        throw new Error(err?.error || '移除失败')
+      }
+      alert('已移除')
+      handleRowClick(selectedUser.id)
+    } catch (e: any) {
+      console.error(e)
+      alert(e?.message || '移除失败')
     }
   }
 
@@ -519,7 +592,16 @@ export default function PlatformUsersPage() {
 
                   {/* 所属组织 */}
                   <div>
-                    <h3 className="text-sm font-medium text-[var(--glass-text-tertiary)] uppercase tracking-wider mb-3">{t('organizationInfo')}</h3>
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="text-sm font-medium text-[var(--glass-text-tertiary)] uppercase tracking-wider">{t('organizationInfo')}</h3>
+                      <button
+                        onClick={openLinkOrgModal}
+                        className="glass-btn-base glass-btn-primary px-3 py-1.5 text-xs rounded-lg flex items-center gap-1"
+                      >
+                        <AppIcon name="plus" className="w-3.5 h-3.5" />
+                        关联到组织
+                      </button>
+                    </div>
                     <div className="glass-surface p-4">
                       {selectedUser.organizations && selectedUser.organizations.length > 0 ? (
                         <div className="space-y-2">
@@ -529,9 +611,19 @@ export default function PlatformUsersPage() {
                                 <span className="text-sm font-medium text-[var(--glass-text-primary)]">{org.name}</span>
                                 <span className="ml-2 text-xs text-[var(--glass-text-tertiary)] font-mono">{org.slug}</span>
                               </div>
-                              <span className="text-xs px-2 py-0.5 rounded-full bg-[var(--glass-tone-info-bg)] text-[var(--glass-tone-info-fg)]">
-                                {org.role}
-                              </span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-[var(--glass-tone-info-bg)] text-[var(--glass-tone-info-fg)]">
+                                  {org.role}
+                                </span>
+                                {org.role !== 'owner' && (
+                                  <button
+                                    onClick={() => handleUnlinkOrg(org.id)}
+                                    className="text-xs text-[var(--glass-tone-danger-fg)] hover:underline"
+                                  >
+                                    移除
+                                  </button>
+                                )}
+                              </div>
                             </div>
                           ))}
                         </div>
@@ -627,6 +719,52 @@ export default function PlatformUsersPage() {
                 className="glass-btn-base glass-btn-primary px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {creatingUser ? '创建中...' : '创建'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 关联到组织弹窗 */}
+      {showLinkOrgModal && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 sm:p-6">
+          <div className="glass-overlay absolute inset-0" onClick={() => setShowLinkOrgModal(false)} />
+          <div className="glass-surface-modal relative z-10 w-full max-w-md overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-5 py-4 sm:px-6 border-b border-[var(--glass-stroke-base)]">
+              <h2 className="text-lg font-semibold text-[var(--glass-text-primary)]">关联到组织</h2>
+              <button onClick={() => setShowLinkOrgModal(false)} className="text-[var(--glass-text-secondary)] hover:text-[var(--glass-text-primary)] text-2xl leading-none">&times;</button>
+            </div>
+            <div className="px-5 py-4 sm:px-6 space-y-4">
+              <div>
+                <label className="block text-sm text-[var(--glass-text-secondary)] mb-1">选择组织</label>
+                <select
+                  value={selectedOrgId}
+                  onChange={(e) => setSelectedOrgId(e.target.value)}
+                  className="glass-input-base w-full px-3 py-2"
+                >
+                  <option value="">-- 请选择组织 --</option>
+                  {allOrganizations.map((org) => (
+                    <option key={org.id} value={org.id}>
+                      {org.name} ({org.slug})
+                    </option>
+                  ))}
+                </select>
+                {allOrganizations.length === 0 && (
+                  <p className="text-xs text-[var(--glass-text-tertiary)] mt-1">没有可关联的组织（用户已属于所有组织）</p>
+                )}
+              </div>
+              <p className="text-xs text-[var(--glass-text-tertiary)]">
+                将用户 <strong>{selectedUser?.name}</strong> 关联为所选组织的成员（member 角色）
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-3 px-5 py-4 sm:px-6 border-t border-[var(--glass-stroke-base)]">
+              <button onClick={() => setShowLinkOrgModal(false)} className="glass-btn-base px-4 py-2">取消</button>
+              <button
+                onClick={handleLinkOrg}
+                disabled={!selectedOrgId || linkingOrg}
+                className="glass-btn-base glass-btn-primary px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {linkingOrg ? '关联中...' : '确认关联'}
               </button>
             </div>
           </div>
