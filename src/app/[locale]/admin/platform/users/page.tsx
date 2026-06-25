@@ -69,6 +69,11 @@ export default function PlatformUsersPage() {
   const [showAdminConfirm, setShowAdminConfirm] = useState(false)
   const [adminTarget, setAdminTarget] = useState<{ id: string; isAdmin: boolean } | null>(null)
 
+  // 删除用户确认
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null)
+  const [deleting, setDeleting] = useState(false)
+
   // Create user modal state
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [createUserName, setCreateUserName] = useState('')
@@ -209,6 +214,37 @@ export default function PlatformUsersPage() {
     }
     setShowAdminConfirm(false)
     setAdminTarget(null)
+  }
+
+  const handleDeleteClick = (userId: string, userName: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation()
+    setDeleteTarget({ id: userId, name: userName })
+    setShowDeleteConfirm(true)
+  }
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    try {
+      const res = await apiFetch(`/api/platform/users/${deleteTarget.id}`, {
+        method: 'DELETE',
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => null)
+        throw new Error(err?.error || '删除失败')
+      }
+      alert('用户已删除')
+      setShowDeleteConfirm(false)
+      setDeleteTarget(null)
+      setShowDetailModal(false)
+      setSelectedUser(null)
+      fetchUsers(pagination.page, searchQuery)
+    } catch (e: any) {
+      console.error(e)
+      alert(e?.message || '删除失败')
+    } finally {
+      setDeleting(false)
+    }
   }
 
   const openCreateModal = () => {
@@ -588,6 +624,13 @@ export default function PlatformUsersPage() {
                       <AppIcon name={selectedUser.isPlatformAdmin ? 'minus' : 'badgeCheck'} className="w-4 h-4" />
                       {selectedUser.isPlatformAdmin ? t('removeAdmin') : t('setAdmin')}
                     </button>
+                    <button
+                      onClick={(e) => handleDeleteClick(selectedUser.id, selectedUser.name, e as unknown as React.MouseEvent)}
+                      className="glass-btn-base glass-btn-tone-danger px-4 py-2 text-sm rounded-lg flex items-center gap-2"
+                    >
+                      <AppIcon name="trash" className="w-4 h-4" />
+                      删除用户
+                    </button>
                   </div>
 
                   {/* 所属组织 */}
@@ -793,6 +836,18 @@ export default function PlatformUsersPage() {
         cancelText={tc('cancel')}
         onConfirm={handleAdminConfirm}
         onCancel={() => { setShowAdminConfirm(false); setAdminTarget(null) }}
+      />
+
+      {/* 删除用户确认弹窗 */}
+      <ConfirmDialog
+        show={showDeleteConfirm}
+        title="删除用户"
+        message={deleteTarget ? `确定要删除用户「${deleteTarget.name}」吗？此操作不可撤销，将删除该用户的所有关联数据。` : ''}
+        type="danger"
+        confirmText={deleting ? '删除中...' : '确认删除'}
+        cancelText={tc('cancel')}
+        onConfirm={handleDeleteConfirm}
+        onCancel={() => { setShowDeleteConfirm(false); setDeleteTarget(null) }}
       />
     </div>
   )

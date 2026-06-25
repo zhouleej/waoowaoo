@@ -63,6 +63,11 @@ export default function PlatformOrganizationsPage() {
   const [createSlug, setCreateSlug] = useState('')
   const [creating, setCreating] = useState(false)
 
+  // Delete state
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleteConfirmName, setDeleteConfirmName] = useState('')
+  const [deleting, setDeleting] = useState(false)
+
   const isPlatformAdmin = (session?.user as any)?.isPlatformAdmin
 
   useEffect(() => {
@@ -227,6 +232,43 @@ export default function PlatformOrganizationsPage() {
       alert(e?.message || '创建失败')
     } finally {
       setCreating(false)
+    }
+  }
+
+  const openDeleteConfirm = () => {
+    setDeleteConfirmName('')
+    setShowDeleteConfirm(true)
+  }
+
+  const closeDeleteConfirm = () => {
+    setShowDeleteConfirm(false)
+    setDeleteConfirmName('')
+  }
+
+  const handleDelete = async () => {
+    if (!selectedOrg) return
+    if (deleteConfirmName !== selectedOrg.name) {
+      alert('请输入正确的组织名称以确认删除')
+      return
+    }
+    setDeleting(true)
+    try {
+      const res = await apiFetch(`/api/platform/organizations/${selectedOrg.id}`, {
+        method: 'DELETE',
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => null)
+        throw new Error(err?.error || '删除失败')
+      }
+      alert('组织已删除')
+      closeDeleteConfirm()
+      closeDetail()
+      fetchOrganizations(1)
+    } catch (e: any) {
+      console.error(e)
+      alert(e?.message || '删除失败')
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -514,6 +556,16 @@ export default function PlatformOrganizationsPage() {
                   </div>
                 )}
               </div>
+
+              {/* Delete Organization */}
+              <div className="mt-6 pt-4 border-t border-[var(--glass-stroke-base)]">
+                <button
+                  onClick={openDeleteConfirm}
+                  className="glass-btn-base glass-btn-tone-danger px-4 py-2 text-sm"
+                >
+                  删除组织
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -557,6 +609,46 @@ export default function PlatformOrganizationsPage() {
                   className="glass-btn-base glass-btn-primary px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {creating ? '创建中...' : '创建'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Delete Organization Confirmation Modal */}
+        {showDeleteConfirm && selectedOrg && (
+          <div className="fixed inset-0 z-[130] flex items-center justify-center p-4 sm:p-6">
+            <div className="glass-overlay absolute inset-0" onClick={closeDeleteConfirm} />
+            <div className="glass-surface-modal relative z-10 w-full max-w-md overflow-hidden flex flex-col">
+              <div className="flex items-center justify-between px-5 py-4 sm:px-6 border-b border-[var(--glass-stroke-base)]">
+                <h2 className="text-lg font-semibold text-[var(--glass-tone-danger-fg)]">删除组织</h2>
+                <button onClick={closeDeleteConfirm} className="text-[var(--glass-text-secondary)] hover:text-[var(--glass-text-primary)] text-2xl leading-none">&times;</button>
+              </div>
+              <div className="px-5 py-4 sm:px-6 space-y-4">
+                <p className="text-sm text-[var(--glass-text-secondary)]">
+                  此操作不可撤销，将永久删除组织 <strong className="text-[var(--glass-text-primary)]">{selectedOrg.name}</strong> 及其所有成员关系、余额和消费记录。
+                </p>
+                <div>
+                  <label className="block text-sm text-[var(--glass-text-secondary)] mb-1">
+                    请输入组织名称 <strong className="text-[var(--glass-text-primary)]">{selectedOrg.name}</strong> 以确认删除
+                  </label>
+                  <input
+                    type="text"
+                    value={deleteConfirmName}
+                    onChange={(e) => setDeleteConfirmName(e.target.value)}
+                    placeholder={selectedOrg.name}
+                    className="glass-input-base w-full px-3 py-2"
+                  />
+                </div>
+              </div>
+              <div className="flex items-center justify-end gap-3 px-5 py-4 sm:px-6 border-t border-[var(--glass-stroke-base)]">
+                <button onClick={closeDeleteConfirm} className="glass-btn-base px-4 py-2">取消</button>
+                <button
+                  onClick={handleDelete}
+                  disabled={deleting || deleteConfirmName !== selectedOrg.name}
+                  className="glass-btn-base glass-btn-tone-danger px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {deleting ? '删除中...' : '确认删除'}
                 </button>
               </div>
             </div>

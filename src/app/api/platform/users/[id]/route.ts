@@ -215,3 +215,63 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     user: updatedUser,
   })
 }
+
+/**
+ * DELETE /api/platform/users/[id]
+ * 删除用户（平台管理员专用）
+ * 注意：不能删除平台管理员自己
+ */
+export async function DELETE(req: NextRequest, { params }: RouteParams) {
+  const authResult = await requirePlatformAdmin()
+  if (authResult instanceof NextResponse) return authResult
+  const { user: admin } = authResult
+
+  const { id } = await params
+
+  // 不能删除自己
+  if (id === admin.id) {
+    return NextResponse.json({ error: 'Cannot delete yourself' }, { status: 400 })
+  }
+
+  // 检查用户是否存在
+  const user = await prisma.user.findUnique({
+    where: { id },
+    select: { id: true, name: true, email: true, isPlatformAdmin: true },
+  })
+
+  if (!user) {
+    return NextResponse.json({ error: 'User not found' }, { status: 404 })
+  }
+
+  // 使用事务删除用户及其关联数据
+  await prisma.$transaction(async (tx) => {
+    // 删除组织成员关系
+    await tx.organizationMember.deleteMany({ where: { userId: id } })
+    // 删除用户的项目（如果有的话）
+    await tx.project.deleteMany({ where: { userId: id } })
+    // 删除用户的任务
+    await tx.task.deleteMany({ where: { userId: id } })
+    // 删除用户的余额记录
+    await tx.userBalance.deleteMany({ where: { userId: id } })
+    // 删除用户的 NextAuth 账号
+    await tx.account.deleteMany({ where: { userId: id } })
+    // 删除用户的 Session
+    await tx.session.deleteMany({ where: { userId: id } })
+    // 删除用户
+    await tx.user.delete({ where: { id } })
+  })
+
+  // 记录审计日志
+  await createAdminAuditLog({
+    adminId: admin.id,
+    action: 'delete_user',
+    targetType: 'User',
+    targetId: id,
+    details: {
+      name: user.name,
+      email: user.email,
+    },
+  })
+
+  return NextResponse.json({ message: 'User deleted successfully' })
+}
