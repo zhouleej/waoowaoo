@@ -1,37 +1,11 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { withPrismaRetry } from '@/lib/prisma-retry'
-import { requireUserAuth, isErrorResponse, unauthorized, forbidden, notFound, badRequest } from '@/lib/api-auth'
+import { requireUserAuth, isErrorResponse, forbidden, notFound, badRequest, checkOrganizationManagePermission } from '@/lib/api-auth'
 import { apiHandler } from '@/lib/api-errors'
 
 type RouteParams = {
   id: string
-}
-
-/**
- * 验证当前用户是否有管理成员的权限（owner 或 admin）
- */
-async function checkManagePermission(organizationId: string, userId: string) {
-  const membership = await withPrismaRetry(() =>
-    prisma.organizationMember.findUnique({
-      where: {
-        organizationId_userId: {
-          organizationId,
-          userId,
-        },
-      },
-    })
-  )
-
-  if (!membership) {
-    return { error: forbidden('您不是该组织成员'), membership: null }
-  }
-
-  if (membership.role !== 'owner' && membership.role !== 'admin') {
-    return { error: forbidden('只有组织所有者或管理员可以管理成员'), membership }
-  }
-
-  return { error: null, membership }
 }
 
 /**
@@ -49,7 +23,7 @@ export const POST = apiHandler(async (req, ctx) => {
   const { session } = authResult
 
   // 验证权限
-  const permResult = await checkManagePermission(organizationId, session.user.id)
+  const permResult = await checkOrganizationManagePermission(organizationId, session.user.id)
   if (permResult.error) return permResult.error
 
   const { membership: currentUser } = permResult

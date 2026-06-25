@@ -220,6 +220,15 @@ export async function requireProjectAuth<T extends ProjectAuthIncludes = Project
     if (!session?.user?.id) {
         return unauthorized()
     }
+
+    // 1.5 检查全局锁定（内部任务跳过）
+    const incomingHeaders = await readHeaders()
+    const isInternalTask = !!incomingHeaders.get('x-internal-task-token')
+    if (!isInternalTask) {
+        const lockError = await checkGlobalLock(session.user.id)
+        if (lockError) return lockError
+    }
+
     bindAuthLogContext(session, projectId)
 
     // 2. 构建动态 include 对象
@@ -292,6 +301,23 @@ export async function requireProjectAuth<T extends ProjectAuthIncludes = Project
 }
 
 /**
+ * 检查用户是否被全局锁定
+ * 内部任务 token 跳过此检查
+ */
+async function checkGlobalLock(userId: string): Promise<NextResponse | null> {
+    const user = await withPrismaRetry(() =>
+        prisma.user.findUnique({
+            where: { id: userId },
+            select: { isGlobalLocked: true },
+        })
+    )
+    if (user?.isGlobalLocked) {
+        return forbidden('Account is locked')
+    }
+    return null
+}
+
+/**
  * 仅验证 Session，不检查项目权限
  * 适用于用户级 API（如资产库）
  * 
@@ -308,6 +334,15 @@ export async function requireUserAuth(): Promise<{ session: AuthSession } | Next
     if (!session?.user?.id) {
         return unauthorized()
     }
+
+    // 内部任务 token 跳过全局锁定检查
+    const incomingHeaders = await readHeaders()
+    const isInternalTask = !!incomingHeaders.get('x-internal-task-token')
+    if (!isInternalTask) {
+        const lockError = await checkGlobalLock(session.user.id)
+        if (lockError) return lockError
+    }
+
     bindAuthLogContext(session)
     return { session }
 }
@@ -323,6 +358,15 @@ export async function requireProjectAuthLight(
     if (!session?.user?.id) {
         return unauthorized()
     }
+
+    // 检查全局锁定（内部任务跳过）
+    const incomingHeaders = await readHeaders()
+    const isInternalTask = !!incomingHeaders.get('x-internal-task-token')
+    if (!isInternalTask) {
+        const lockError = await checkGlobalLock(session.user.id)
+        if (lockError) return lockError
+    }
+
     bindAuthLogContext(session, projectId)
 
     const project = await withPrismaRetry(() =>
@@ -340,6 +384,40 @@ export async function requireProjectAuthLight(
     }
 
     return { session, project }
+}
+
+// ============================================================
+// 组织权限验证
+// ============================================================
+
+/**
+ * 验证用户是否有组织管理权限（owner 或 admin）
+ * 返回 { error, membership } 结构
+ */
+export async function checkOrganizationManagePermission(
+    organizationId: string,
+    userId: string,
+): Promise<{ error: NextResponse | null; membership: { role: string; [key: string]: unknown } | null }> {
+    const membership = await withPrismaRetry(() =>
+        prisma.organizationMember.findUnique({
+            where: {
+                organizationId_userId: {
+                    organizationId,
+                    userId,
+                },
+            },
+        })
+    )
+
+    if (!membership) {
+        return { error: forbidden('您不是该组织成员'), membership: null }
+    }
+
+    if (membership.role !== 'owner' && membership.role !== 'admin') {
+        return { error: forbidden('只有组织所有者或管理员可以管理成员'), membership }
+    }
+
+    return { error: null, membership }
 }
 
 // ============================================================
