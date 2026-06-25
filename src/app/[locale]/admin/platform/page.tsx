@@ -12,6 +12,7 @@ export default function PlatformAdminPage() {
   const t = useTranslations('platform')
   const router = useRouter()
   const [stats, setStats] = useState<any>(null)
+  const [statsLoading, setStatsLoading] = useState(true)
 
   useEffect(() => {
     if (status === 'loading') return
@@ -24,8 +25,12 @@ export default function PlatformAdminPage() {
 
   useEffect(() => {
     if (!isPlatformAdmin) return
-    // 获取统计数据
-    apiFetch('/api/platform/stats').then(setStats).catch(console.error)
+    setStatsLoading(true)
+    apiFetch('/api/platform/stats')
+      .then((res) => res.json())
+      .then(setStats)
+      .catch(console.error)
+      .finally(() => setStatsLoading(false))
   }, [isPlatformAdmin])
 
   if (status === 'loading' || !session) {
@@ -59,22 +64,33 @@ export default function PlatformAdminPage() {
 
         {/* Statistics Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <div className="glass-surface p-6">
-            <div className="text-sm text-[var(--glass-text-secondary)] mb-2">{t('totalOrganizations') || 'Total Organizations'}</div>
-            <div className="text-3xl font-bold text-[var(--glass-text-primary)]">{stats?.totalOrganizations || 0}</div>
-          </div>
-          <div className="glass-surface p-6">
-            <div className="text-sm text-[var(--glass-text-secondary)] mb-2">{t('totalUsers') || 'Total Users'}</div>
-            <div className="text-3xl font-bold text-[var(--glass-text-primary)]">{stats?.totalUsers || 0}</div>
-          </div>
-          <div className="glass-surface p-6">
-            <div className="text-sm text-[var(--glass-text-secondary)] mb-2">{t('totalRevenue') || 'Total Revenue'}</div>
-            <div className="text-3xl font-bold text-[var(--glass-tone-success-fg)]">¥{stats?.totalSpent || '0.00'}</div>
-          </div>
-          <div className="glass-surface p-6">
-            <div className="text-sm text-[var(--glass-text-secondary)] mb-2">{t('activeOrganizations') || 'Active Organizations'}</div>
-            <div className="text-3xl font-bold text-[var(--glass-tone-info-fg)]">{stats?.activeOrganizations || 0}</div>
-          </div>
+          {statsLoading ? (
+            Array.from({ length: 4 }).map((_, index) => (
+              <div key={index} className="glass-surface p-6 animate-pulse">
+                <div className="h-4 bg-[var(--glass-bg-muted)] rounded mb-3 w-2/3"></div>
+                <div className="h-8 bg-[var(--glass-bg-muted)] rounded w-1/2"></div>
+              </div>
+            ))
+          ) : (
+            <>
+              <div className="glass-surface p-6">
+                <div className="text-sm text-[var(--glass-text-secondary)] mb-2">{t('totalOrganizations') || 'Total Organizations'}</div>
+                <div className="text-3xl font-bold text-[var(--glass-text-primary)]">{stats?.totalOrganizations || 0}</div>
+              </div>
+              <div className="glass-surface p-6">
+                <div className="text-sm text-[var(--glass-text-secondary)] mb-2">{t('totalUsers') || 'Total Users'}</div>
+                <div className="text-3xl font-bold text-[var(--glass-text-primary)]">{stats?.totalUsers || 0}</div>
+              </div>
+              <div className="glass-surface p-6">
+                <div className="text-sm text-[var(--glass-text-secondary)] mb-2">{t('totalRevenue') || 'Total Revenue'}</div>
+                <div className="text-3xl font-bold text-[var(--glass-tone-success-fg)]">¥{stats?.totalSpent || '0.00'}</div>
+              </div>
+              <div className="glass-surface p-6">
+                <div className="text-sm text-[var(--glass-text-secondary)] mb-2">{t('activeOrganizations') || 'Active Organizations'}</div>
+                <div className="text-3xl font-bold text-[var(--glass-tone-info-fg)]">{stats?.activeOrganizations || 0}</div>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Quick Actions */}
@@ -122,7 +138,7 @@ export default function PlatformAdminPage() {
             </div>
           </a>
 
-          <a href="/admin/platform/config" className="glass-surface p-6 hover:brightness-110 transition-all group">
+          <a href="/api/platform/config" className="glass-surface p-6 hover:brightness-110 transition-all group">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 rounded-lg bg-[var(--glass-tone-success-bg)] flex items-center justify-center">
                 <svg className="w-6 h-6 text-[var(--glass-tone-success-fg)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">

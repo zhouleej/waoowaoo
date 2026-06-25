@@ -134,6 +134,9 @@ export const GET = apiHandler(async () => {
           },
         },
         balance: true,
+        _count: {
+          select: { members: true },
+        },
       },
       orderBy: {
         createdAt: 'desc',
@@ -152,6 +155,7 @@ export const GET = apiHandler(async () => {
     currentUserRole: org.members[0]?.role || 'member',
     currentUserStatus: org.members[0]?.status || 'active',
     balance: org.balance,
+    memberCount: org._count.members,
   }))
 
   return NextResponse.json(result)
