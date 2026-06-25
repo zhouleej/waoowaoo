@@ -66,9 +66,13 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
     slug: m.organization.slug,
     role: m.role,
     status: m.status,
-    quota: m.quota,
+    quota: m.quota ? Number(m.quota) : 0,
     joinedAt: m.joinedAt,
-    balance: m.organization.balance,
+    balance: m.organization.balance ? {
+      balance: Number(m.organization.balance.balance),
+      frozenAmount: Number(m.organization.balance.frozenAmount),
+      totalSpent: Number(m.organization.balance.totalSpent),
+    } : null,
     owner: m.organization.owner,
   }))
 
@@ -121,7 +125,11 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
       updatedAt: user.updatedAt,
       isPlatformAdmin: user.isPlatformAdmin,
       isGlobalLocked: user.isGlobalLocked,
-      balance: user.balance,
+      balance: user.balance ? {
+        balance: Number(user.balance.balance),
+        frozenAmount: Number(user.balance.frozenAmount),
+        totalSpent: Number(user.balance.totalSpent),
+      } : null,
       projectCount,
       totalTasks,
       activeTasks,

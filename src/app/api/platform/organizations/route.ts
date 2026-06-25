@@ -65,7 +65,11 @@ export async function GET(req: NextRequest) {
     createdAt: org.createdAt,
     updatedAt: org.updatedAt,
     owner: org.owner,
-    balance: org.balance,
+    balance: org.balance ? {
+      balance: Number(org.balance.balance),
+      frozenAmount: Number(org.balance.frozenAmount),
+      totalSpent: Number(org.balance.totalSpent),
+    } : null,
     memberCount: org._count.members,
   }))
 
