@@ -11,7 +11,7 @@ interface RouteParams {
  * 获取用户详情
  * 返回：用户信息及所属组织、消费记录
  */
-export async function GET(req: NextRequest, { params }: RouteParams) {
+export async function GET(_req: NextRequest, { params }: RouteParams) {
   const authResult = await requirePlatformAdmin()
   if (authResult instanceof NextResponse) return authResult
 
@@ -47,6 +47,7 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
       organization: {
         include: {
           balance: true,
+          currentPlan: true,
           owner: {
             select: {
               id: true,

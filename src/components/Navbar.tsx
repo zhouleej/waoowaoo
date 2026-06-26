@@ -1,4 +1,5 @@
 'use client'
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useState } from 'react'
 import Image from 'next/image'
@@ -104,14 +105,11 @@ export default function Navbar() {
               ) : session ? (
                 <>
                   {(session.user as any)?.isPlatformAdmin && (
-                    <Link
-                      href={{ pathname: '/admin/platform' }}
-                      className="text-sm text-[var(--glass-tone-warning-fg)] hover:text-[var(--glass-tone-warning-fg)] font-medium transition-colors flex items-center gap-1"
-                      title={t('admin')}
-                    >
-                      <AppIcon name="unplug" className="w-4 h-4" />
-                      {t('admin') || 'Admin'}
-                    </Link>
+                    <div className="hidden xl:flex items-center gap-3">
+                      <Link href={{ pathname: '/admin/platform' }} className="text-sm text-[var(--glass-tone-warning-fg)] hover:text-[var(--glass-tone-warning-fg)] font-medium transition-colors flex items-center gap-1" title={t('admin')}>
+                        <AppIcon name="unplug" className="w-4 h-4" />{t('admin') || 'Admin'}
+                      </Link>
+                    </div>
                   )}
                   <Link
                     href={{ pathname: '/workspace' }}

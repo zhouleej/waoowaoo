@@ -47,6 +47,12 @@ export async function GET(req: NextRequest) {
           },
         },
         balance: true,
+        currentPlan: true,
+        subscriptions: {
+          take: 1,
+          orderBy: { createdAt: 'desc' },
+          include: { plan: true },
+        },
         _count: {
           select: {
             members: true,
@@ -62,6 +68,7 @@ export async function GET(req: NextRequest) {
     name: org.name,
     slug: org.slug,
     status: org.status,
+    businessStatus: org.businessStatus,
     createdAt: org.createdAt,
     updatedAt: org.updatedAt,
     owner: org.owner,
@@ -70,6 +77,8 @@ export async function GET(req: NextRequest) {
       frozenAmount: Number(org.balance.frozenAmount),
       totalSpent: Number(org.balance.totalSpent),
     } : null,
+    currentPlan: org.currentPlan,
+    currentSubscription: org.subscriptions[0] || null,
     memberCount: org._count.members,
   }))
 
@@ -94,7 +103,7 @@ export async function POST(req: NextRequest) {
   const { user } = authResult
 
   const body = await req.json()
-  const { name, slug, ownerId } = body
+  const { name, slug, ownerId, status = 'active', settings } = body
 
   if (!name || !slug) {
     return NextResponse.json({ error: 'name and slug are required' }, { status: 400 })
@@ -111,7 +120,8 @@ export async function POST(req: NextRequest) {
         name,
         slug,
         ownerId: ownerId || user.id,
-        status: 'active',
+        status,
+        settings: settings && typeof settings === 'object' ? settings : undefined,
       },
     })
 

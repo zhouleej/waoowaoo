@@ -4,6 +4,9 @@
   "profile": "Settings",
   "downloadLogs": "Download Logs",
   "admin": "Platform Admin",
+  "adminOrganizations": "Companies",
+  "adminUsers": "Users",
+  "adminBilling": "Billing",
   "signin": "Sign In",
   "signup": "Sign Up",
   "logout": "Logout"

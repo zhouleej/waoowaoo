@@ -408,6 +408,9 @@ export async function recordShadowUsage(
     quantity: number
     unit: UsageUnit
     cost: number
+    organizationId?: string | null
+    planCreditAmount?: number
+    balanceAmount?: number
     metadata?: Record<string, unknown>
   },
 ): Promise<boolean> {

@@ -4,6 +4,9 @@
   "profile": "设置中心",
   "downloadLogs": "下载日志",
   "admin": "平台管理",
+  "adminOrganizations": "企业",
+  "adminUsers": "用户",
+  "adminBilling": "资费",
   "signin": "登录",
   "signup": "注册",
   "logout": "退出登录"

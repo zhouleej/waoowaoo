@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { withPrismaRetry } from '@/lib/prisma-retry'
 import { requireUserAuth, isErrorResponse, forbidden, notFound, badRequest, checkOrganizationManagePermission } from '@/lib/api-auth'
 import { apiHandler } from '@/lib/api-errors'
+import { writeEnterpriseAudit } from '@/lib/saas/permissions'
 
 type RouteParams = {
   id: string
@@ -78,6 +79,16 @@ export const POST = apiHandler(async (req, ctx) => {
     return badRequest('该用户已经是组织成员')
   }
 
+  const memberLimit = await withPrismaRetry(async () => {
+    const org = await prisma.organization.findUnique({ where: { id: organizationId }, include: { currentPlan: { include: { entitlements: true } }, _count: { select: { members: true } } } })
+    const entitlement = org?.currentPlan?.entitlements.find((item) => item.key === 'memberLimit')
+    const raw = entitlement?.value
+    return typeof raw === 'number' ? { limit: raw, count: org?._count.members || 0 } : null
+  })
+  if (memberLimit && memberLimit.limit > 0 && memberLimit.count >= memberLimit.limit) {
+    return forbidden('企业成员数已达到套餐上限')
+  }
+
   // 创建成员关系
   const member = await withPrismaRetry(() =>
     prisma.organizationMember.create({
@@ -100,6 +111,7 @@ export const POST = apiHandler(async (req, ctx) => {
       },
     })
   )
+  await writeEnterpriseAudit({ organizationId, actorId: session.user.id, action: 'add_member', targetType: 'OrganizationMember', targetId: member.id, details: { userId: invitee.id, role } })
 
   return NextResponse.json(member, { status: 201 })
 })

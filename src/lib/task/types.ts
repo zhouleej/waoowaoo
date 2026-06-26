@@ -104,6 +104,9 @@ export type TaskBillingInfo =
     pricingVersion?: string
     action: string
     metadata?: Record<string, unknown>
+    organizationId?: string | null
+    planCreditApplied?: number
+    balanceChargeApplied?: number
     billingKey?: string
     freezeId?: string | null
     modeSnapshot?: BillingMode | null

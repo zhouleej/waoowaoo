@@ -33,6 +33,7 @@ import type {
   TaskBillingInfo,
 } from './types'
 import { BUILTIN_PRICING_VERSION } from '@/lib/model-pricing/version'
+import { assertOrganizationCanConsume } from '@/lib/saas/entitlements'
 
 type CostInput = {
   apiType: ApiType
@@ -840,6 +841,13 @@ export async function prepareTaskBilling(task: {
     return next
   }
 
+  const organizationPolicy = await assertOrganizationCanConsume(task.userId, quotedCost, info.taskType)
+  if (organizationPolicy) {
+    next.organizationId = organizationPolicy.organizationId
+    next.planCreditApplied = organizationPolicy.planCreditApplied
+    next.balanceChargeApplied = organizationPolicy.balanceChargeApplied
+  }
+
   if (mode === 'SHADOW') {
     next.status = 'quoted'
     next.maxFrozenCost = quotedCost
@@ -951,6 +959,9 @@ export async function settleTaskBilling(task: {
       projectId: task.projectId,
       episodeId: typeof task.episodeId === 'string' ? task.episodeId : null,
       taskType: info.taskType || null,
+        organizationId: info.organizationId || null,
+        planCreditAmount: info.planCreditApplied || 0,
+        balanceAmount: info.balanceChargeApplied || actual.actualCost,
       action: info.action,
       apiType: info.apiType,
       model: info.model,

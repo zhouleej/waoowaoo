@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { withPrismaRetry } from '@/lib/prisma-retry'
 import { requireUserAuth, isErrorResponse, forbidden, notFound, badRequest, checkOrganizationManagePermission } from '@/lib/api-auth'
 import { apiHandler } from '@/lib/api-errors'
+import { writeEnterpriseAudit } from '@/lib/saas/permissions'
 
 type RouteParams = {
   id: string
@@ -118,6 +119,7 @@ export const PATCH = apiHandler(async (req, ctx) => {
       },
     })
   )
+  await writeEnterpriseAudit({ organizationId, actorId: session.user.id, action: 'update_member', targetType: 'OrganizationMember', targetId: updated.id, details: { targetUserId, changed: Object.keys(body) } })
 
   return NextResponse.json(updated)
 })
@@ -184,6 +186,7 @@ export const DELETE = apiHandler(async (_req, ctx) => {
       },
     })
   )
+  await writeEnterpriseAudit({ organizationId, actorId: session.user.id, action: 'remove_member', targetType: 'OrganizationMember', targetId: targetMember.id, details: { targetUserId } })
 
   return new NextResponse(null, { status: 204 })
 })

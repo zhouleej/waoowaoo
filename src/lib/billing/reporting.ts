@@ -22,6 +22,9 @@ interface PureRecordParams extends RecordParams {
   freezeId?: string
   episodeId?: string | null
   taskType?: string | null
+  organizationId?: string | null
+  planCreditAmount?: number
+  balanceAmount?: number
 }
 
 const VIRTUAL_PROJECT_IDS = new Set(['asset-hub', 'global-asset-hub', 'system'])
@@ -89,7 +92,7 @@ export async function recordUsageCostOnly(
   if (hasProject) {
     const project = await txOrPrisma.project.findUnique({
       where: { id: params.projectId },
-      select: { id: true },
+      select: { id: true, organizationId: true },
     })
     if (!project) {
       throw new BillingOperationError('BILLING_INVALID_PROJECT', `project not found for billing: ${params.projectId}`, {
@@ -103,6 +106,7 @@ export async function recordUsageCostOnly(
       data: {
         projectId: params.projectId,
         userId: params.userId,
+        organizationId: params.organizationId || project.organizationId || null,
         apiType: params.apiType,
         model: params.model,
         action: params.action,
@@ -131,6 +135,31 @@ export async function recordUsageCostOnly(
       billingMeta: buildBillingMeta(params),
     },
   })
+
+  if (params.organizationId && params.cost > 0) {
+    await txOrPrisma.organizationMember.updateMany({
+      where: { organizationId: params.organizationId, userId: params.userId },
+      data: { quotaUsed: { increment: params.cost } },
+    })
+    await txOrPrisma.organizationUsage.create({
+      data: {
+        organizationId: params.organizationId,
+        userId: params.userId,
+        amount: params.cost,
+        planCreditAmount: params.planCreditAmount || 0,
+        balanceAmount: params.balanceAmount || params.cost,
+        type: 'task',
+        description: `${params.action} - ${params.model}`,
+        metadata: params.metadata as Prisma.InputJsonValue | undefined,
+      },
+    })
+    if ((params.balanceAmount || 0) > 0) {
+      await txOrPrisma.organizationBalance.updateMany({
+        where: { organizationId: params.organizationId },
+        data: { balance: { decrement: params.balanceAmount || 0 }, totalSpent: { increment: params.balanceAmount || 0 } },
+      })
+    }
+  }
 
   _ulogInfo(`[计费] ${params.action} - ${params.model} - ¥${params.cost.toFixed(4)} (已记录${hasProject ? '' : '，无项目归属'})`)
 }

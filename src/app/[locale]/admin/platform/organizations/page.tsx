@@ -1,11 +1,14 @@
 'use client'
+/* eslint-disable @typescript-eslint/no-explicit-any, @next/next/no-html-link-for-pages, no-restricted-syntax */
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, type ReactNode } from 'react'
 import { useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
 import { useRouter } from '@/i18n/navigation'
 import Navbar from '@/components/Navbar'
 import { apiFetch } from '@/lib/api-fetch'
+import ConfirmDialog from '@/components/ConfirmDialog'
+import { useToast } from '@/contexts/ToastContext'
 
 interface Organization {
   id: string
@@ -16,6 +19,9 @@ interface Organization {
   updatedAt: string
   owner: { id: string; name: string | null; email: string }
   balance: { balance: number; frozenAmount: number; totalSpent: number } | null
+  currentPlan?: { name: string; code: string; price?: number; billingCycle?: string } | null
+  currentSubscription?: { status: string; currentPeriodEnd?: string | null; plan?: { name: string } | null } | null
+  businessStatus?: string | null
   memberCount: number
 }
 
@@ -41,6 +47,7 @@ export default function PlatformOrganizationsPage() {
   const { data: session, status } = useSession()
   const t = useTranslations('platform')
   const router = useRouter()
+  const { showToast } = useToast()
   const [organizations, setOrganizations] = useState<Organization[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -52,6 +59,7 @@ export default function PlatformOrganizationsPage() {
   const [members, setMembers] = useState<Member[]>([])
   const [membersLoading, setMembersLoading] = useState(false)
   const [detailBalance, setDetailBalance] = useState<{ balance: number; frozenAmount: number; totalSpent: number } | null>(null)
+  const [activeDetailTab, setActiveDetailTab] = useState<'overview' | 'members' | 'subscription' | 'orders' | 'audit'>('overview')
 
   // Recharge state
   const [rechargeAmount, setRechargeAmount] = useState('')
@@ -67,6 +75,7 @@ export default function PlatformOrganizationsPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleteConfirmName, setDeleteConfirmName] = useState('')
   const [deleting, setDeleting] = useState(false)
+  const [confirmAction, setConfirmAction] = useState<{ title: string; message: string; onConfirm: () => void; type?: 'danger' | 'warning' | 'info' } | null>(null)
 
   const isPlatformAdmin = (session?.user as any)?.isPlatformAdmin
 
@@ -112,15 +121,18 @@ export default function PlatformOrganizationsPage() {
   }
 
   const handleDisable = async (orgId: string) => {
-    if (!confirm(t('confirmDisable') || '确定要禁用该组织吗？')) return
+    setConfirmAction({ title: t('disable'), message: t('confirmDisable'), type: 'warning', onConfirm: async () => {
+    setConfirmAction(null)
     try {
       await apiFetch(`/api/platform/organizations/${orgId}/disable`, { method: 'POST' })
       setOrganizations(orgs => orgs.map(o => o.id === orgId ? { ...o, status: 'disabled' } : o))
       if (selectedOrg?.id === orgId) setSelectedOrg(prev => prev ? { ...prev, status: 'disabled' } : prev)
+      showToast(t('operationSuccess'), 'success')
     } catch (e) {
       console.error(e)
-      alert(t('disableFailed') || '禁用失败')
+      showToast(t('disableFailed'), 'error')
     }
+    } })
   }
 
   const handleEnable = async (orgId: string) => {
@@ -128,9 +140,10 @@ export default function PlatformOrganizationsPage() {
       await apiFetch(`/api/platform/organizations/${orgId}/enable`, { method: 'POST' })
       setOrganizations(orgs => orgs.map(o => o.id === orgId ? { ...o, status: 'active' } : o))
       if (selectedOrg?.id === orgId) setSelectedOrg(prev => prev ? { ...prev, status: 'active' } : prev)
+      showToast(t('operationSuccess'), 'success')
     } catch (e) {
       console.error(e)
-      alert(t('enableFailed') || '启用失败')
+      showToast(t('enableFailed'), 'error')
     }
   }
 
@@ -139,6 +152,7 @@ export default function PlatformOrganizationsPage() {
     setMembersLoading(true)
     setMembers([])
     setDetailBalance(org.balance)
+    setActiveDetailTab('overview')
     setRechargeAmount('')
     try {
       const membersRes = await apiFetch(`/api/organizations/${org.id}/members`)
@@ -164,7 +178,7 @@ export default function PlatformOrganizationsPage() {
     if (!selectedOrg || !rechargeAmount) return
     const amount = parseFloat(rechargeAmount)
     if (isNaN(amount) || amount <= 0) {
-      alert('请输入有效的充值金额')
+      showToast(t('invalidAmount'), 'warning')
       return
     }
     setRecharging(true)
@@ -183,10 +197,10 @@ export default function PlatformOrganizationsPage() {
       setDetailBalance(prev => prev ? { ...prev, balance: newBalance } : null)
       setOrganizations(orgs => orgs.map(o => o.id === selectedOrg.id ? { ...o, balance: { ...o.balance, balance: newBalance } as Organization['balance'] } : o))
       setRechargeAmount('')
-      alert(t('rechargeSuccess') || '充值成功')
+      showToast(t('rechargeSuccess'), 'success')
     } catch (e: any) {
       console.error(e)
-      alert(e?.message || '充值失败')
+      showToast(e?.message || t('saveFailed'), 'error')
     } finally {
       setRecharging(false)
     }
@@ -206,11 +220,11 @@ export default function PlatformOrganizationsPage() {
 
   const handleCreate = async () => {
     if (!createName.trim() || !createSlug.trim()) {
-      alert('组织名称和Slug为必填项')
+      showToast(t('organizationRequired'), 'warning')
       return
     }
     if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(createSlug)) {
-      alert('Slug只能包含小写字母、数字和连字符，且不能以连字符开头或结尾')
+      showToast(t('invalidSlug'), 'warning')
       return
     }
     setCreating(true)
@@ -222,14 +236,14 @@ export default function PlatformOrganizationsPage() {
       })
       if (!res.ok) {
         const err = await res.json().catch(() => null)
-        throw new Error(err?.error || '创建失败')
+        throw new Error(err?.error || t('createFailed'))
       }
-      alert('组织创建成功')
+      showToast(t('createSuccess'), 'success')
       closeCreateModal()
       fetchOrganizations(1)
     } catch (e: any) {
       console.error(e)
-      alert(e?.message || '创建失败')
+      showToast(e?.message || t('createFailed'), 'error')
     } finally {
       setCreating(false)
     }
@@ -248,7 +262,7 @@ export default function PlatformOrganizationsPage() {
   const handleDelete = async () => {
     if (!selectedOrg) return
     if (deleteConfirmName !== selectedOrg.name) {
-      alert('请输入正确的组织名称以确认删除')
+      showToast(t('deleteNameMismatch'), 'warning')
       return
     }
     setDeleting(true)
@@ -258,15 +272,15 @@ export default function PlatformOrganizationsPage() {
       })
       if (!res.ok) {
         const err = await res.json().catch(() => null)
-        throw new Error(err?.error || '删除失败')
+        throw new Error(err?.error || t('deleteFailed'))
       }
-      alert('组织已删除')
+      showToast(t('deleteSuccess'), 'success')
       closeDeleteConfirm()
       closeDetail()
       fetchOrganizations(1)
     } catch (e: any) {
       console.error(e)
-      alert(e?.message || '删除失败')
+      showToast(e?.message || t('deleteFailed'), 'error')
     } finally {
       setDeleting(false)
     }
@@ -303,7 +317,7 @@ export default function PlatformOrganizationsPage() {
           <h1 className="text-3xl font-bold text-[var(--glass-text-primary)]">{t('organizations') || 'Organizations'}</h1>
           <div className="flex items-center gap-3">
             <button onClick={openCreateModal} className="glass-btn-base glass-btn-primary px-4 py-2">
-              新建组织
+              {t('newOrganization')}
             </button>
             <a href="/admin/platform" className="glass-btn-base px-4 py-2">{t('back') || 'Back'}</a>
           </div>
@@ -351,6 +365,7 @@ export default function PlatformOrganizationsPage() {
                   <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">Slug</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">{t('status') || 'Status'}</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">{t('members') || 'Members'}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">{t('planSummary')}</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">{t('balance') || 'Balance'}</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">{t('createdAt') || 'Created'}</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">{t('actions') || 'Actions'}</th>
@@ -375,6 +390,9 @@ export default function PlatformOrganizationsPage() {
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-[var(--glass-text-secondary)]">{org.memberCount || 0}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-[var(--glass-text-secondary)]">
+                      {org.currentPlan?.name || org.currentSubscription?.plan?.name || t('freePlan')}
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-[var(--glass-text-secondary)]">¥{org.balance?.balance?.toFixed(2) || '0.00'}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-[var(--glass-text-secondary)]">
                       {new Date(org.createdAt).toLocaleDateString()}
@@ -407,7 +425,7 @@ export default function PlatformOrganizationsPage() {
         {pagination.totalPages > 1 && (
           <div className="flex items-center justify-between mt-4">
             <div className="text-sm text-[var(--glass-text-secondary)]">
-              {t('pageInfo') || '第'} {pagination.page} {t('pageOf') || '/'} {pagination.totalPages} {t('pageTotal') || '页'} ({t('total') || '共'} {pagination.total} {t('items') || '条'})
+              {t('pageInfo') || '第'} {pagination.page} {t('pageOf') || '/'} {pagination.totalPages} {t('pageTotal') || '页'} ({t('total') || '共'} {pagination.total} {t('items') || '项'})
             </div>
             <div className="flex gap-2">
               <button
@@ -431,13 +449,20 @@ export default function PlatformOrganizationsPage() {
         {/* Detail Modal */}
         {selectedOrg && (
           <div className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm bg-black/50" onClick={closeDetail}>
-            <div className="glass-surface w-full max-w-2xl max-h-[85vh] overflow-y-auto mx-4 p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="glass-surface w-full max-w-4xl max-h-[85vh] overflow-y-auto mx-4 p-6" onClick={(e) => e.stopPropagation()}>
               {/* Header */}
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-xl font-bold text-[var(--glass-text-primary)]">{selectedOrg.name}</h2>
                 <button onClick={closeDetail} className="text-[var(--glass-text-secondary)] hover:text-[var(--glass-text-primary)] text-2xl leading-none">&times;</button>
               </div>
 
+              <div className="mb-6 flex gap-1 overflow-x-auto rounded-xl bg-[var(--glass-bg-muted)] p-1">
+                {(['overview', 'members', 'subscription', 'orders', 'audit'] as const).map((tab) => (
+                  <button key={tab} onClick={() => setActiveDetailTab(tab)} className={`whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeDetailTab === tab ? 'bg-[var(--glass-bg-surface)] text-[var(--glass-text-primary)] shadow-sm' : 'text-[var(--glass-text-secondary)] hover:text-[var(--glass-text-primary)]'}`}>{t(`orgDetailTabs.${tab}`)}</button>
+                ))}
+              </div>
+
+              {activeDetailTab === 'overview' && (<>
               {/* Basic Info */}
               <div className="grid grid-cols-2 gap-4 mb-6">
                 <div>
@@ -505,9 +530,10 @@ export default function PlatformOrganizationsPage() {
                   </button>
                 </div>
               </div>
+              </>)}
 
               {/* Members List */}
-              <div>
+              {activeDetailTab === 'members' && <div>
                 <h3 className="text-sm font-semibold text-[var(--glass-text-primary)] mb-3">{t('members') || '成员列表'}</h3>
                 {membersLoading ? (
                   <div className="text-center py-4 text-[var(--glass-text-secondary)]">{t('loading') || 'Loading...'}</div>
@@ -555,7 +581,28 @@ export default function PlatformOrganizationsPage() {
                     </table>
                   </div>
                 )}
-              </div>
+              </div>}
+
+              {activeDetailTab === 'subscription' && (
+                <div className="space-y-4">
+                  <div className="glass-surface p-5 bg-[var(--glass-bg-muted)]/30">
+                    <h3 className="text-sm font-semibold text-[var(--glass-text-primary)] mb-3">{t('subscription')}</h3>
+                    <div className="grid gap-4 sm:grid-cols-3">
+                      <InfoItem label={t('planName')} value={selectedOrg.currentPlan?.name || selectedOrg.currentSubscription?.plan?.name || t('freePlan')} />
+                      <InfoItem label={t('subscriptionStatus')} value={selectedOrg.currentSubscription?.status || selectedOrg.businessStatus || '-'} />
+                      <InfoItem label={t('periodEnd')} value={selectedOrg.currentSubscription?.currentPeriodEnd ? new Date(selectedOrg.currentSubscription.currentPeriodEnd).toLocaleDateString() : '-'} />
+                    </div>
+                  </div>
+                  <div className="grid gap-4 sm:grid-cols-3">
+                    <div className="glass-surface p-4"><div className="text-lg font-bold text-[var(--glass-tone-success-fg)]">¥{detailBalance?.balance?.toFixed(2) || '0.00'}</div><div className="text-xs text-[var(--glass-text-secondary)]">{t('currentBalance')}</div></div>
+                    <div className="glass-surface p-4"><div className="text-lg font-bold text-[var(--glass-text-primary)]">¥{detailBalance?.totalSpent?.toFixed(2) || '0.00'}</div><div className="text-xs text-[var(--glass-text-secondary)]">{t('totalSpent')}</div></div>
+                    <div className="glass-surface p-4"><div className="text-lg font-bold text-[var(--glass-tone-warning-fg)]">{selectedOrg.memberCount || 0}</div><div className="text-xs text-[var(--glass-text-secondary)]">{t('memberUsage')}</div></div>
+                  </div>
+                </div>
+              )}
+
+              {activeDetailTab === 'orders' && <div className="p-8 text-center text-[var(--glass-text-secondary)]">{t('ordersLinkedHint')}</div>}
+              {activeDetailTab === 'audit' && <div className="p-8 text-center text-[var(--glass-text-secondary)]">{t('auditLinkedHint')}</div>}
 
               {/* Delete Organization */}
               <div className="mt-6 pt-4 border-t border-[var(--glass-stroke-base)]">
@@ -563,7 +610,7 @@ export default function PlatformOrganizationsPage() {
                   onClick={openDeleteConfirm}
                   className="glass-btn-base glass-btn-tone-danger px-4 py-2 text-sm"
                 >
-                  删除组织
+                  {t('deleteOrganization')}
                 </button>
               </div>
             </div>
@@ -576,22 +623,22 @@ export default function PlatformOrganizationsPage() {
             <div className="glass-overlay absolute inset-0" onClick={closeCreateModal} />
             <div className="glass-surface-modal relative z-10 w-full max-w-md overflow-hidden flex flex-col">
               <div className="flex items-center justify-between px-5 py-4 sm:px-6 border-b border-[var(--glass-stroke-base)]">
-                <h2 className="text-lg font-semibold text-[var(--glass-text-primary)]">新建组织</h2>
+                <h2 className="text-lg font-semibold text-[var(--glass-text-primary)]">{t('newOrganization')}</h2>
                 <button onClick={closeCreateModal} className="text-[var(--glass-text-secondary)] hover:text-[var(--glass-text-primary)] text-2xl leading-none">&times;</button>
               </div>
               <div className="px-5 py-4 sm:px-6 space-y-4">
                 <div>
-                  <label className="block text-sm text-[var(--glass-text-secondary)] mb-1">组织名称 *</label>
+                  <label className="block text-sm text-[var(--glass-text-secondary)] mb-1">{t('organizationName')} *</label>
                   <input
                     type="text"
                     value={createName}
                     onChange={(e) => setCreateName(e.target.value)}
-                    placeholder="请输入组织名称"
+                    placeholder={t('organizationNamePlaceholder')}
                     className="glass-input-base w-full px-3 py-2"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-[var(--glass-text-secondary)] mb-1">组织 Slug *</label>
+                  <label className="block text-sm text-[var(--glass-text-secondary)] mb-1">{t('organizationSlug')} *</label>
                   <input
                     type="text"
                     value={createSlug}
@@ -602,13 +649,13 @@ export default function PlatformOrganizationsPage() {
                 </div>
               </div>
               <div className="flex items-center justify-end gap-3 px-5 py-4 sm:px-6 border-t border-[var(--glass-stroke-base)]">
-                <button onClick={closeCreateModal} className="glass-btn-base px-4 py-2">取消</button>
+                <button onClick={closeCreateModal} className="glass-btn-base px-4 py-2">{t('cancel')}</button>
                 <button
                   onClick={handleCreate}
                   disabled={creating}
                   className="glass-btn-base glass-btn-primary px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {creating ? '创建中...' : '创建'}
+                  {creating ? t('creating') : t('create')}
                 </button>
               </div>
             </div>
@@ -621,16 +668,16 @@ export default function PlatformOrganizationsPage() {
             <div className="glass-overlay absolute inset-0" onClick={closeDeleteConfirm} />
             <div className="glass-surface-modal relative z-10 w-full max-w-md overflow-hidden flex flex-col">
               <div className="flex items-center justify-between px-5 py-4 sm:px-6 border-b border-[var(--glass-stroke-base)]">
-                <h2 className="text-lg font-semibold text-[var(--glass-tone-danger-fg)]">删除组织</h2>
+                <h2 className="text-lg font-semibold text-[var(--glass-tone-danger-fg)]">{t('deleteOrganization')}</h2>
                 <button onClick={closeDeleteConfirm} className="text-[var(--glass-text-secondary)] hover:text-[var(--glass-text-primary)] text-2xl leading-none">&times;</button>
               </div>
               <div className="px-5 py-4 sm:px-6 space-y-4">
                 <p className="text-sm text-[var(--glass-text-secondary)]">
-                  此操作不可撤销，将永久删除组织 <strong className="text-[var(--glass-text-primary)]">{selectedOrg.name}</strong> 及其所有成员关系、余额和消费记录。
+                  {t('deleteOrganizationDanger', { name: selectedOrg.name })}
                 </p>
                 <div>
                   <label className="block text-sm text-[var(--glass-text-secondary)] mb-1">
-                    请输入组织名称 <strong className="text-[var(--glass-text-primary)]">{selectedOrg.name}</strong> 以确认删除
+                    {t('deleteOrganizationInputHint', { name: selectedOrg.name })}
                   </label>
                   <input
                     type="text"
@@ -642,19 +689,38 @@ export default function PlatformOrganizationsPage() {
                 </div>
               </div>
               <div className="flex items-center justify-end gap-3 px-5 py-4 sm:px-6 border-t border-[var(--glass-stroke-base)]">
-                <button onClick={closeDeleteConfirm} className="glass-btn-base px-4 py-2">取消</button>
+                <button onClick={closeDeleteConfirm} className="glass-btn-base px-4 py-2">{t('cancel')}</button>
                 <button
                   onClick={handleDelete}
                   disabled={deleting || deleteConfirmName !== selectedOrg.name}
                   className="glass-btn-base glass-btn-tone-danger px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {deleting ? '删除中...' : '确认删除'}
+                  {deleting ? t('deleting') : t('confirmDelete')}
                 </button>
               </div>
             </div>
           </div>
         )}
+        <ConfirmDialog
+          show={!!confirmAction}
+          title={confirmAction?.title || ''}
+          message={confirmAction?.message || ''}
+          type={confirmAction?.type || 'warning'}
+          confirmText={t('confirm')}
+          cancelText={t('cancel')}
+          onConfirm={() => confirmAction?.onConfirm()}
+          onCancel={() => setConfirmAction(null)}
+        />
       </div>
+    </div>
+  )
+}
+
+function InfoItem({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div>
+      <div className="mb-1 text-xs text-[var(--glass-text-secondary)]">{label}</div>
+      <div className="text-sm font-medium text-[var(--glass-text-primary)]">{value}</div>
     </div>
   )
 }

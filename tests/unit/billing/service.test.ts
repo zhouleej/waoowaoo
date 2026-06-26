@@ -16,8 +16,13 @@ const modeMock = vi.hoisted(() => ({
   getBillingMode: vi.fn(),
 }))
 
+const entitlementsMock = vi.hoisted(() => ({
+  assertOrganizationCanConsume: vi.fn(),
+}))
+
 vi.mock('@/lib/billing/ledger', () => ledgerMock)
 vi.mock('@/lib/billing/mode', () => modeMock)
+vi.mock('@/lib/saas/entitlements', () => entitlementsMock)
 
 import { BillingOperationError, InsufficientBalanceError } from '@/lib/billing/errors'
 import {
@@ -39,6 +44,7 @@ describe('billing/service', () => {
     ledgerMock.increasePendingFreezeAmount.mockResolvedValue(true)
     ledgerMock.recordShadowUsage.mockResolvedValue(true)
     ledgerMock.rollbackFreeze.mockResolvedValue(true)
+    entitlementsMock.assertOrganizationCanConsume.mockResolvedValue(null)
   })
 
   it('returns raw execution result in OFF mode', async () => {

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/prisma'
 import { requirePlatformAdmin, createAdminAuditLog } from '@/lib/platform-admin'
 
@@ -17,6 +18,8 @@ export async function GET(req: NextRequest) {
   const page = parseInt(searchParams.get('page') || '1')
   const limit = parseInt(searchParams.get('limit') || '10')
   const search = searchParams.get('search') || ''
+  const status = searchParams.get('status') || ''
+  const organizationId = searchParams.get('organizationId') || ''
 
   const where: Record<string, unknown> = {}
 
@@ -26,32 +29,73 @@ export async function GET(req: NextRequest) {
       { email: { contains: search } },
     ]
   }
+  if (status === 'locked') where.isGlobalLocked = true
+  if (status === 'active') where.isGlobalLocked = false
+  if (organizationId) {
+    where.organizationMemberships = { some: { organizationId } }
+  }
 
-  const [users, total] = await Promise.all([
-    prisma.user.findMany({
-      where,
-      skip: (page - 1) * limit,
-      take: limit,
-      orderBy: { createdAt: 'desc' },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        image: true,
-        createdAt: true,
-        updatedAt: true,
-        isPlatformAdmin: true,
-        isGlobalLocked: true,
-        _count: {
-          select: {
-            projects: true,
-            accounts: true,
+  let users
+  let total
+
+  try {
+    ;[users, total] = await Promise.all([
+      prisma.user.findMany({
+        where,
+        skip: (page - 1) * limit,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          image: true,
+          createdAt: true,
+          updatedAt: true,
+          isPlatformAdmin: true,
+          isGlobalLocked: true,
+          organizationMemberships: {
+            include: {
+              organization: { select: { id: true, name: true, slug: true, status: true, currentPlan: true } },
+            },
+          },
+          _count: {
+            select: {
+              projects: true,
+              accounts: true,
+            },
           },
         },
-      },
-    }),
-    prisma.user.count({ where }),
-  ])
+      }),
+      prisma.user.count({ where }),
+    ])
+  } catch {
+    ;[users, total] = await Promise.all([
+      prisma.user.findMany({
+        where,
+        skip: (page - 1) * limit,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          image: true,
+          createdAt: true,
+          updatedAt: true,
+          isPlatformAdmin: true,
+          isGlobalLocked: true,
+          _count: {
+            select: {
+              projects: true,
+              accounts: true,
+            },
+          },
+        },
+      }),
+      prisma.user.count({ where }),
+    ])
+  }
 
   const result = users.map((user) => ({
     id: user.id,
@@ -62,6 +106,7 @@ export async function GET(req: NextRequest) {
     updatedAt: user.updatedAt,
     isPlatformAdmin: user.isPlatformAdmin,
     isGlobalLocked: user.isGlobalLocked,
+    organizations: 'organizationMemberships' in user ? user.organizationMemberships : [],
     projectCount: user._count.projects,
     linkedAccounts: user._count.accounts,
   }))
@@ -105,7 +150,6 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const bcrypt = require('bcryptjs')
   const hashedPassword = await bcrypt.hash(password, 12)
 
   const newUser = await prisma.user.create({

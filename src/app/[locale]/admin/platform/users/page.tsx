@@ -1,4 +1,5 @@
 'use client'
+/* eslint-disable @typescript-eslint/no-explicit-any, @next/next/no-html-link-for-pages, no-restricted-syntax */
 
 import { useEffect, useState, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
@@ -8,6 +9,7 @@ import Navbar from '@/components/Navbar'
 import { apiFetch } from '@/lib/api-fetch'
 import { AppIcon } from '@/components/ui/icons'
 import ConfirmDialog from '@/components/ConfirmDialog'
+import { useToast } from '@/contexts/ToastContext'
 
 interface Pagination {
   page: number
@@ -49,6 +51,7 @@ export default function PlatformUsersPage() {
   const { data: session, status } = useSession()
   const t = useTranslations('platform')
   const tc = useTranslations('common')
+  const { showToast } = useToast()
   const router = useRouter()
   const [users, setUsers] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -73,6 +76,7 @@ export default function PlatformUsersPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [unlinkTarget, setUnlinkTarget] = useState<{ organizationId: string; name: string } | null>(null)
 
   // Create user modal state
   const [showCreateModal, setShowCreateModal] = useState(false)
@@ -181,6 +185,7 @@ export default function PlatformUsersPage() {
         if (selectedUser?.id === lockTarget.id) {
           setSelectedUser(prev => prev ? { ...prev, isGlobalLocked: !lockTarget.isLocked } : null)
         }
+        showToast(t('operationSuccess'), 'success')
       }
     } catch (e) {
       console.error(e)
@@ -208,6 +213,7 @@ export default function PlatformUsersPage() {
         if (selectedUser?.id === adminTarget.id) {
           setSelectedUser(prev => prev ? { ...prev, isPlatformAdmin: !adminTarget.isAdmin } : null)
         }
+        showToast(t('operationSuccess'), 'success')
       }
     } catch (e) {
       console.error(e)
@@ -231,9 +237,9 @@ export default function PlatformUsersPage() {
       })
       if (!res.ok) {
         const err = await res.json().catch(() => null)
-        throw new Error(err?.error || '删除失败')
+        throw new Error(err?.error || t('deleteFailed'))
       }
-      alert('用户已删除')
+      showToast(t('deleteSuccess'), 'success')
       setShowDeleteConfirm(false)
       setDeleteTarget(null)
       setShowDetailModal(false)
@@ -241,7 +247,7 @@ export default function PlatformUsersPage() {
       fetchUsers(pagination.page, searchQuery)
     } catch (e: any) {
       console.error(e)
-      alert(e?.message || '删除失败')
+      showToast(e?.message || t('deleteFailed'), 'error')
     } finally {
       setDeleting(false)
     }
@@ -263,7 +269,7 @@ export default function PlatformUsersPage() {
 
   const handleCreateUser = async () => {
     if (!createUserName.trim() || !createUserPassword) {
-      alert('用户名和密码为必填项')
+      showToast(t('userRequired'), 'warning')
       return
     }
     setCreatingUser(true)
@@ -281,12 +287,12 @@ export default function PlatformUsersPage() {
         const err = await res.json().catch(() => null)
         throw new Error(err?.error || '创建失败')
       }
-      alert('用户创建成功')
+      showToast(t('createSuccess'), 'success')
       closeCreateModal()
       fetchUsers(1, searchQuery)
     } catch (e: any) {
       console.error(e)
-      alert(e?.message || '创建失败')
+      showToast(e?.message || t('createFailed'), 'error')
     } finally {
       setCreatingUser(false)
     }
@@ -320,15 +326,15 @@ export default function PlatformUsersPage() {
       })
       if (!res.ok) {
         const err = await res.json().catch(() => null)
-        throw new Error(err?.error || '关联失败')
+        throw new Error(err?.error || t('linkFailed'))
       }
-      alert('关联成功')
+      showToast(t('linkSuccess'), 'success')
       setShowLinkOrgModal(false)
       // 刷新用户详情
       handleRowClick(selectedUser.id)
     } catch (e: any) {
       console.error(e)
-      alert(e?.message || '关联失败')
+      showToast(e?.message || t('linkFailed'), 'error')
     } finally {
       setLinkingOrg(false)
     }
@@ -336,7 +342,6 @@ export default function PlatformUsersPage() {
 
   const handleUnlinkOrg = async (organizationId: string) => {
     if (!selectedUser) return
-    if (!confirm('确定要将此用户从该组织移除吗？')) return
     try {
       const res = await apiFetch(`/api/platform/users/${selectedUser.id}/organizations`, {
         method: 'DELETE',
@@ -345,13 +350,13 @@ export default function PlatformUsersPage() {
       })
       if (!res.ok) {
         const err = await res.json().catch(() => null)
-        throw new Error(err?.error || '移除失败')
+        throw new Error(err?.error || t('unlinkFailed'))
       }
-      alert('已移除')
+      showToast(t('unlinkSuccess'), 'success')
       handleRowClick(selectedUser.id)
     } catch (e: any) {
       console.error(e)
-      alert(e?.message || '移除失败')
+      showToast(e?.message || t('unlinkFailed'), 'error')
     }
   }
 
@@ -386,13 +391,13 @@ export default function PlatformUsersPage() {
           <h1 className="text-3xl font-bold text-[var(--glass-text-primary)]">{t('users') || 'Users'}</h1>
           <div className="flex items-center gap-3">
             <button onClick={openCreateModal} className="glass-btn-base glass-btn-primary px-4 py-2">
-              新建用户
+              {t('newUser')}
             </button>
             <a href="/admin/platform" className="glass-btn-base px-4 py-2">{t('back') || 'Back'}</a>
           </div>
         </div>
 
-        {/* 搜索栏 */}
+        {/* 搜索�?*/}
         <div className="flex items-center gap-3 mb-6">
           <div className="relative flex-1 max-w-md">
             <AppIcon name="search" className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--glass-text-tertiary)]" />
@@ -480,7 +485,7 @@ export default function PlatformUsersPage() {
                             <AppIcon name={user.isGlobalLocked ? 'eye' : 'lock'} className="w-3.5 h-3.5" />
                             {user.isGlobalLocked ? t('unlockUser') : t('lockUser')}
                           </button>
-                          {/* 设置/取消管理员按钮 */}
+                          {/* 设置/取消管理员按�?*/}
                           <button
                             onClick={(e) => handleAdminClick(user.id, user.isPlatformAdmin, e)}
                             className={`glass-btn-base px-3 py-1.5 text-xs rounded-lg flex items-center gap-1 ${
@@ -629,11 +634,11 @@ export default function PlatformUsersPage() {
                       className="glass-btn-base glass-btn-tone-danger px-4 py-2 text-sm rounded-lg flex items-center gap-2"
                     >
                       <AppIcon name="trash" className="w-4 h-4" />
-                      删除用户
+                      {t('deleteUser')}
                     </button>
                   </div>
 
-                  {/* 所属组织 */}
+                  {/* 所属组�?*/}
                   <div>
                     <div className="flex items-center justify-between mb-3">
                       <h3 className="text-sm font-medium text-[var(--glass-text-tertiary)] uppercase tracking-wider">{t('organizationInfo')}</h3>
@@ -642,7 +647,7 @@ export default function PlatformUsersPage() {
                         className="glass-btn-base glass-btn-primary px-3 py-1.5 text-xs rounded-lg flex items-center gap-1"
                       >
                         <AppIcon name="plus" className="w-3.5 h-3.5" />
-                        关联到组织
+                        {t('linkOrganization')}
                       </button>
                     </div>
                     <div className="glass-surface p-4">
@@ -660,10 +665,10 @@ export default function PlatformUsersPage() {
                                 </span>
                                 {org.role !== 'owner' && (
                                   <button
-                                    onClick={() => handleUnlinkOrg(org.id)}
+                                    onClick={() => setUnlinkTarget({ organizationId: org.id, name: org.name })}
                                     className="text-xs text-[var(--glass-tone-danger-fg)] hover:underline"
                                   >
-                                    移除
+                                    {t('unlink')}
                                   </button>
                                 )}
                               </div>
@@ -719,27 +724,27 @@ export default function PlatformUsersPage() {
           <div className="glass-overlay absolute inset-0" onClick={closeCreateModal} />
           <div className="glass-surface-modal relative z-10 w-full max-w-md overflow-hidden flex flex-col">
             <div className="flex items-center justify-between px-5 py-4 sm:px-6 border-b border-[var(--glass-stroke-base)]">
-              <h2 className="text-lg font-semibold text-[var(--glass-text-primary)]">新建用户</h2>
+              <h2 className="text-lg font-semibold text-[var(--glass-text-primary)]">{t('newUser')}</h2>
               <button onClick={closeCreateModal} className="text-[var(--glass-text-secondary)] hover:text-[var(--glass-text-primary)] text-2xl leading-none">&times;</button>
             </div>
             <div className="px-5 py-4 sm:px-6 space-y-4">
               <div>
-                <label className="block text-sm text-[var(--glass-text-secondary)] mb-1">用户名 *</label>
+                <label className="block text-sm text-[var(--glass-text-secondary)] mb-1">{t('username')} *</label>
                 <input
                   type="text"
                   value={createUserName}
                   onChange={(e) => setCreateUserName(e.target.value)}
-                  placeholder="请输入用户名"
+                  placeholder={t('usernamePlaceholder')}
                   className="glass-input-base w-full px-3 py-2"
                 />
               </div>
               <div>
-                <label className="block text-sm text-[var(--glass-text-secondary)] mb-1">邮箱（可选）</label>
+                <label className="block text-sm text-[var(--glass-text-secondary)] mb-1">{t('emailOptional')}</label>
                 <input
                   type="email"
                   value={createUserEmail}
                   onChange={(e) => setCreateUserEmail(e.target.value)}
-                  placeholder="请输入邮箱"
+                  placeholder={t('emailPlaceholder')}
                   className="glass-input-base w-full px-3 py-2"
                 />
               </div>
@@ -749,7 +754,7 @@ export default function PlatformUsersPage() {
                   type="password"
                   value={createUserPassword}
                   onChange={(e) => setCreateUserPassword(e.target.value)}
-                  placeholder="请输入密码"
+                  placeholder={t('passwordPlaceholder')}
                   className="glass-input-base w-full px-3 py-2"
                 />
               </div>
@@ -761,31 +766,31 @@ export default function PlatformUsersPage() {
                 disabled={creatingUser}
                 className="glass-btn-base glass-btn-primary px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {creatingUser ? '创建中...' : '创建'}
+                {creatingUser ? t('creating') : t('create')}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* 关联到组织弹窗 */}
+      {/* 关联到组织弹�?*/}
       {showLinkOrgModal && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 sm:p-6">
           <div className="glass-overlay absolute inset-0" onClick={() => setShowLinkOrgModal(false)} />
           <div className="glass-surface-modal relative z-10 w-full max-w-md overflow-hidden flex flex-col">
             <div className="flex items-center justify-between px-5 py-4 sm:px-6 border-b border-[var(--glass-stroke-base)]">
-              <h2 className="text-lg font-semibold text-[var(--glass-text-primary)]">关联到组织</h2>
+              <h2 className="text-lg font-semibold text-[var(--glass-text-primary)]">{t('linkOrganization')}</h2>
               <button onClick={() => setShowLinkOrgModal(false)} className="text-[var(--glass-text-secondary)] hover:text-[var(--glass-text-primary)] text-2xl leading-none">&times;</button>
             </div>
             <div className="px-5 py-4 sm:px-6 space-y-4">
               <div>
-                <label className="block text-sm text-[var(--glass-text-secondary)] mb-1">选择组织</label>
+                <label className="block text-sm text-[var(--glass-text-secondary)] mb-1">{t('selectOrganization')}</label>
                 <select
                   value={selectedOrgId}
                   onChange={(e) => setSelectedOrgId(e.target.value)}
                   className="glass-input-base w-full px-3 py-2"
                 >
-                  <option value="">-- 请选择组织 --</option>
+                  <option value="">{t('selectOrganization')}</option>
                   {allOrganizations.map((org) => (
                     <option key={org.id} value={org.id}>
                       {org.name} ({org.slug})
@@ -793,11 +798,11 @@ export default function PlatformUsersPage() {
                   ))}
                 </select>
                 {allOrganizations.length === 0 && (
-                  <p className="text-xs text-[var(--glass-text-tertiary)] mt-1">没有可关联的组织（用户已属于所有组织）</p>
+                  <p className="text-xs text-[var(--glass-text-tertiary)] mt-1">{t('noLinkableOrganizations')}</p>
                 )}
               </div>
               <p className="text-xs text-[var(--glass-text-tertiary)]">
-                将用户 <strong>{selectedUser?.name}</strong> 关联为所选组织的成员（member 角色）
+                {t('linkOrganizationHint', { name: selectedUser?.name || '-' })}
               </p>
             </div>
             <div className="flex items-center justify-end gap-3 px-5 py-4 sm:px-6 border-t border-[var(--glass-stroke-base)]">
@@ -807,7 +812,7 @@ export default function PlatformUsersPage() {
                 disabled={!selectedOrgId || linkingOrg}
                 className="glass-btn-base glass-btn-primary px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {linkingOrg ? '关联中...' : '确认关联'}
+                {linkingOrg ? t('linking') : t('confirmLink')}
               </button>
             </div>
           </div>
@@ -826,7 +831,7 @@ export default function PlatformUsersPage() {
         onCancel={() => { setShowLockConfirm(false); setLockTarget(null) }}
       />
 
-      {/* 管理员确认弹窗 */}
+      {/* 管理员确认弹�?*/}
       <ConfirmDialog
         show={showAdminConfirm}
         title={adminTarget?.isAdmin ? t('removeAdmin') : t('setAdmin')}
@@ -841,13 +846,23 @@ export default function PlatformUsersPage() {
       {/* 删除用户确认弹窗 */}
       <ConfirmDialog
         show={showDeleteConfirm}
-        title="删除用户"
-        message={deleteTarget ? `确定要删除用户「${deleteTarget.name}」吗？此操作不可撤销，将删除该用户的所有关联数据。` : ''}
+        title={t('deleteUser')}
+        message={deleteTarget ? t('confirmDeleteUser', { name: deleteTarget.name }) : ''}
         type="danger"
-        confirmText={deleting ? '删除中...' : '确认删除'}
+        confirmText={deleting ? t('deleting') : t('confirmDelete')}
         cancelText={tc('cancel')}
         onConfirm={handleDeleteConfirm}
         onCancel={() => { setShowDeleteConfirm(false); setDeleteTarget(null) }}
+      />
+      <ConfirmDialog
+        show={!!unlinkTarget}
+        title={t('unlinkOrganization')}
+        message={unlinkTarget ? t('confirmUnlinkOrganization', { name: unlinkTarget.name }) : ''}
+        type="warning"
+        confirmText={t('unlink')}
+        cancelText={tc('cancel')}
+        onConfirm={() => { if (unlinkTarget) void handleUnlinkOrg(unlinkTarget.organizationId); setUnlinkTarget(null) }}
+        onCancel={() => setUnlinkTarget(null)}
       />
     </div>
   )

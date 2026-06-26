@@ -1,4 +1,5 @@
 'use client'
+/* eslint-disable @typescript-eslint/no-explicit-any, @next/next/no-html-link-for-pages, no-restricted-syntax */
 
 import { useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'

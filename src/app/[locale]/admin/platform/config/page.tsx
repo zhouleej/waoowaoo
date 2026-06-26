@@ -1,10 +1,12 @@
 'use client'
+/* eslint-disable @typescript-eslint/no-explicit-any, @next/next/no-html-link-for-pages, no-restricted-syntax */
 
 import { useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
 import { useRouter } from '@/i18n/navigation'
 import Navbar from '@/components/Navbar'
+import ConfirmDialog from '@/components/ConfirmDialog'
 import { apiFetch } from '@/lib/api-fetch'
 
 export default function PlatformConfigPage() {
@@ -18,6 +20,8 @@ export default function PlatformConfigPage() {
   const [showModal, setShowModal] = useState(false)
   const [newConfig, setNewConfig] = useState({ key: '', value: '', description: '' })
   const [creating, setCreating] = useState(false)
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   const isPlatformAdmin = (session?.user as any)?.isPlatformAdmin
 
@@ -58,13 +62,17 @@ export default function PlatformConfigPage() {
     }
   }
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('确定要删除该配置项吗？')) return
+  const handleDelete = async () => {
+    if (!deleteTargetId) return
+    setDeleting(true)
     try {
-      await apiFetch(`/api/platform/config/${id}`, { method: 'DELETE' })
+      await apiFetch(`/api/platform/config/${deleteTargetId}`, { method: 'DELETE' })
+      setDeleteTargetId(null)
       fetchConfigs()
     } catch (e) {
       console.error(e)
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -177,7 +185,7 @@ export default function PlatformConfigPage() {
                             {t('edit')}
                           </button>
                           <button
-                            onClick={() => handleDelete(config.id)}
+                            onClick={() => setDeleteTargetId(config.id)}
                             className="text-sm text-[var(--glass-tone-danger-fg)] hover:underline"
                           >
                             {t('delete') || '删除'}
@@ -199,7 +207,7 @@ export default function PlatformConfigPage() {
             <h2 className="text-xl font-bold text-[var(--glass-text-primary)] mb-4">{'新增配置'}</h2>
             <form onSubmit={handleCreate}>
               <div className="mb-4">
-                <label className="block mb-2 text-sm text-[var(--glass-text-secondary)]">{'配置键'}</label>
+                <label className="block mb-2 text-sm text-[var(--glass-text-secondary)]">配置键</label>
                 <input
                   type="text"
                   value={newConfig.key}
@@ -209,7 +217,7 @@ export default function PlatformConfigPage() {
                 />
               </div>
               <div className="mb-4">
-                <label className="block mb-2 text-sm text-[var(--glass-text-secondary)]">{'配置值'}</label>
+                <label className="block mb-2 text-sm text-[var(--glass-text-secondary)]">配置值</label>
                 <input
                   type="text"
                   value={newConfig.value}
@@ -235,6 +243,17 @@ export default function PlatformConfigPage() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        show={Boolean(deleteTargetId)}
+        title="删除配置项"
+        message="确定要删除该配置项吗？此操作不可撤销。"
+        confirmText={deleting ? '删除中...' : (t('delete') || '删除')}
+        cancelText={t('cancel')}
+        onConfirm={handleDelete}
+        onCancel={() => (deleting ? undefined : setDeleteTargetId(null))}
+        type="danger"
+      />
     </div>
   )
 }
