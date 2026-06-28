@@ -1,11 +1,13 @@
 'use client'
 /* eslint-disable @typescript-eslint/no-explicit-any, no-restricted-syntax */
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
 import { Link, useRouter } from '@/i18n/navigation'
 import Navbar from '@/components/Navbar'
+import { getPlatformErrorMessage } from '@/components/platform/errors'
+import { PlatformAccessDenied, PlatformPageError } from '@/components/platform/PlatformPageState'
 import { apiJson } from '@/lib/api-fetch'
 import { usePlatformAdminCheck } from '@/hooks/common/usePlatformAdminCheck'
 
@@ -15,6 +17,7 @@ export default function PlatformAdminPage() {
   const router = useRouter()
   const [stats, setStats] = useState<any>(null)
   const [statsLoading, setStatsLoading] = useState(true)
+  const [statsError, setStatsError] = useState<string | null>(null)
 
   useEffect(() => {
     if (status === 'loading') return
@@ -23,23 +26,54 @@ export default function PlatformAdminPage() {
     }
   }, [session, status, router])
 
-  const { isPlatformAdmin, loading: platformAdminLoading } = usePlatformAdminCheck(status === 'authenticated' && Boolean(session))
+  const {
+    isPlatformAdmin,
+    loading: platformAdminLoading,
+    error: platformAdminError,
+    retry: retryPlatformAdminCheck,
+  } = usePlatformAdminCheck(status === 'authenticated' && Boolean(session))
 
-  useEffect(() => {
+  const fetchStats = useCallback(async () => {
     if (!isPlatformAdmin) return
     setStatsLoading(true)
-    apiJson('/api/platform/stats')
-      .then(setStats)
-      .catch(() => setStats(null))
-      .finally(() => setStatsLoading(false))
-  }, [isPlatformAdmin])
+    setStatsError(null)
+    try {
+      const data = await apiJson('/api/platform/stats')
+      setStats(data)
+    } catch (error) {
+      setStats(null)
+      setStatsError(getPlatformErrorMessage(error, t('loadFailed')))
+    } finally {
+      setStatsLoading(false)
+    }
+  }, [isPlatformAdmin, t])
+
+  useEffect(() => {
+    void fetchStats()
+  }, [fetchStats])
 
   if (status === 'loading' || !session || platformAdminLoading) {
     return (
       <div className="min-h-screen bg-[var(--glass-bg-root)]">
         <Navbar />
         <div className="flex items-center justify-center h-[calc(100vh-64px)]">
-          <div className="animate-pulse text-[var(--glass-text-secondary)]">{t('loading') || 'Loading...'}</div>
+          <div className="animate-pulse text-[var(--glass-text-secondary)]">{t('loading')}</div>
+        </div>
+      </div>
+    )
+  }
+
+  if (platformAdminError) {
+    return (
+      <div className="min-h-screen bg-[var(--glass-bg-root)]">
+        <Navbar />
+        <div className="mx-auto max-w-3xl px-4 py-16">
+          <PlatformPageError
+            title={t('platformAdminCheckFailed')}
+            message={platformAdminError.message}
+            retryLabel={t('retry')}
+            onRetry={retryPlatformAdminCheck}
+          />
         </div>
       </div>
     )
@@ -49,10 +83,7 @@ export default function PlatformAdminPage() {
     return (
       <div className="min-h-screen bg-[var(--glass-bg-root)]">
         <Navbar />
-        <div className="flex flex-col items-center justify-center h-[calc(100vh-64px)]">
-          <h1 className="text-2xl font-bold text-[var(--glass-text-primary)] mb-4">403 - Access Denied</h1>
-          <p className="text-[var(--glass-text-secondary)]">{t('noPermission') || 'You do not have permission to access this page.'}</p>
-        </div>
+        <PlatformAccessDenied title={t('accessDeniedTitle')} message={t('noPermission')} />
       </div>
     )
   }
@@ -61,41 +92,44 @@ export default function PlatformAdminPage() {
     <div className="min-h-screen bg-[var(--glass-bg-root)]">
       <Navbar />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <h1 className="text-3xl font-bold text-[var(--glass-text-primary)] mb-8">{t('title') || 'Platform Administration'}</h1>
+        <h1 className="text-3xl font-bold text-[var(--glass-text-primary)] mb-8">{t('title')}</h1>
 
-        {/* Statistics Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          {statsLoading ? (
-            Array.from({ length: 4 }).map((_, index) => (
-              <div key={index} className="glass-surface p-6 animate-pulse">
-                <div className="h-4 bg-[var(--glass-bg-muted)] rounded mb-3 w-2/3"></div>
-                <div className="h-8 bg-[var(--glass-bg-muted)] rounded w-1/2"></div>
-              </div>
-            ))
-          ) : (
-            <>
-              <div className="glass-surface p-6">
-                <div className="text-sm text-[var(--glass-text-secondary)] mb-2">{t('totalOrganizations') || 'Total Organizations'}</div>
-                <div className="text-3xl font-bold text-[var(--glass-text-primary)]">{stats?.totalOrganizations || 0}</div>
-              </div>
-              <div className="glass-surface p-6">
-                <div className="text-sm text-[var(--glass-text-secondary)] mb-2">{t('totalUsers') || 'Total Users'}</div>
-                <div className="text-3xl font-bold text-[var(--glass-text-primary)]">{stats?.totalUsers || 0}</div>
-              </div>
-              <div className="glass-surface p-6">
-                <div className="text-sm text-[var(--glass-text-secondary)] mb-2">{t('totalRevenue') || 'Total Revenue'}</div>
-                <div className="text-3xl font-bold text-[var(--glass-tone-success-fg)]">¥{stats?.totalSpent || '0.00'}</div>
-              </div>
-              <div className="glass-surface p-6">
-                <div className="text-sm text-[var(--glass-text-secondary)] mb-2">{t('activeOrganizations') || 'Active Organizations'}</div>
-                <div className="text-3xl font-bold text-[var(--glass-tone-info-fg)]">{stats?.activeOrganizations || 0}</div>
-              </div>
-            </>
-          )}
-        </div>
+        {statsError ? (
+          <PlatformPageError title={t('requestFailed')} message={statsError} retryLabel={t('retry')} onRetry={fetchStats} className="mb-8" />
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+            {statsLoading ? (
+              Array.from({ length: 4 }).map((_, index) => (
+                <div key={index} className="glass-surface p-6 animate-pulse">
+                  <div className="h-4 bg-[var(--glass-bg-muted)] rounded mb-3 w-2/3"></div>
+                  <div className="h-8 bg-[var(--glass-bg-muted)] rounded w-1/2"></div>
+                </div>
+              ))
+            ) : (
+              <>
+                <div className="glass-surface p-6">
+                  <div className="text-sm text-[var(--glass-text-secondary)] mb-2">{t('totalOrganizations')}</div>
+                  <div className="text-3xl font-bold text-[var(--glass-text-primary)]">{stats?.totalOrganizations || 0}</div>
+                </div>
+                <div className="glass-surface p-6">
+                  <div className="text-sm text-[var(--glass-text-secondary)] mb-2">{t('totalUsers')}</div>
+                  <div className="text-3xl font-bold text-[var(--glass-text-primary)]">{stats?.totalUsers || 0}</div>
+                </div>
+                <div className="glass-surface p-6">
+                  <div className="text-sm text-[var(--glass-text-secondary)] mb-2">{t('totalRevenue')}</div>
+                  <div className="text-3xl font-bold text-[var(--glass-tone-success-fg)]">¥{stats?.totalSpent || '0.00'}</div>
+                </div>
+                <div className="glass-surface p-6">
+                  <div className="text-sm text-[var(--glass-text-secondary)] mb-2">{t('activeOrganizations')}</div>
+                  <div className="text-3xl font-bold text-[var(--glass-tone-info-fg)]">{stats?.activeOrganizations || 0}</div>
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
         {/* Quick Actions */}
-        <h2 className="text-xl font-semibold text-[var(--glass-text-primary)] mb-4">{t('quickActions') || 'Quick Actions'}</h2>
+        <h2 className="text-xl font-semibold text-[var(--glass-text-primary)] mb-4">{t('quickActions')}</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
           <Link href={{ pathname: '/admin/platform/organizations' }} className="glass-surface p-6 hover:brightness-110 transition-all group">
             <div className="flex items-center gap-4">
@@ -105,8 +139,8 @@ export default function PlatformAdminPage() {
                 </svg>
               </div>
               <div>
-                <div className="font-semibold text-[var(--glass-text-primary)] group-hover:text-[var(--glass-tone-info-fg)]">{t('manageOrganizations') || 'Manage Organizations'}</div>
-                <div className="text-sm text-[var(--glass-text-secondary)]">{t('manageOrganizationsDesc') || 'View and manage all organizations'}</div>
+                <div className="font-semibold text-[var(--glass-text-primary)] group-hover:text-[var(--glass-tone-info-fg)]">{t('manageOrganizations')}</div>
+                <div className="text-sm text-[var(--glass-text-secondary)]">{t('manageOrganizationsDesc')}</div>
               </div>
             </div>
           </Link>
@@ -119,8 +153,8 @@ export default function PlatformAdminPage() {
                 </svg>
               </div>
               <div>
-                <div className="font-semibold text-[var(--glass-text-primary)] group-hover:text-[var(--glass-tone-warning-fg)]">{t('manageUsers') || 'Manage Users'}</div>
-                <div className="text-sm text-[var(--glass-text-secondary)]">{t('manageUsersDesc') || 'View and manage all users'}</div>
+                <div className="font-semibold text-[var(--glass-text-primary)] group-hover:text-[var(--glass-tone-warning-fg)]">{t('manageUsers')}</div>
+                <div className="text-sm text-[var(--glass-text-secondary)]">{t('manageUsersDesc')}</div>
               </div>
             </div>
           </Link>
@@ -162,8 +196,8 @@ export default function PlatformAdminPage() {
                 </svg>
               </div>
               <div>
-                <div className="font-semibold text-[var(--glass-text-primary)] group-hover:text-[var(--glass-tone-success-fg)]">{t('systemConfig') || 'System Config'}</div>
-                <div className="text-sm text-[var(--glass-text-secondary)]">{t('systemConfigDesc') || 'Configure system settings'}</div>
+                <div className="font-semibold text-[var(--glass-text-primary)] group-hover:text-[var(--glass-tone-success-fg)]">{t('systemConfig')}</div>
+                <div className="text-sm text-[var(--glass-text-secondary)]">{t('systemConfigDesc')}</div>
               </div>
             </div>
           </Link>

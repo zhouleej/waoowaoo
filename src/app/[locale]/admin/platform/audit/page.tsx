@@ -1,11 +1,13 @@
 'use client'
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
 import { Link, useRouter } from '@/i18n/navigation'
 import Navbar from '@/components/Navbar'
+import { getPlatformErrorMessage } from '@/components/platform/errors'
+import { PlatformAccessDenied, PlatformPageError } from '@/components/platform/PlatformPageState'
 import { apiJson } from '@/lib/api-fetch'
 import { usePlatformAdminCheck } from '@/hooks/common/usePlatformAdminCheck'
 
@@ -15,21 +17,38 @@ export default function PlatformAuditPage() {
   const router = useRouter()
   const [logs, setLogs] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
-  const { isPlatformAdmin, loading: platformAdminLoading } = usePlatformAdminCheck(status === 'authenticated' && Boolean(session))
+  const {
+    isPlatformAdmin,
+    loading: platformAdminLoading,
+    error: platformAdminError,
+    retry: retryPlatformAdminCheck,
+  } = usePlatformAdminCheck(status === 'authenticated' && Boolean(session))
 
   useEffect(() => {
     if (status === 'loading') return
     if (!session) router.push({ pathname: '/auth/signin' })
   }, [session, status, router])
 
-  useEffect(() => {
+  const fetchLogs = useCallback(async () => {
     if (!isPlatformAdmin) return
-    apiJson('/api/platform/audit-logs')
-      .then((data: any) => setLogs(Array.isArray(data) ? data : (data?.data || [])))
-      .catch(() => setLogs([]))
-      .finally(() => setLoading(false))
-  }, [isPlatformAdmin])
+    setLoading(true)
+    setLoadError(null)
+    try {
+      const data = await apiJson('/api/platform/audit-logs')
+      setLogs(Array.isArray(data) ? data : ((data as any)?.data || []))
+    } catch (error) {
+      setLogs([])
+      setLoadError(getPlatformErrorMessage(error, t('loadFailed')))
+    } finally {
+      setLoading(false)
+    }
+  }, [isPlatformAdmin, t])
+
+  useEffect(() => {
+    void fetchLogs()
+  }, [fetchLogs])
 
   if (status === 'loading' || !session || platformAdminLoading) {
     return (
@@ -42,14 +61,27 @@ export default function PlatformAuditPage() {
     )
   }
 
+  if (platformAdminError) {
+    return (
+      <div className="min-h-screen bg-[var(--glass-bg-root)]">
+        <Navbar />
+        <div className="mx-auto max-w-3xl px-4 py-16">
+          <PlatformPageError
+            title={t('platformAdminCheckFailed')}
+            message={platformAdminError.message}
+            retryLabel={t('retry')}
+            onRetry={retryPlatformAdminCheck}
+          />
+        </div>
+      </div>
+    )
+  }
+
   if (!isPlatformAdmin) {
     return (
       <div className="min-h-screen bg-[var(--glass-bg-root)]">
         <Navbar />
-        <div className="flex flex-col items-center justify-center h-[calc(100vh-64px)]">
-          <h1 className="text-2xl font-bold text-[var(--glass-text-primary)] mb-4">403 - Access Denied</h1>
-          <p className="text-[var(--glass-text-secondary)]">{t('noPermission')}</p>
-        </div>
+        <PlatformAccessDenied title={t('accessDeniedTitle')} message={t('noPermission')} />
       </div>
     )
   }
@@ -64,7 +96,9 @@ export default function PlatformAuditPage() {
         </div>
 
         <div className="glass-surface overflow-hidden">
-          {loading ? (
+          {loadError ? (
+            <PlatformPageError title={t('requestFailed')} message={loadError} retryLabel={t('retry')} onRetry={fetchLogs} />
+          ) : loading ? (
             <div className="p-8 text-center text-[var(--glass-text-secondary)]">{t('loading')}</div>
           ) : logs.length === 0 ? (
             <div className="p-8 text-center text-[var(--glass-text-secondary)]">{t('noAuditLogs')}</div>

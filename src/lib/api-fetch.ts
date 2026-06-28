@@ -72,3 +72,14 @@ export async function apiJson<T = unknown>(input: RequestInfo | URL, init?: Requ
   }
   return payload as T
 }
+
+export async function throwIfNotOk(response: Response, fallback = 'Request failed'): Promise<void> {
+  if (response.ok) return
+  const payload = await response.json().catch(() => null)
+  throw new Error(readApiErrorMessage(payload, response.statusText || fallback))
+}
+
+export async function apiVoid(input: RequestInfo | URL, init?: RequestInit): Promise<void> {
+  const response = await apiFetch(input, init)
+  await throwIfNotOk(response)
+}

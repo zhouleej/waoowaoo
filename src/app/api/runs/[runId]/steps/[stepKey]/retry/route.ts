@@ -5,6 +5,7 @@ import { retryFailedStep, getRunById } from '@/lib/run-runtime/service'
 import { resolveRequiredTaskLocale } from '@/lib/task/resolve-locale'
 import { submitTask } from '@/lib/task/submitter'
 import { TASK_TYPE, type TaskType } from '@/lib/task/types'
+import { requireProjectScopedResourceAccess } from '@/lib/saas/resource-access'
 
 const RETRY_SUPPORTED_TASK_TYPES: ReadonlySet<string> = new Set<string>([
   TASK_TYPE.STORY_TO_SCRIPT_RUN,
@@ -48,9 +49,11 @@ export const POST = apiHandler(async (
   }
 
   const run = await getRunById(runId)
-  if (!run || run.userId !== session.user.id) {
+  if (!run) {
     throw new ApiError('NOT_FOUND')
   }
+  const access = await requireProjectScopedResourceAccess(session, run)
+  if (isErrorResponse(access)) return access
 
   const body = await request.json().catch(() => null)
   const payload = toObject(body)
@@ -61,7 +64,7 @@ export const POST = apiHandler(async (
   try {
     prepared = await retryFailedStep({
       runId,
-      userId: session.user.id,
+      userId: run.userId,
       stepKey,
     })
   } catch (error) {

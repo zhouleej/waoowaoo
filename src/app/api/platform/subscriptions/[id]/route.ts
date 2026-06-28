@@ -5,6 +5,8 @@ import { requirePlatformAdmin, createAdminAuditLog } from '@/lib/platform-admin'
 import { apiHandler } from '@/lib/api-errors'
 import { badRequest, notFound } from '@/lib/api-auth'
 import { readNumber, readString } from '@/lib/saas/validation'
+import { parseSubscriptionStatus } from '@/lib/saas/billing-status'
+import { syncOrganizationSubscriptionState } from '@/lib/saas/billing-state'
 
 export const GET = apiHandler<{ id: string }>(async (_req, { params }) => {
   const auth = await requirePlatformAdmin()
@@ -26,6 +28,9 @@ export const PATCH = apiHandler<{ id: string }>(async (req, { params }) => {
   try { body = await req.json() } catch { return badRequest('请求体必须是JSON') }
   try {
     const planId = body.planId ? readString(body.planId, '套餐ID', { required: true }) : undefined
+    const status = body.status === undefined
+      ? undefined
+      : parseSubscriptionStatus(readString(body.status, '订阅状态', { required: true, max: 32 }))
     if (planId) {
       const plan = await prisma.pricingPlan.findUnique({ where: { id: planId } })
       if (!plan) return notFound('PricingPlan')
@@ -36,16 +41,14 @@ export const PATCH = apiHandler<{ id: string }>(async (req, { params }) => {
         where: { id },
         data: {
           ...(planId ? { planId } : {}),
-          ...(body.status !== undefined ? { status: readString(body.status, '订阅状态', { required: true, max: 32 }) } : {}),
+          ...(status ? { status } : {}),
           ...(body.currentPeriodEnd !== undefined ? { currentPeriodEnd: body.currentPeriodEnd ? new Date(body.currentPeriodEnd) : null } : {}),
           ...(body.autoRenew !== undefined ? { autoRenew: Boolean(body.autoRenew) } : {}),
           ...(body.seats !== undefined ? { seats: readNumber(body.seats, '席位数', { min: 1, integer: true }) } : {}),
-          ...(body.status === 'canceled' ? { canceledAt: new Date(), autoRenew: false } : {}),
+          ...(status === 'canceled' ? { canceledAt: new Date(), autoRenew: false } : {}),
         },
       })
-      if (updated.status === 'active' || updated.status === 'trialing') {
-        await tx.organization.update({ where: { id: updated.organizationId }, data: { currentPlanId: updated.planId, currentSubscriptionId: updated.id, businessStatus: updated.status === 'trialing' ? 'trial' : 'paid' } })
-      }
+      await syncOrganizationSubscriptionState(tx, updated)
       return tx.organizationSubscription.findUniqueOrThrow({ where: { id }, include: { organization: true, plan: true } })
     })
     await createAdminAuditLog({ adminId: user.id, action: 'update_subscription', targetType: 'OrganizationSubscription', targetId: id, details: { changed: Object.keys(body) } })

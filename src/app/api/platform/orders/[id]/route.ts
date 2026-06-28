@@ -7,6 +7,7 @@ import { badRequest, notFound } from '@/lib/api-auth'
 import { readString } from '@/lib/saas/validation'
 import { serializeOrder } from '@/lib/saas/serializers'
 import { applyPaidBillingOrder } from '@/lib/saas/billing-state'
+import { assertBillingOrderTransition, parseBillingOrderStatus } from '@/lib/saas/billing-status'
 
 export const GET = apiHandler<{ id: string }>(async (_req, { params }) => {
   const auth = await requirePlatformAdmin()
@@ -27,7 +28,10 @@ export const PATCH = apiHandler<{ id: string }>(async (req, { params }) => {
   let body: any
   try { body = await req.json() } catch { return badRequest('请求体必须是JSON') }
   try {
-    const status = body.status === undefined ? undefined : readString(body.status, '订单状态', { required: true, max: 32 })
+    const status = body.status === undefined
+      ? undefined
+      : parseBillingOrderStatus(readString(body.status, '订单状态', { required: true, max: 32 }))
+    if (status) assertBillingOrderTransition(existing.status, status)
     const externalOrderId = body.externalOrderId !== undefined ? readString(body.externalOrderId, '外部订单号', { max: 128 }) || null : undefined
     const metadata = body.metadata !== undefined && typeof body.metadata === 'object' ? body.metadata : undefined
     const order = status === 'paid'

@@ -6,6 +6,7 @@ import { apiHandler } from '@/lib/api-errors'
 import { badRequest, notFound } from '@/lib/api-auth'
 import { readString } from '@/lib/saas/validation'
 import { serializeInvoice } from '@/lib/saas/serializers'
+import { parseInvoiceStatus } from '@/lib/saas/billing-status'
 
 export const GET = apiHandler<{ id: string }>(async (_req, { params }) => {
   const auth = await requirePlatformAdmin()
@@ -26,7 +27,9 @@ export const PATCH = apiHandler<{ id: string }>(async (req, { params }) => {
   let body: any
   try { body = await req.json() } catch { return badRequest('请求体必须是JSON') }
   try {
-    const status = body.status === undefined ? undefined : readString(body.status, '发票状态', { required: true, max: 32 })
+    const status = body.status === undefined
+      ? undefined
+      : parseInvoiceStatus(readString(body.status, '发票状态', { required: true, max: 32 }))
     const invoice = await prisma.billingInvoice.update({
       where: { id },
       data: {

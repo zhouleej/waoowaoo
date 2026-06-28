@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { apiHandler } from '@/lib/api-errors'
 import { isErrorResponse, requireUserAuth } from '@/lib/api-auth'
-import { listRunEventsAfterSeq } from '@/lib/run-runtime/service'
+import { getRunById, listRunEventsAfterSeq } from '@/lib/run-runtime/service'
+import { requireProjectScopedResourceAccess } from '@/lib/saas/resource-access'
 
 export const GET = apiHandler(async (
   request: NextRequest,
@@ -16,9 +17,20 @@ export const GET = apiHandler(async (
   const afterSeq = Number.isFinite(afterSeqRaw) ? Math.max(0, afterSeqRaw) : 0
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 2000) : 200
 
+  const run = await getRunById(runId)
+  if (!run) {
+    return NextResponse.json({
+      runId,
+      afterSeq,
+      events: [],
+    })
+  }
+  const access = await requireProjectScopedResourceAccess(session, run)
+  if (isErrorResponse(access)) return access
+
   const events = await listRunEventsAfterSeq({
     runId,
-    userId: session.user.id,
+    userId: run.userId,
     afterSeq,
     limit,
   })

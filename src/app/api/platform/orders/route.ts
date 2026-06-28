@@ -6,6 +6,8 @@ import { apiHandler } from '@/lib/api-errors'
 import { badRequest, notFound } from '@/lib/api-auth'
 import { nextOrderNo, parsePagination, readNumber, readString } from '@/lib/saas/validation'
 import { serializeOrder } from '@/lib/saas/serializers'
+import { applyPaidBillingOrder } from '@/lib/saas/billing-state'
+import { parseBillingOrderStatus, parseBillingOrderType } from '@/lib/saas/billing-status'
 
 export const GET = apiHandler(async (req) => {
   const auth = await requirePlatformAdmin()
@@ -34,22 +36,30 @@ export const POST = apiHandler(async (req) => {
     const organizationId = readString(body.organizationId, '企业ID', { required: true })!
     const org = await prisma.organization.findUnique({ where: { id: organizationId } })
     if (!org) return notFound('Organization')
-    const order = await prisma.billingOrder.create({
+    const status = parseBillingOrderStatus(readString(body.status ?? 'pending', '订单状态', { max: 32 }) || 'pending')
+    const type = parseBillingOrderType(readString(body.type ?? 'subscription', '订单类型', { max: 32 }) || 'subscription')
+    const paidAt = body.paidAt ? new Date(body.paidAt) : undefined
+    const externalOrderId = readString(body.externalOrderId, '外部订单号', { max: 128 })
+    const created = await prisma.billingOrder.create({
       data: {
         orderNo: readString(body.orderNo, '订单号', { max: 64 }) || nextOrderNo('SO'),
         organizationId,
         subscriptionId: readString(body.subscriptionId, '订阅ID'),
         planId: readString(body.planId, '套餐ID'),
-        type: readString(body.type ?? 'subscription', '订单类型', { max: 32 })!,
-        status: readString(body.status ?? 'pending', '订单状态', { max: 32 })!,
+        type,
+        status: status === 'paid' ? 'pending' : status,
         amount: readNumber(body.amount, '金额', { required: true, min: 0 })!,
         currency: readString(body.currency ?? 'CNY', '币种', { max: 8 })!,
-        paidAt: body.paidAt ? new Date(body.paidAt) : null,
-        externalOrderId: readString(body.externalOrderId, '外部订单号', { max: 128 }),
+        paidAt: null,
+        externalOrderId,
         metadata: body.metadata && typeof body.metadata === 'object' ? body.metadata : undefined,
       },
       include: { organization: true, plan: true, subscription: true },
     })
+    const order = status === 'paid'
+      ? await applyPaidBillingOrder(created.id, { paidAt, externalOrderId })
+      : created
+    if (!order) return notFound('BillingOrder')
     await createAdminAuditLog({ adminId: user.id, action: 'create_order', targetType: 'BillingOrder', targetId: order.id, details: { organizationId, orderNo: order.orderNo } })
     return NextResponse.json({ data: serializeOrder(order) }, { status: 201 })
   } catch (error) {

@@ -20,7 +20,7 @@ type TaskLifecycleReplayEvent = Awaited<ReturnType<typeof import('@/lib/task/pub
 type TaskRecord = {
   id: string
   userId: string
-  projectId: string
+  projectId: string | null
   type: string
   targetType: string
   targetId: string
@@ -267,7 +267,7 @@ describe('api contract - task infra routes (behavior)', () => {
     })
   })
 
-  it('GET /api/tasks/[taskId]: enforces ownership and returns task detail', async () => {
+  it('GET /api/tasks/[taskId]: uses project access for organization tasks and ownership for personal tasks', async () => {
     const route = await import('@/app/api/tasks/[taskId]/route')
 
     authState.authenticated = false
@@ -276,10 +276,15 @@ describe('api contract - task infra routes (behavior)', () => {
     expect(unauthorizedRes.status).toBe(401)
 
     authState.authenticated = true
-    getTaskByIdMock.mockResolvedValueOnce({ ...baseTask, userId: 'other-user' })
+    getTaskByIdMock.mockResolvedValueOnce({ ...baseTask, userId: 'other-user', projectId: null })
     const notFoundReq = buildMockRequest({ path: '/api/tasks/task-1', method: 'GET' })
     const notFoundRes = await route.GET(notFoundReq, { params: Promise.resolve({ taskId: 'task-1' }) })
     expect(notFoundRes.status).toBe(404)
+
+    getTaskByIdMock.mockResolvedValueOnce({ ...baseTask, userId: 'other-user', projectId: 'project-1' })
+    const orgTaskReq = buildMockRequest({ path: '/api/tasks/task-1', method: 'GET' })
+    const orgTaskRes = await route.GET(orgTaskReq, { params: Promise.resolve({ taskId: 'task-1' }) })
+    expect(orgTaskRes.status).toBe(200)
 
     const req = buildMockRequest({ path: '/api/tasks/task-1', method: 'GET' })
     const res = await route.GET(req, { params: Promise.resolve({ taskId: 'task-1' }) })

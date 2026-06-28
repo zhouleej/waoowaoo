@@ -54,6 +54,16 @@ function readProjectFile(relativePath: string) {
   return fs.readFileSync(path.join(process.cwd(), relativePath), 'utf8')
 }
 
+const PLATFORM_PAGE_FILES = [
+  'src/app/[locale]/admin/platform/page.tsx',
+  'src/app/[locale]/admin/platform/stats/page.tsx',
+  'src/app/[locale]/admin/platform/audit/page.tsx',
+  'src/app/[locale]/admin/platform/config/page.tsx',
+  'src/app/[locale]/admin/platform/organizations/page.tsx',
+  'src/app/[locale]/admin/platform/users/page.tsx',
+  'src/app/[locale]/admin/platform/billing/page.tsx',
+]
+
 describe('platform organization members route', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -150,5 +160,72 @@ describe('platform admin frontend wiring', () => {
 
     expect(source).toContain("pathname: '/admin/platform/config'")
     expect(source).not.toContain('/api/platform/config')
+  })
+
+  it('surfaces platform admin check request failures without treating them as denied access', () => {
+    const source = readProjectFile('src/hooks/common/usePlatformAdminCheck.ts')
+
+    expect(source).toContain('PlatformAdminCheckError')
+    expect(source).toContain("kind: 'request'")
+    expect(source).toContain('error')
+    expect(source).toContain('refetch')
+    expect(source).toContain('retry')
+    expect(source).toContain('response.status === 401 || response.status === 403')
+    expect(source).toContain('setError(null)')
+  })
+
+  it('renders retryable platform page errors instead of empty data after failed requests', () => {
+    for (const file of PLATFORM_PAGE_FILES) {
+      const source = readProjectFile(file)
+
+      expect(source, file).toContain('PlatformPageError')
+      expect(source, file).toContain('PlatformAccessDenied')
+      expect(source, file).not.toMatch(/catch\(\(\)\s*=>\s*set(?:Stats|null|Logs|Configs)\((?:null|\[\])\)\)/)
+      expect(source, file).not.toContain('403 - Access Denied')
+      expect(source, file).not.toMatch(/<h1[^>]*>\s*403\s*<\/h1>/)
+    }
+  })
+
+  it('requires checked platform fetch responses and shared ok helpers', () => {
+    const apiFetchSource = readProjectFile('src/lib/api-fetch.ts')
+
+    expect(apiFetchSource).toContain('export async function throwIfNotOk')
+    expect(apiFetchSource).toContain('export async function apiVoid')
+
+    for (const file of PLATFORM_PAGE_FILES) {
+      const source = readProjectFile(file)
+      expect(source, file).not.toContain('res.ok')
+      expect(source, file).not.toContain('membersRes.ok')
+    }
+
+    for (const file of [
+      'src/app/[locale]/admin/platform/organizations/page.tsx',
+      'src/app/[locale]/admin/platform/users/page.tsx',
+      'src/app/[locale]/admin/platform/billing/page.tsx',
+    ]) {
+      expect(readProjectFile(file), file).toContain('throwIfNotOk')
+    }
+  })
+
+  it('uses platform i18n keys for obvious admin UI literals', () => {
+    const combinedPages = PLATFORM_PAGE_FILES.map(readProjectFile).join('\n')
+    const zhMessages = JSON.parse(readProjectFile('messages/zh/platform.json')) as Record<string, unknown>
+    const enMessages = JSON.parse(readProjectFile('messages/en/platform.json')) as Record<string, unknown>
+
+    for (const key of [
+      'accessDeniedTitle',
+      'platformAdminCheckFailed',
+      'requestFailed',
+      'retry',
+      'password',
+    ]) {
+      expect(zhMessages, `zh.${key}`).toHaveProperty(key)
+      expect(enMessages, `en.${key}`).toHaveProperty(key)
+    }
+
+    expect(combinedPages).not.toContain('Access Denied')
+    expect(combinedPages).not.toMatch(/>\s*Admin\s*</)
+    expect(combinedPages).not.toMatch(/>\s*取消\s*</)
+    expect(combinedPages).not.toContain('密码 *')
   })
 })

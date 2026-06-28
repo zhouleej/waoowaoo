@@ -5,6 +5,7 @@ import { cancelTask } from '@/lib/task/service'
 import { getRunById, requestRunCancel } from '@/lib/run-runtime/service'
 import { publishRunEvent } from '@/lib/run-runtime/publisher'
 import { RUN_EVENT_TYPE, RUN_STATUS } from '@/lib/run-runtime/types'
+import { requireProjectScopedResourceAccess } from '@/lib/saas/resource-access'
 
 export const POST = apiHandler(async (
   _request: NextRequest,
@@ -16,13 +17,15 @@ export const POST = apiHandler(async (
   const { runId } = await context.params
 
   const run = await getRunById(runId)
-  if (!run || run.userId !== session.user.id) {
+  if (!run) {
     throw new ApiError('NOT_FOUND')
   }
+  const access = await requireProjectScopedResourceAccess(session, run)
+  if (isErrorResponse(access)) return access
 
   const cancelledRun = await requestRunCancel({
     runId,
-    userId: session.user.id,
+    userId: run.userId,
   })
   if (!cancelledRun) {
     throw new ApiError('NOT_FOUND')

@@ -74,6 +74,9 @@ function toBalanceSnapshot(balance: {
   }
 }
 
+type OrganizationBalanceRecord = Parameters<typeof toBalanceSnapshot>[0]
+type OrganizationBillingClient = Pick<Prisma.TransactionClient, 'organizationBalance' | 'organizationUsage'>
+
 /**
  * 获取组织余额
  */
@@ -111,6 +114,100 @@ export async function ensureOrganizationBalance(organizationId: string): Promise
   return toBalanceSnapshot(balance)
 }
 
+async function ensureOrganizationBalanceWithClient(
+  client: OrganizationBillingClient,
+  organizationId: string,
+): Promise<OrganizationBalanceRecord> {
+  let balance = await client.organizationBalance.findUnique({
+    where: { organizationId },
+  })
+
+  if (!balance) {
+    balance = await client.organizationBalance.create({
+      data: {
+        organizationId,
+        balance: 0,
+        frozenAmount: 0,
+        totalSpent: 0,
+      },
+    })
+  }
+
+  return balance
+}
+
+async function addOrganizationBalanceWithClient(
+  client: OrganizationBillingClient,
+  organizationId: string,
+  amount: number,
+  options?: {
+    reason?: string
+    operatorId?: string
+    externalOrderId?: string
+    idempotencyKey?: string
+  },
+): Promise<OrganizationBalanceRecord> {
+  const normalizedAmount = normalizeMoney(Number(amount))
+  if (!Number.isFinite(normalizedAmount) || normalizedAmount <= 0) {
+    throw new Error('amount must be a positive number')
+  }
+
+  const idempotencyKey = options?.idempotencyKey?.trim()
+
+  if (idempotencyKey) {
+    const existingRecharge = await client.organizationUsage.findFirst({
+      where: {
+        organizationId,
+        type: 'recharge',
+        idempotencyKey,
+      },
+    })
+    if (existingRecharge) {
+      return ensureOrganizationBalanceWithClient(client, organizationId)
+    }
+  }
+
+  await client.organizationUsage.create({
+    data: {
+      organizationId,
+      userId: options?.operatorId || 'system',
+      amount: normalizedAmount,
+      balanceAmount: normalizedAmount,
+      type: 'recharge',
+      orderId: options?.externalOrderId || null,
+      idempotencyKey: idempotencyKey || null,
+      description: options?.reason || '组织余额充值',
+      metadata: {
+        externalOrderId: options?.externalOrderId || null,
+      },
+    },
+  })
+
+  let balance = await client.organizationBalance.findUnique({
+    where: { organizationId },
+  })
+
+  if (!balance) {
+    balance = await client.organizationBalance.create({
+      data: {
+        organizationId,
+        balance: normalizedAmount,
+        frozenAmount: 0,
+        totalSpent: 0,
+      },
+    })
+  } else {
+    balance = await client.organizationBalance.update({
+      where: { organizationId },
+      data: {
+        balance: { increment: normalizedAmount },
+      },
+    })
+  }
+
+  return balance
+}
+
 /**
  * 增加组织余额
  */
@@ -124,71 +221,11 @@ export async function addOrganizationBalance(
     idempotencyKey?: string
   },
 ): Promise<OrganizationBalanceSnapshot> {
-  const normalizedAmount = normalizeMoney(Number(amount))
-  if (!Number.isFinite(normalizedAmount) || normalizedAmount <= 0) {
-    throw new Error('amount must be a positive number')
-  }
-
   const idempotencyKey = options?.idempotencyKey?.trim()
-
-  if (idempotencyKey) {
-    const existingRecharge = await prisma.organizationUsage.findFirst({
-      where: {
-        organizationId,
-        type: 'recharge',
-        idempotencyKey,
-      },
-    })
-    if (existingRecharge) {
-      return ensureOrganizationBalance(organizationId)
-    }
-  }
-
-  let updatedBalance: Parameters<typeof toBalanceSnapshot>[0]
+  let updatedBalance: OrganizationBalanceRecord
   try {
     updatedBalance = await prisma.$transaction(async (tx) => {
-      if (idempotencyKey) {
-        await tx.organizationUsage.create({
-          data: {
-            organizationId,
-            userId: options?.operatorId || 'system',
-            amount: normalizedAmount,
-            balanceAmount: normalizedAmount,
-            type: 'recharge',
-            orderId: options?.externalOrderId || null,
-            idempotencyKey,
-            description: options?.reason || '组织余额充值',
-            metadata: {
-              externalOrderId: options?.externalOrderId || null,
-            },
-          },
-        })
-      }
-
-      // 确保余额记录存在
-      let balance = await tx.organizationBalance.findUnique({
-        where: { organizationId },
-      })
-
-      if (!balance) {
-        balance = await tx.organizationBalance.create({
-          data: {
-            organizationId,
-            balance: normalizedAmount,
-            frozenAmount: 0,
-            totalSpent: 0,
-          },
-        })
-      } else {
-        balance = await tx.organizationBalance.update({
-          where: { organizationId },
-          data: {
-            balance: { increment: normalizedAmount },
-          },
-        })
-      }
-
-      return balance
+      return addOrganizationBalanceWithClient(tx, organizationId, amount, options)
     })
   } catch (error) {
     if (idempotencyKey && isUniqueConstraintError(error)) {
@@ -197,9 +234,31 @@ export async function addOrganizationBalance(
     throw error
   }
 
-  _ulogInfo(`[OrganizationBalance] add balance success: organizationId=${organizationId}, amount=¥${normalizedAmount}, reason=${options?.reason || 'N/A'}`)
+  _ulogInfo(`[OrganizationBalance] add balance success: organizationId=${organizationId}, amount=¥${normalizeMoney(Number(amount))}, reason=${options?.reason || 'N/A'}`)
 
   return toBalanceSnapshot(updatedBalance)
+}
+
+export async function addOrganizationBalanceInTransaction(
+  tx: Prisma.TransactionClient,
+  organizationId: string,
+  amount: number,
+  options?: {
+    reason?: string
+    operatorId?: string
+    externalOrderId?: string
+    idempotencyKey?: string
+  },
+): Promise<OrganizationBalanceSnapshot> {
+  const idempotencyKey = options?.idempotencyKey?.trim()
+  try {
+    return toBalanceSnapshot(await addOrganizationBalanceWithClient(tx, organizationId, amount, options))
+  } catch (error) {
+    if (idempotencyKey && isUniqueConstraintError(error)) {
+      return toBalanceSnapshot(await ensureOrganizationBalanceWithClient(tx, organizationId))
+    }
+    throw error
+  }
 }
 
 /**

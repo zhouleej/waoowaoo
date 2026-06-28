@@ -5,9 +5,11 @@ import { useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
 import Navbar from '@/components/Navbar'
 import ConfirmDialog from '@/components/ConfirmDialog'
+import { getPlatformErrorMessage } from '@/components/platform/errors'
+import { PlatformAccessDenied, PlatformPageError } from '@/components/platform/PlatformPageState'
 import { AppIcon } from '@/components/ui/icons'
 import { useRouter } from '@/i18n/navigation'
-import { apiFetch } from '@/lib/api-fetch'
+import { apiFetch, apiVoid, throwIfNotOk } from '@/lib/api-fetch'
 import { useToast } from '@/contexts/ToastContext'
 import { usePlatformAdminCheck } from '@/hooks/common/usePlatformAdminCheck'
 
@@ -89,6 +91,7 @@ export default function PlatformBillingPage() {
   const [statusFilter, setStatusFilter] = useState('')
   const [organizationFilter, setOrganizationFilter] = useState('')
   const [loading, setLoading] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [plans, setPlans] = useState<PricingPlan[]>([])
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
   const [orders, setOrders] = useState<BillingOrder[]>([])
@@ -103,7 +106,12 @@ export default function PlatformBillingPage() {
   const [creatingSubscription, setCreatingSubscription] = useState(false)
   const [confirmAction, setConfirmAction] = useState<{ title: string; message: string; onConfirm: () => void; type?: 'danger' | 'warning' | 'info' } | null>(null)
 
-  const { isPlatformAdmin, loading: platformAdminLoading } = usePlatformAdminCheck(status === 'authenticated' && Boolean(session))
+  const {
+    isPlatformAdmin,
+    loading: platformAdminLoading,
+    error: platformAdminError,
+    retry: retryPlatformAdminCheck,
+  } = usePlatformAdminCheck(status === 'authenticated' && Boolean(session))
 
   useEffect(() => {
     if (status === 'loading') return
@@ -112,21 +120,28 @@ export default function PlatformBillingPage() {
 
   const loadOrganizations = useCallback(async () => {
     if (!isPlatformAdmin) return
-    const res = await apiFetch('/api/platform/organizations?limit=100')
-    const data = await res.json()
-    setOrganizations(Array.isArray(data) ? data : data?.data || [])
-  }, [isPlatformAdmin])
+    try {
+      const res = await apiFetch('/api/platform/organizations?limit=100')
+      await throwIfNotOk(res, t('loadFailed'))
+      const data = await res.json()
+      setOrganizations(Array.isArray(data) ? data : data?.data || [])
+    } catch (error) {
+      setOrganizations([])
+      showToast(getPlatformErrorMessage(error, t('loadFailed')), 'error')
+    }
+  }, [isPlatformAdmin, showToast, t])
 
   const fetchTab = useCallback(async (page = 1) => {
     if (!isPlatformAdmin) return
     setLoading(true)
+    setLoadError(null)
     try {
       const params = new URLSearchParams({ page: String(page), limit: '10' })
       if (statusFilter) params.set('status', statusFilter)
       if (organizationFilter && activeTab !== 'plans') params.set('organizationId', organizationFilter)
       if (debouncedSearch && activeTab === 'plans') params.set('search', debouncedSearch)
       const res = await apiFetch(`/api/platform/${activeTab}?${params.toString()}`)
-      if (!res.ok) throw new Error(t('loadFailed'))
+      await throwIfNotOk(res, t('loadFailed'))
       const data = await res.json()
       const rows = data?.data || []
       if (activeTab === 'plans') setPlans(rows)
@@ -135,7 +150,9 @@ export default function PlatformBillingPage() {
       if (activeTab === 'invoices') setInvoices(rows)
       setPagination(data?.pagination || emptyPagination)
     } catch (error) {
-      showToast(error instanceof Error ? error.message : t('loadFailed'), 'error')
+      const message = getPlatformErrorMessage(error, t('loadFailed'))
+      setLoadError(message)
+      showToast(message, 'error')
     } finally {
       setLoading(false)
     }
@@ -146,11 +163,18 @@ export default function PlatformBillingPage() {
   useEffect(() => {
     if (activeTab === 'subscriptions' && plans.length === 0 && isPlatformAdmin) {
       apiFetch('/api/platform/plans?limit=100')
-        .then((res) => res.json())
+        .then(async (res) => {
+          await throwIfNotOk(res, t('loadFailed'))
+          return res.json()
+        })
         .then((data) => setPlans(data?.data || []))
-        .catch(() => undefined)
+        .catch((error) => {
+          const message = getPlatformErrorMessage(error, t('loadFailed'))
+          setLoadError(message)
+          showToast(message, 'error')
+        })
     }
-  }, [activeTab, isPlatformAdmin, plans.length])
+  }, [activeTab, isPlatformAdmin, plans.length, showToast, t])
 
   const tabItems = useMemo(() => ([
     { key: 'plans' as const, label: t('plans'), icon: 'diamond' as const },
@@ -200,13 +224,12 @@ export default function PlatformBillingPage() {
         delete body.billingCycle
       }
       const endpoint = editingPlan ? `/api/platform/plans/${editingPlan.id}` : '/api/platform/plans'
-      const res = await apiFetch(endpoint, { method: editingPlan ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-      if (!res.ok) throw new Error((await res.json().catch(() => null))?.error || t('saveFailed'))
+      await apiVoid(endpoint, { method: editingPlan ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       showToast(editingPlan ? t('planUpdated') : t('planCreated'), 'success')
       closePlanEditor()
       await fetchTab(pagination.page)
     } catch (error) {
-      showToast(error instanceof Error ? error.message : t('saveFailed'), 'error')
+      showToast(getPlatformErrorMessage(error, t('saveFailed')), 'error')
     } finally {
       setSavingPlan(false)
     }
@@ -221,12 +244,11 @@ export default function PlatformBillingPage() {
       onConfirm: async () => {
         setConfirmAction(null)
         try {
-          const res = await apiFetch(`/api/platform/plans/${plan.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: nextStatus }) })
-          if (!res.ok) throw new Error(t('saveFailed'))
+          await apiVoid(`/api/platform/plans/${plan.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: nextStatus }) })
           showToast(t('operationSuccess'), 'success')
           await fetchTab(pagination.page)
         } catch (error) {
-          showToast(error instanceof Error ? error.message : t('saveFailed'), 'error')
+          showToast(getPlatformErrorMessage(error, t('saveFailed')), 'error')
         }
       },
     })
@@ -239,21 +261,21 @@ export default function PlatformBillingPage() {
     }
     setCreatingSubscription(true)
     try {
-      const res = await apiFetch('/api/platform/subscriptions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...subscriptionForm, seats: Number(subscriptionForm.seats) }) })
-      if (!res.ok) throw new Error((await res.json().catch(() => null))?.error || t('saveFailed'))
+      await apiVoid('/api/platform/subscriptions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...subscriptionForm, seats: Number(subscriptionForm.seats) }) })
       showToast(t('subscriptionCreated'), 'success')
       setSubscriptionForm({ organizationId: '', planId: '', seats: '1', status: 'active', autoRenew: true })
       setActiveTab('subscriptions')
       await fetchTab(1)
     } catch (error) {
-      showToast(error instanceof Error ? error.message : t('saveFailed'), 'error')
+      showToast(getPlatformErrorMessage(error, t('saveFailed')), 'error')
     } finally {
       setCreatingSubscription(false)
     }
   }
 
   if (status === 'loading' || !session || platformAdminLoading) return <div className="min-h-screen bg-[var(--glass-bg-root)]"><Navbar /><div className="flex h-[calc(100vh-64px)] items-center justify-center text-[var(--glass-text-secondary)]">{t('loading')}</div></div>
-  if (!isPlatformAdmin) return <div className="min-h-screen bg-[var(--glass-bg-root)]"><Navbar /><div className="flex h-[calc(100vh-64px)] flex-col items-center justify-center"><h1 className="mb-3 text-2xl font-bold text-[var(--glass-text-primary)]">403</h1><p className="text-[var(--glass-text-secondary)]">{t('noPermission')}</p></div></div>
+  if (platformAdminError) return <div className="min-h-screen bg-[var(--glass-bg-root)]"><Navbar /><div className="mx-auto max-w-3xl px-4 py-16"><PlatformPageError title={t('platformAdminCheckFailed')} message={platformAdminError.message} retryLabel={t('retry')} onRetry={retryPlatformAdminCheck} /></div></div>
+  if (!isPlatformAdmin) return <div className="min-h-screen bg-[var(--glass-bg-root)]"><Navbar /><PlatformAccessDenied title={t('accessDeniedTitle')} message={t('noPermission')} /></div>
 
   return (
     <div className="min-h-screen bg-[var(--glass-bg-root)]">
@@ -297,7 +319,7 @@ export default function PlatformBillingPage() {
         )}
 
         <div className="glass-surface overflow-hidden">
-          {loading ? <div className="p-10 text-center text-[var(--glass-text-secondary)]">{t('loading')}</div> : (
+          {loadError ? <PlatformPageError title={t('requestFailed')} message={loadError} retryLabel={t('retry')} onRetry={() => void fetchTab(pagination.page || 1)} /> : loading ? <div className="p-10 text-center text-[var(--glass-text-secondary)]">{t('loading')}</div> : (
             <div className="overflow-x-auto">
               {activeTab === 'plans' && <PlansTable plans={plans} t={t} onEdit={openPlanEditor} onToggle={togglePlanStatus} />}
               {activeTab === 'subscriptions' && <SubscriptionsTable rows={subscriptions} t={t} />}

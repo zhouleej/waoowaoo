@@ -6,7 +6,9 @@ import { useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
 import { Link, useRouter } from '@/i18n/navigation'
 import Navbar from '@/components/Navbar'
-import { apiFetch } from '@/lib/api-fetch'
+import { getPlatformErrorMessage } from '@/components/platform/errors'
+import { PlatformAccessDenied, PlatformPageError } from '@/components/platform/PlatformPageState'
+import { apiFetch, apiJson, apiVoid, throwIfNotOk } from '@/lib/api-fetch'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import { useToast } from '@/contexts/ToastContext'
 import { usePlatformAdminCheck } from '@/hooks/common/usePlatformAdminCheck'
@@ -51,6 +53,7 @@ export default function PlatformOrganizationsPage() {
   const { showToast } = useToast()
   const [organizations, setOrganizations] = useState<Organization[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [pagination, setPagination] = useState<Pagination>({ page: 1, limit: 10, total: 0, totalPages: 0 })
@@ -59,6 +62,7 @@ export default function PlatformOrganizationsPage() {
   const [selectedOrg, setSelectedOrg] = useState<Organization | null>(null)
   const [members, setMembers] = useState<Member[]>([])
   const [membersLoading, setMembersLoading] = useState(false)
+  const [membersError, setMembersError] = useState<string | null>(null)
   const [detailBalance, setDetailBalance] = useState<{ balance: number; frozenAmount: number; totalSpent: number } | null>(null)
   const [activeDetailTab, setActiveDetailTab] = useState<'overview' | 'members' | 'subscription' | 'orders' | 'audit'>('overview')
 
@@ -78,7 +82,12 @@ export default function PlatformOrganizationsPage() {
   const [deleting, setDeleting] = useState(false)
   const [confirmAction, setConfirmAction] = useState<{ title: string; message: string; onConfirm: () => void; type?: 'danger' | 'warning' | 'info' } | null>(null)
 
-  const { isPlatformAdmin, loading: platformAdminLoading } = usePlatformAdminCheck(status === 'authenticated' && Boolean(session))
+  const {
+    isPlatformAdmin,
+    loading: platformAdminLoading,
+    error: platformAdminError,
+    retry: retryPlatformAdminCheck,
+  } = usePlatformAdminCheck(status === 'authenticated' && Boolean(session))
 
   useEffect(() => {
     if (status === 'loading') return
@@ -88,22 +97,25 @@ export default function PlatformOrganizationsPage() {
   const fetchOrganizations = useCallback(async (page: number = 1) => {
     if (!isPlatformAdmin) return
     setLoading(true)
+    setLoadError(null)
     try {
       const params = new URLSearchParams({ page: String(page), limit: '10' })
       if (search) params.set('search', search)
       if (statusFilter) params.set('status', statusFilter)
       const res = await apiFetch(`/api/platform/organizations?${params.toString()}`)
+      await throwIfNotOk(res, t('loadFailed'))
       const data = await res.json()
       setOrganizations(Array.isArray(data) ? data : (data?.data || []))
       if (data?.pagination) {
         setPagination(data.pagination)
       }
-    } catch (e) {
-      console.error(e)
+    } catch (error) {
+      setOrganizations([])
+      setLoadError(getPlatformErrorMessage(error, t('loadFailed')))
     } finally {
       setLoading(false)
     }
-  }, [isPlatformAdmin, search, statusFilter])
+  }, [isPlatformAdmin, search, statusFilter, t])
 
   useEffect(() => {
     fetchOrganizations(1)
@@ -125,52 +137,57 @@ export default function PlatformOrganizationsPage() {
     setConfirmAction({ title: t('disable'), message: t('confirmDisable'), type: 'warning', onConfirm: async () => {
     setConfirmAction(null)
     try {
-      await apiFetch(`/api/platform/organizations/${orgId}/disable`, { method: 'POST' })
+      await apiVoid(`/api/platform/organizations/${orgId}/disable`, { method: 'POST' })
       setOrganizations(orgs => orgs.map(o => o.id === orgId ? { ...o, status: 'disabled' } : o))
       if (selectedOrg?.id === orgId) setSelectedOrg(prev => prev ? { ...prev, status: 'disabled' } : prev)
       showToast(t('operationSuccess'), 'success')
-    } catch (e) {
-      console.error(e)
-      showToast(t('disableFailed'), 'error')
+    } catch (error) {
+      showToast(getPlatformErrorMessage(error, t('disableFailed')), 'error')
     }
     } })
   }
 
   const handleEnable = async (orgId: string) => {
     try {
-      await apiFetch(`/api/platform/organizations/${orgId}/enable`, { method: 'POST' })
+      await apiVoid(`/api/platform/organizations/${orgId}/enable`, { method: 'POST' })
       setOrganizations(orgs => orgs.map(o => o.id === orgId ? { ...o, status: 'active' } : o))
       if (selectedOrg?.id === orgId) setSelectedOrg(prev => prev ? { ...prev, status: 'active' } : prev)
       showToast(t('operationSuccess'), 'success')
-    } catch (e) {
-      console.error(e)
-      showToast(t('enableFailed'), 'error')
+    } catch (error) {
+      showToast(getPlatformErrorMessage(error, t('enableFailed')), 'error')
     }
   }
 
-  const openDetail = async (org: Organization) => {
-    setSelectedOrg(org)
+  const loadMembers = useCallback(async (org: Pick<Organization, 'id'>) => {
     setMembersLoading(true)
     setMembers([])
-    setDetailBalance(org.balance)
-    setActiveDetailTab('overview')
-    setRechargeAmount('')
+    setMembersError(null)
     try {
       const membersRes = await apiFetch(`/api/platform/organizations/${org.id}/members`)
-      if (membersRes.ok) {
-        const membersData = await membersRes.json()
-        setMembers(Array.isArray(membersData) ? membersData : [])
-      }
-    } catch (e) {
-      console.error(e)
+      await throwIfNotOk(membersRes, t('loadFailed'))
+      const membersData = await membersRes.json()
+      setMembers(Array.isArray(membersData) ? membersData : [])
+    } catch (error) {
+      setMembers([])
+      setMembersError(getPlatformErrorMessage(error, t('loadFailed')))
     } finally {
       setMembersLoading(false)
     }
+  }, [t])
+
+  const openDetail = async (org: Organization) => {
+    setSelectedOrg(org)
+    setMembersError(null)
+    setDetailBalance(org.balance)
+    setActiveDetailTab('overview')
+    setRechargeAmount('')
+    await loadMembers(org)
   }
 
   const closeDetail = () => {
     setSelectedOrg(null)
     setMembers([])
+    setMembersError(null)
     setDetailBalance(null)
     setRechargeAmount('')
   }
@@ -184,24 +201,18 @@ export default function PlatformOrganizationsPage() {
     }
     setRecharging(true)
     try {
-      const res = await apiFetch(`/api/platform/organizations/${selectedOrg.id}/balance`, {
+      const data = await apiJson<any>(`/api/platform/organizations/${selectedOrg.id}/balance`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ amount }),
       })
-      if (!res.ok) {
-        const err = await res.json().catch(() => null)
-        throw new Error(err?.error || '充值失败')
-      }
-      const data = await res.json()
       const newBalance = data.balance?.current ?? data.balance?.balance ?? 0
       setDetailBalance(prev => prev ? { ...prev, balance: newBalance } : null)
       setOrganizations(orgs => orgs.map(o => o.id === selectedOrg.id ? { ...o, balance: { ...o.balance, balance: newBalance } as Organization['balance'] } : o))
       setRechargeAmount('')
       showToast(t('rechargeSuccess'), 'success')
-    } catch (e: any) {
-      console.error(e)
-      showToast(e?.message || t('saveFailed'), 'error')
+    } catch (error) {
+      showToast(getPlatformErrorMessage(error, t('saveFailed')), 'error')
     } finally {
       setRecharging(false)
     }
@@ -230,21 +241,16 @@ export default function PlatformOrganizationsPage() {
     }
     setCreating(true)
     try {
-      const res = await apiFetch('/api/platform/organizations', {
+      await apiVoid('/api/platform/organizations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: createName.trim(), slug: createSlug.trim() }),
       })
-      if (!res.ok) {
-        const err = await res.json().catch(() => null)
-        throw new Error(err?.error || t('createFailed'))
-      }
       showToast(t('createSuccess'), 'success')
       closeCreateModal()
       fetchOrganizations(1)
-    } catch (e: any) {
-      console.error(e)
-      showToast(e?.message || t('createFailed'), 'error')
+    } catch (error) {
+      showToast(getPlatformErrorMessage(error, t('createFailed')), 'error')
     } finally {
       setCreating(false)
     }
@@ -268,20 +274,15 @@ export default function PlatformOrganizationsPage() {
     }
     setDeleting(true)
     try {
-      const res = await apiFetch(`/api/platform/organizations/${selectedOrg.id}`, {
+      await apiVoid(`/api/platform/organizations/${selectedOrg.id}`, {
         method: 'DELETE',
       })
-      if (!res.ok) {
-        const err = await res.json().catch(() => null)
-        throw new Error(err?.error || t('deleteFailed'))
-      }
       showToast(t('deleteSuccess'), 'success')
       closeDeleteConfirm()
       closeDetail()
       fetchOrganizations(1)
-    } catch (e: any) {
-      console.error(e)
-      showToast(e?.message || t('deleteFailed'), 'error')
+    } catch (error) {
+      showToast(getPlatformErrorMessage(error, t('deleteFailed')), 'error')
     } finally {
       setDeleting(false)
     }
@@ -292,7 +293,23 @@ export default function PlatformOrganizationsPage() {
       <div className="min-h-screen bg-[var(--glass-bg-root)]">
         <Navbar />
         <div className="flex items-center justify-center h-[calc(100vh-64px)]">
-          <div className="animate-pulse text-[var(--glass-text-secondary)]">{t('loading') || 'Loading...'}</div>
+          <div className="animate-pulse text-[var(--glass-text-secondary)]">{t('loading')}</div>
+        </div>
+      </div>
+    )
+  }
+
+  if (platformAdminError) {
+    return (
+      <div className="min-h-screen bg-[var(--glass-bg-root)]">
+        <Navbar />
+        <div className="mx-auto max-w-3xl px-4 py-16">
+          <PlatformPageError
+            title={t('platformAdminCheckFailed')}
+            message={platformAdminError.message}
+            retryLabel={t('retry')}
+            onRetry={retryPlatformAdminCheck}
+          />
         </div>
       </div>
     )
@@ -302,10 +319,7 @@ export default function PlatformOrganizationsPage() {
     return (
       <div className="min-h-screen bg-[var(--glass-bg-root)]">
         <Navbar />
-        <div className="flex flex-col items-center justify-center h-[calc(100vh-64px)]">
-          <h1 className="text-2xl font-bold text-[var(--glass-text-primary)] mb-4">403 - Access Denied</h1>
-          <p className="text-[var(--glass-text-secondary)]">You do not have permission to access this page.</p>
-        </div>
+        <PlatformAccessDenied title={t('accessDeniedTitle')} message={t('noPermission')} />
       </div>
     )
   }
@@ -315,7 +329,7 @@ export default function PlatformOrganizationsPage() {
       <Navbar />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex items-center justify-between mb-8">
-          <h1 className="text-3xl font-bold text-[var(--glass-text-primary)]">{t('organizations') || 'Organizations'}</h1>
+          <h1 className="text-3xl font-bold text-[var(--glass-text-primary)]">{t('organizations')}</h1>
           <div className="flex items-center gap-3">
             <button onClick={openCreateModal} className="glass-btn-base glass-btn-primary px-4 py-2">
               {t('newOrganization')}
@@ -333,7 +347,7 @@ export default function PlatformOrganizationsPage() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 onKeyDown={handleSearchKeyDown}
-                placeholder={t('searchPlaceholder') || '搜索组织名称或Slug...'}
+                placeholder={t('searchOrgPlaceholder')}
                 className="glass-input-base w-full px-3 py-2"
               />
             </div>
@@ -342,34 +356,36 @@ export default function PlatformOrganizationsPage() {
               onChange={(e) => setStatusFilter(e.target.value)}
               className="glass-input-base px-3 py-2"
             >
-              <option value="">{t('allStatus') || '全部状态'}</option>
-              <option value="active">{t('active') || '正常'}</option>
-              <option value="disabled">{t('disabled') || '已禁用'}</option>
+              <option value="">{t('allStatus')}</option>
+              <option value="active">{t('active')}</option>
+              <option value="disabled">{t('disabled')}</option>
             </select>
             <button onClick={handleSearch} className="glass-btn-base glass-btn-primary px-4 py-2">
-              {t('search') || '搜索'}
+              {t('search')}
             </button>
           </div>
         </div>
 
         {/* Table */}
         <div className="glass-surface overflow-hidden">
-          {loading ? (
-            <div className="p-8 text-center text-[var(--glass-text-secondary)]">{t('loading') || 'Loading...'}</div>
+          {loadError ? (
+            <PlatformPageError title={t('requestFailed')} message={loadError} retryLabel={t('retry')} onRetry={() => fetchOrganizations(pagination.page || 1)} />
+          ) : loading ? (
+            <div className="p-8 text-center text-[var(--glass-text-secondary)]">{t('loading')}</div>
           ) : organizations.length === 0 ? (
-            <div className="p-8 text-center text-[var(--glass-text-secondary)]">{t('noOrganizations') || 'No organizations found'}</div>
+            <div className="p-8 text-center text-[var(--glass-text-secondary)]">{t('noOrganizations')}</div>
           ) : (
             <table className="w-full">
               <thead className="bg-[var(--glass-bg-muted)]">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">{t('name') || 'Name'}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">{t('name')}</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">Slug</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">{t('status') || 'Status'}</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">{t('members') || 'Members'}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">{t('status')}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">{t('members')}</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">{t('planSummary')}</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">{t('balance') || 'Balance'}</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">{t('createdAt') || 'Created'}</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">{t('actions') || 'Actions'}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">{t('balance')}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">{t('createdAt')}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">{t('actions')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--glass-stroke-base)]">
@@ -387,7 +403,7 @@ export default function PlatformOrganizationsPage() {
                           ? 'bg-[var(--glass-tone-success-bg)] text-[var(--glass-tone-success-fg)]'
                           : 'bg-[var(--glass-tone-danger-bg)] text-[var(--glass-tone-danger-fg)]'
                       }`}>
-                        {org.status === 'active' ? (t('active') || 'Active') : (t('disabled') || 'Disabled')}
+                        {org.status === 'active' ? t('active') : t('disabled')}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-[var(--glass-text-secondary)]">{org.memberCount || 0}</td>
@@ -404,14 +420,14 @@ export default function PlatformOrganizationsPage() {
                           onClick={() => handleDisable(org.id)}
                           className="text-sm text-[var(--glass-tone-danger-fg)] hover:underline"
                         >
-                          {t('disable') || 'Disable'}
+                          {t('disable')}
                         </button>
                       ) : (
                         <button
                           onClick={() => handleEnable(org.id)}
                           className="text-sm text-[var(--glass-tone-success-fg)] hover:underline"
                         >
-                          {t('enable') || 'Enable'}
+                          {t('enable')}
                         </button>
                       )}
                     </td>
@@ -426,7 +442,7 @@ export default function PlatformOrganizationsPage() {
         {pagination.totalPages > 1 && (
           <div className="flex items-center justify-between mt-4">
             <div className="text-sm text-[var(--glass-text-secondary)]">
-              {t('pageInfo') || '第'} {pagination.page} {t('pageOf') || '/'} {pagination.totalPages} {t('pageTotal') || '页'} ({t('total') || '共'} {pagination.total} {t('items') || '项'})
+              {t('paginationSummary', { total: pagination.total, page: pagination.page, totalPages: pagination.totalPages })}
             </div>
             <div className="flex gap-2">
               <button
@@ -434,14 +450,14 @@ export default function PlatformOrganizationsPage() {
                 disabled={pagination.page <= 1}
                 className="glass-btn-base px-3 py-1.5 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {t('prevPage') || '上一页'}
+                {t('prevPage')}
               </button>
               <button
                 onClick={() => handlePageChange(pagination.page + 1)}
                 disabled={pagination.page >= pagination.totalPages}
                 className="glass-btn-base px-3 py-1.5 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {t('nextPage') || '下一页'}
+                {t('nextPage')}
               </button>
             </div>
           </div>
@@ -471,47 +487,47 @@ export default function PlatformOrganizationsPage() {
                   <div className="text-sm font-mono text-[var(--glass-text-primary)]">{selectedOrg.slug}</div>
                 </div>
                 <div>
-                  <div className="text-xs text-[var(--glass-text-secondary)] mb-1">{t('status') || '状态'}</div>
+                  <div className="text-xs text-[var(--glass-text-secondary)] mb-1">{t('status')}</div>
                   <span className={`px-2 py-1 text-xs rounded-full ${
                     selectedOrg.status === 'active'
                       ? 'bg-[var(--glass-tone-success-bg)] text-[var(--glass-tone-success-fg)]'
                       : 'bg-[var(--glass-tone-danger-bg)] text-[var(--glass-tone-danger-fg)]'
                   }`}>
-                    {selectedOrg.status === 'active' ? (t('active') || '正常') : (t('disabled') || '已禁用')}
+                    {selectedOrg.status === 'active' ? t('active') : t('disabled')}
                   </span>
                 </div>
                 <div>
-                  <div className="text-xs text-[var(--glass-text-secondary)] mb-1">{t('createdAt') || '创建时间'}</div>
+                  <div className="text-xs text-[var(--glass-text-secondary)] mb-1">{t('createdAt')}</div>
                   <div className="text-sm text-[var(--glass-text-primary)]">{new Date(selectedOrg.createdAt).toLocaleString()}</div>
                 </div>
                 <div>
-                  <div className="text-xs text-[var(--glass-text-secondary)] mb-1">{t('owner') || '拥有者'}</div>
+                  <div className="text-xs text-[var(--glass-text-secondary)] mb-1">{t('owner')}</div>
                   <div className="text-sm text-[var(--glass-text-primary)]">{selectedOrg.owner?.name || selectedOrg.owner?.email || '-'}</div>
                 </div>
               </div>
 
               {/* Balance Info */}
               <div className="glass-surface p-4 mb-6 bg-[var(--glass-bg-muted)]/30">
-                <h3 className="text-sm font-semibold text-[var(--glass-text-primary)] mb-3">{t('balance') || '余额信息'}</h3>
+                <h3 className="text-sm font-semibold text-[var(--glass-text-primary)] mb-3">{t('balance')}</h3>
                 <div className="grid grid-cols-3 gap-4 text-center">
                   <div>
                     <div className="text-lg font-bold text-[var(--glass-tone-success-fg)]">¥{detailBalance?.balance?.toFixed(2) || '0.00'}</div>
-                    <div className="text-xs text-[var(--glass-text-secondary)]">{t('currentBalance') || '当前余额'}</div>
+                    <div className="text-xs text-[var(--glass-text-secondary)]">{t('currentBalance')}</div>
                   </div>
                   <div>
                     <div className="text-lg font-bold text-[var(--glass-text-primary)]">¥{detailBalance?.frozenAmount?.toFixed(2) || '0.00'}</div>
-                    <div className="text-xs text-[var(--glass-text-secondary)]">{t('frozenAmount') || '冻结金额'}</div>
+                    <div className="text-xs text-[var(--glass-text-secondary)]">{t('frozenAmount')}</div>
                   </div>
                   <div>
                     <div className="text-lg font-bold text-[var(--glass-text-secondary)]">¥{detailBalance?.totalSpent?.toFixed(2) || '0.00'}</div>
-                    <div className="text-xs text-[var(--glass-text-secondary)]">{t('totalSpent') || '累计消费'}</div>
+                    <div className="text-xs text-[var(--glass-text-secondary)]">{t('totalSpent')}</div>
                   </div>
                 </div>
               </div>
 
               {/* Recharge */}
               <div className="glass-surface p-4 mb-6 bg-[var(--glass-bg-muted)]/30">
-                <h3 className="text-sm font-semibold text-[var(--glass-text-primary)] mb-3">{t('recharge') || '充值'}</h3>
+                <h3 className="text-sm font-semibold text-[var(--glass-text-primary)] mb-3">{t('recharge')}</h3>
                 <div className="flex gap-3">
                   <input
                     type="number"
@@ -519,7 +535,7 @@ export default function PlatformOrganizationsPage() {
                     step="0.01"
                     value={rechargeAmount}
                     onChange={(e) => setRechargeAmount(e.target.value)}
-                    placeholder={t('enterAmount') || '请输入充值金额'}
+                    placeholder={t('enterAmount')}
                     className="glass-input-base flex-1 px-3 py-2"
                   />
                   <button
@@ -527,7 +543,7 @@ export default function PlatformOrganizationsPage() {
                     disabled={recharging || !rechargeAmount}
                     className="glass-btn-base glass-btn-primary px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
                   >
-                    {recharging ? (t('recharging') || '充值中...') : (t('recharge') || '充值')}
+                    {recharging ? t('recharging') : t('recharge')}
                   </button>
                 </div>
               </div>
@@ -535,20 +551,22 @@ export default function PlatformOrganizationsPage() {
 
               {/* Members List */}
               {activeDetailTab === 'members' && <div>
-                <h3 className="text-sm font-semibold text-[var(--glass-text-primary)] mb-3">{t('members') || '成员列表'}</h3>
-                {membersLoading ? (
-                  <div className="text-center py-4 text-[var(--glass-text-secondary)]">{t('loading') || 'Loading...'}</div>
+                <h3 className="text-sm font-semibold text-[var(--glass-text-primary)] mb-3">{t('members')}</h3>
+                {membersError ? (
+                  <PlatformPageError title={t('requestFailed')} message={membersError} retryLabel={t('retry')} onRetry={() => loadMembers(selectedOrg)} />
+                ) : membersLoading ? (
+                  <div className="text-center py-4 text-[var(--glass-text-secondary)]">{t('loading')}</div>
                 ) : members.length === 0 ? (
-                  <div className="text-center py-4 text-[var(--glass-text-secondary)]">{t('noMembers') || '暂无成员'}</div>
+                  <div className="text-center py-4 text-[var(--glass-text-secondary)]">{t('noMembers')}</div>
                 ) : (
                   <div className="overflow-hidden rounded-lg border border-[var(--glass-stroke-base)]">
                     <table className="w-full">
                       <thead className="bg-[var(--glass-bg-muted)]">
                         <tr>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-[var(--glass-text-secondary)]">{t('name') || '名称'}</th>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-[var(--glass-text-secondary)]">{t('email') || '邮箱'}</th>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-[var(--glass-text-secondary)]">{t('role') || '角色'}</th>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-[var(--glass-text-secondary)]">{t('status') || '状态'}</th>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-[var(--glass-text-secondary)]">{t('name')}</th>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-[var(--glass-text-secondary)]">{t('email')}</th>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-[var(--glass-text-secondary)]">{t('role')}</th>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-[var(--glass-text-secondary)]">{t('status')}</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[var(--glass-stroke-base)]">
@@ -644,7 +662,7 @@ export default function PlatformOrganizationsPage() {
                     type="text"
                     value={createSlug}
                     onChange={(e) => setCreateSlug(e.target.value)}
-                    placeholder="例如：my-org（小写字母、数字、连字符）"
+                    placeholder={t('organizationSlugPlaceholder')}
                     className="glass-input-base w-full px-3 py-2"
                   />
                 </div>
