@@ -22,7 +22,10 @@ export const GET = apiHandler(async (
 
   // 获取配音台词
   const whereClause: Record<string, unknown> = {
-    audioUrl: { not: null }
+    audioUrl: { not: null },
+    episode: {
+      novelPromotionProject: { projectId }
+    }
   }
 
   if (episodeId) {

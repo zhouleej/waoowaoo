@@ -11,6 +11,7 @@ import {
   collectBailianManagedVoiceIds,
   cleanupUnreferencedBailianVoices,
 } from '@/lib/providers/bailian'
+import { requireNovelPromotionCharacterInProject } from '@/lib/saas/novel-promotion-resource-access'
 
 function toObject(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
@@ -47,6 +48,8 @@ export const PATCH = apiHandler(async (
   const updateData: { name?: string; introduction?: string } = {}
   if (name) updateData.name = name.trim()
   if (introduction !== undefined) updateData.introduction = introduction.trim()
+
+  await requireNovelPromotionCharacterInProject(projectId, characterId)
 
   // 更新角色
   const character = await prisma.novelPromotionCharacter.update({

@@ -5,6 +5,7 @@ import { getSignedUrl, generateUniqueKey, downloadAndUploadImage, toFetchableUrl
 import { resolveStorageKeyFromMediaValue } from '@/lib/media/service'
 import { requireProjectAuthLight, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
+import { requireNovelPromotionPanelInProject } from '@/lib/saas/novel-promotion-resource-access'
 
 interface PanelHistoryEntry {
   url: string
@@ -52,6 +53,8 @@ export const POST = apiHandler(async (
   if (!panelId) {
     throw new ApiError('INVALID_PARAMS')
   }
+
+  await requireNovelPromotionPanelInProject(projectId, panelId)
 
   // === 取消操作 ===
   if (action === 'cancel') {

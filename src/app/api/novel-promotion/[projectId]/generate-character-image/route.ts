@@ -6,6 +6,10 @@ import { resolveTaskLocale } from '@/lib/task/resolve-locale'
 import { isArtStyleValue, type ArtStyleValue } from '@/lib/constants'
 import { normalizeImageGenerationCount } from '@/lib/image-generation/count'
 import { submitAssetGenerateTask } from '@/lib/assets/services/asset-actions'
+import {
+  requireNovelPromotionCharacterAppearanceInProject,
+  requireNovelPromotionCharacterInProject,
+} from '@/lib/saas/novel-promotion-resource-access'
 
 function toObject(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
@@ -48,10 +52,15 @@ export const POST = apiHandler(async (
     throw new ApiError('INVALID_PARAMS')
   }
 
+  await requireNovelPromotionCharacterInProject(projectId, characterId)
+
   let targetAppearanceId = appearanceId
   if (!targetAppearanceId) {
-    const character = await prisma.novelPromotionCharacter.findUnique({
-      where: { id: characterId },
+    const character = await prisma.novelPromotionCharacter.findFirst({
+      where: {
+        id: characterId,
+        novelPromotionProject: { projectId },
+      },
       include: { appearances: { orderBy: { appearanceIndex: 'asc' } } },
     })
     if (!character) {
@@ -62,6 +71,11 @@ export const POST = apiHandler(async (
       throw new ApiError('NOT_FOUND')
     }
     targetAppearanceId = firstAppearance.id
+  } else {
+    const appearance = await requireNovelPromotionCharacterAppearanceInProject(projectId, targetAppearanceId)
+    if (appearance.characterId !== characterId) {
+      throw new ApiError('INVALID_PARAMS')
+    }
   }
 
   const result = await submitAssetGenerateTask({

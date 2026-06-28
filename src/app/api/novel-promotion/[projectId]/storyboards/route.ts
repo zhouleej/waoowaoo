@@ -3,6 +3,10 @@ import { prisma } from '@/lib/prisma'
 import { requireProjectAuthLight, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
 import { attachMediaFieldsToProject } from '@/lib/media/attach'
+import {
+    requireNovelPromotionEpisodeInProject,
+    requireNovelPromotionStoryboardInProject,
+} from '@/lib/saas/novel-promotion-resource-access'
 
 /**
  * GET /api/novel-promotion/[projectId]/storyboards
@@ -24,6 +28,8 @@ export const GET = apiHandler(async (
     if (!episodeId) {
         throw new ApiError('INVALID_PARAMS')
     }
+
+    await requireNovelPromotionEpisodeInProject(projectId, episodeId)
 
     // 获取剧集的分镜数据
     const storyboards = await prisma.novelPromotionStoryboard.findMany({
@@ -60,6 +66,8 @@ export const PATCH = apiHandler(async (
     if (!storyboardId) {
         throw new ApiError('INVALID_PARAMS')
     }
+
+    await requireNovelPromotionStoryboardInProject(projectId, storyboardId)
 
     await prisma.novelPromotionStoryboard.update({
         where: { id: storyboardId },

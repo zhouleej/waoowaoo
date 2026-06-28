@@ -6,6 +6,7 @@ import { decodeImageUrlsFromDb, encodeImageUrls } from '@/lib/contracts/image-ur
 import { resolveStorageKeyFromMediaValue } from '@/lib/media/service'
 import { requireProjectAuthLight, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
+import { requireNovelPromotionCharacterAppearanceInProject } from '@/lib/saas/novel-promotion-resource-access'
 
 /**
  * POST - 为现有角色添加子形象
@@ -166,6 +167,11 @@ export const DELETE = apiHandler(async (
   const appearanceId = searchParams.get('appearanceId')
 
   if (!characterId || !appearanceId) {
+    throw new ApiError('INVALID_PARAMS')
+  }
+
+  const scopedAppearance = await requireNovelPromotionCharacterAppearanceInProject(projectId, appearanceId)
+  if (scopedAppearance.characterId !== characterId) {
     throw new ApiError('INVALID_PARAMS')
   }
 

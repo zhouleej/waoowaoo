@@ -5,6 +5,7 @@ import { deleteObject } from '@/lib/storage'
 import { resolveStorageKeyFromMediaValue } from '@/lib/media/service'
 import { requireProjectAuthLight, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
+import { requireNovelPromotionLocationInProject } from '@/lib/saas/novel-promotion-resource-access'
 
 /**
  * POST - 确认场景选择并删除未选中的候选图片
@@ -31,6 +32,8 @@ export const POST = apiHandler(async (
   if (!locationId) {
     throw new ApiError('INVALID_PARAMS')
   }
+
+  await requireNovelPromotionLocationInProject(projectId, locationId)
 
   // 获取场景及其图片
   const location = await prisma.novelPromotionLocation.findUnique({

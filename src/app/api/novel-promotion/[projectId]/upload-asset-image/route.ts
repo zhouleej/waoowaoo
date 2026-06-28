@@ -6,6 +6,10 @@ import { initializeFonts, createLabelSVG } from '@/lib/fonts'
 import { decodeImageUrlsFromDb, encodeImageUrls } from '@/lib/contracts/image-urls-contract'
 import { requireProjectAuthLight, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
+import {
+  requireNovelPromotionCharacterAppearanceInProject,
+  requireNovelPromotionLocationInProject,
+} from '@/lib/saas/novel-promotion-resource-access'
 
 interface CharacterAppearanceRecord {
   id: string
@@ -66,6 +70,20 @@ export const POST = apiHandler(async (
   const labelText = formData.get('labelText') as string // 文字标识符
 
   if (!file || !type || !id || !labelText) {
+    throw new ApiError('INVALID_PARAMS')
+  }
+
+  if (type === 'character') {
+    if (!appearanceId) {
+      throw new ApiError('INVALID_PARAMS')
+    }
+    const appearance = await requireNovelPromotionCharacterAppearanceInProject(projectId, appearanceId)
+    if (appearance.characterId !== id) {
+      throw new ApiError('INVALID_PARAMS')
+    }
+  } else if (type === 'location') {
+    await requireNovelPromotionLocationInProject(projectId, id)
+  } else {
     throw new ApiError('INVALID_PARAMS')
   }
 

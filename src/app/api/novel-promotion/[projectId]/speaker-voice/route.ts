@@ -9,6 +9,7 @@ import {
   type SpeakerVoiceEntry,
   type SpeakerVoiceMap,
 } from '@/lib/voice/provider-voice-binding'
+import { requireNovelPromotionEpisodeInProject } from '@/lib/saas/novel-promotion-resource-access'
 
 function readTrimmedString(input: unknown): string | null {
   if (typeof input !== 'string') return null
@@ -40,8 +41,11 @@ export const GET = apiHandler(async (
     throw new ApiError('INVALID_PARAMS')
   }
 
-  const episode = await prisma.novelPromotionEpisode.findUnique({
-    where: { id: episodeId },
+  const episode = await prisma.novelPromotionEpisode.findFirst({
+    where: {
+      id: episodeId,
+      novelPromotionProject: { projectId },
+    },
   })
 
   if (!episode) {
@@ -113,16 +117,13 @@ export const PATCH = apiHandler(async (
     throw new ApiError('INVALID_PARAMS')
   }
 
-  const projectData = await prisma.novelPromotionProject.findUnique({
-    where: { projectId },
-    select: { id: true },
-  })
-  if (!projectData) {
-    throw new ApiError('NOT_FOUND')
-  }
+  await requireNovelPromotionEpisodeInProject(projectId, episodeId)
 
   const episode = await prisma.novelPromotionEpisode.findFirst({
-    where: { id: episodeId, novelPromotionProjectId: projectData.id },
+    where: {
+      id: episodeId,
+      novelPromotionProject: { projectId },
+    },
     select: { id: true, speakerVoices: true },
   })
   if (!episode) {

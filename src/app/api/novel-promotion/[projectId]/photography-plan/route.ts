@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireProjectAuthLight, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
+import { requireNovelPromotionStoryboardInProject } from '@/lib/saas/novel-promotion-resource-access'
 
 /**
  * PUT /api/novel-promotion/[projectId]/photography-plan
@@ -26,6 +27,8 @@ export const PUT = apiHandler(async (
     }
 
     // 验证 storyboard 存在
+    await requireNovelPromotionStoryboardInProject(projectId, storyboardId)
+
     const storyboard = await prisma.novelPromotionStoryboard.findUnique({
         where: { id: storyboardId }
     })

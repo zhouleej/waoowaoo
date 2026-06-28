@@ -26,8 +26,11 @@ export const POST = apiHandler(async (
   }
 
   // 获取剧集和现有 clips
-  const episode = await prisma.novelPromotionEpisode.findUnique({
-    where: { id: episodeId },
+  const episode = await prisma.novelPromotionEpisode.findFirst({
+    where: {
+      id: episodeId,
+      novelPromotionProject: { projectId },
+    },
     include: {
       clips: { orderBy: { createdAt: 'asc' } }
     }
@@ -133,8 +136,11 @@ export const PUT = apiHandler(async (
   }
 
   // 获取剧集和所有 clips（按 createdAt 排序）
-  const episode = await prisma.novelPromotionEpisode.findUnique({
-    where: { id: episodeId },
+  const episode = await prisma.novelPromotionEpisode.findFirst({
+    where: {
+      id: episodeId,
+      novelPromotionProject: { projectId },
+    },
     include: {
       clips: { orderBy: { createdAt: 'asc' } }
     }
@@ -214,8 +220,13 @@ export const DELETE = apiHandler(async (
   }
 
   // 获取 storyboard 及其关联的 clip
-  const storyboard = await prisma.novelPromotionStoryboard.findUnique({
-    where: { id: storyboardId },
+  const storyboard = await prisma.novelPromotionStoryboard.findFirst({
+    where: {
+      id: storyboardId,
+      episode: {
+        novelPromotionProject: { projectId },
+      },
+    },
     include: {
       panels: true,
       clip: true

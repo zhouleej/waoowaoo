@@ -6,6 +6,7 @@ import { requireProjectAuthLight, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
 import { attachMediaFieldsToProject } from '@/lib/media/attach'
 import { resolveMediaRefFromLegacyValue } from '@/lib/media/service'
+import { requireNovelPromotionEpisodeInProject } from '@/lib/saas/novel-promotion-resource-access'
 
 /**
  * GET - 获取单个剧集的完整数据
@@ -21,8 +22,11 @@ export const GET = apiHandler(async (
   if (isErrorResponse(authResult)) return authResult
 
   // 获取剧集及其关联数据
-  const episode = await prisma.novelPromotionEpisode.findUnique({
-    where: { id: episodeId },
+  const episode = await prisma.novelPromotionEpisode.findFirst({
+    where: {
+      id: episodeId,
+      novelPromotionProject: { projectId },
+    },
     include: {
       clips: {
         orderBy: { createdAt: 'asc' }
@@ -75,6 +79,8 @@ export const PATCH = apiHandler(async (
   const body = await request.json()
   const { name, description, novelText, audioUrl, srtContent } = body
 
+  await requireNovelPromotionEpisodeInProject(projectId, episodeId)
+
   const updateData: Prisma.NovelPromotionEpisodeUncheckedUpdateInput = {}
   if (name !== undefined) updateData.name = name.trim()
   if (description !== undefined) updateData.description = description?.trim() || null
@@ -108,6 +114,8 @@ export const DELETE = apiHandler(async (
   if (isErrorResponse(authResult)) return authResult
 
   // 删除剧集（关联数据会级联删除）
+  await requireNovelPromotionEpisodeInProject(projectId, episodeId)
+
   await prisma.novelPromotionEpisode.delete({
     where: { id: episodeId }
   })

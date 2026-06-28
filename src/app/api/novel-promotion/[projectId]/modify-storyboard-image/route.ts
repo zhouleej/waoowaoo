@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireProjectAuthLight, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError, getRequestId } from '@/lib/api-errors'
-import { prisma } from '@/lib/prisma'
 import { submitTask } from '@/lib/task/submitter'
 import { resolveRequiredTaskLocale } from '@/lib/task/resolve-locale'
 import { TASK_TYPE } from '@/lib/task/types'
@@ -10,6 +9,7 @@ import { hasPanelImageOutput } from '@/lib/task/has-output'
 import { withTaskUiPayload } from '@/lib/task/ui-payload'
 import { getProjectModelConfig, buildImageBillingPayload } from '@/lib/config-service'
 import { sanitizeImageInputsForTaskPayload } from '@/lib/media/outbound-image'
+import { requireNovelPromotionPanelByStoryboardIndexInProject } from '@/lib/saas/novel-promotion-resource-access'
 
 function toObject(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
@@ -36,18 +36,7 @@ export const POST = apiHandler(async (
     throw new ApiError('INVALID_PARAMS')
   }
 
-  const panel = await prisma.novelPromotionPanel.findFirst({
-    where: {
-      storyboardId,
-      panelIndex
-    },
-    select: {
-      id: true
-    }
-  })
-  if (!panel) {
-    throw new ApiError('NOT_FOUND')
-  }
+  const panel = await requireNovelPromotionPanelByStoryboardIndexInProject(projectId, storyboardId, panelIndex)
 
   const extraImageAudit = sanitizeImageInputsForTaskPayload(
     Array.isArray(body?.extraImageUrls) ? body.extraImageUrls : [],

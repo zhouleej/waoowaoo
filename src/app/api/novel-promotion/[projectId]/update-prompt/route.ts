@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireProjectAuthLight, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
+import { requireNovelPromotionShotInProject } from '@/lib/saas/novel-promotion-resource-access'
 
 export const POST = apiHandler(async (
   request: NextRequest,
@@ -19,6 +20,12 @@ export const POST = apiHandler(async (
   if (field !== 'imagePrompt' && field !== 'videoPrompt') {
     throw new ApiError('INVALID_PARAMS')
   }
+
+  if (!shotId) {
+    throw new ApiError('INVALID_PARAMS')
+  }
+
+  await requireNovelPromotionShotInProject(projectId, shotId)
 
   // 更新shot
   const updatedShot = await prisma.novelPromotionShot.update({

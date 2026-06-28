@@ -45,8 +45,11 @@ export const GET = apiHandler(async (
 
   if (episodeId) {
     // 只获取指定剧集的数据
-    const episode = await prisma.novelPromotionEpisode.findUnique({
-      where: { id: episodeId },
+    const episode = await prisma.novelPromotionEpisode.findFirst({
+      where: {
+        id: episodeId,
+        novelPromotionProject: { projectId },
+      },
       include: {
         storyboards: {
           include: {

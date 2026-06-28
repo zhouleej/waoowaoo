@@ -3,6 +3,10 @@ import { prisma } from '@/lib/prisma'
 import { requireProjectAuthLight, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
 import { serializeStructuredJsonField } from '@/lib/novel-promotion/panel-ai-data-sync'
+import {
+  requireNovelPromotionPanelInProject,
+  requireNovelPromotionStoryboardInProject,
+} from '@/lib/saas/novel-promotion-resource-access'
 
 function parseNullableNumberField(value: unknown): number | null {
   if (value === null || value === '') return null
@@ -59,6 +63,8 @@ export const POST = apiHandler(async (
   if (!storyboardId) {
     throw new ApiError('INVALID_PARAMS')
   }
+
+  await requireNovelPromotionStoryboardInProject(projectId, storyboardId)
 
   // 验证 storyboard 存在，并获取现有 panels 以计算正确的 panelIndex
   const storyboard = await prisma.novelPromotionStoryboard.findUnique({
@@ -135,13 +141,7 @@ export const DELETE = apiHandler(async (
   }
 
   // 获取要删除的 Panel 信息
-  const panel = await prisma.novelPromotionPanel.findUnique({
-    where: { id: panelId }
-  })
-
-  if (!panel) {
-    throw new ApiError('NOT_FOUND')
-  }
+  const panel = await requireNovelPromotionPanelInProject(projectId, panelId)
 
   const storyboardId = panel.storyboardId
 
@@ -233,13 +233,7 @@ export const PATCH = apiHandler(async (
 
   // 🔥 方式1：通过 panelId 直接更新（优先）
   if (panelId) {
-    const panel = await prisma.novelPromotionPanel.findUnique({
-      where: { id: panelId }
-    })
-
-    if (!panel) {
-      throw new ApiError('NOT_FOUND')
-    }
+    await requireNovelPromotionPanelInProject(projectId, panelId)
 
     // 构建更新数据
     const updateData: {
@@ -263,6 +257,8 @@ export const PATCH = apiHandler(async (
   }
 
   // 验证 storyboard 存在
+  await requireNovelPromotionStoryboardInProject(projectId, storyboardId)
+
   const storyboard = await prisma.novelPromotionStoryboard.findUnique({
     where: { id: storyboardId }
   })
@@ -352,6 +348,8 @@ export const PUT = apiHandler(async (
   }
 
   // 验证 storyboard 存在
+  await requireNovelPromotionStoryboardInProject(projectId, storyboardId)
+
   const storyboard = await prisma.novelPromotionStoryboard.findUnique({
     where: { id: storyboardId }
   })
