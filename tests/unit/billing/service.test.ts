@@ -20,9 +20,24 @@ const entitlementsMock = vi.hoisted(() => ({
   assertOrganizationCanConsume: vi.fn(),
 }))
 
+const organizationBillingMock = vi.hoisted(() => ({
+  confirmOrganizationCharge: vi.fn(),
+  confirmOrganizationChargeWithRecord: vi.fn(),
+  freezeOrganizationBalance: vi.fn(),
+  getOrganizationBalance: vi.fn(),
+  increaseOrganizationPendingFreezeAmount: vi.fn(),
+  rollbackOrganizationFreeze: vi.fn(),
+}))
+
+const reportingMock = vi.hoisted(() => ({
+  recordUsageCostOnly: vi.fn(),
+}))
+
 vi.mock('@/lib/billing/ledger', () => ledgerMock)
 vi.mock('@/lib/billing/mode', () => modeMock)
 vi.mock('@/lib/saas/entitlements', () => entitlementsMock)
+vi.mock('@/lib/billing/organization', () => organizationBillingMock)
+vi.mock('@/lib/billing/reporting', () => reportingMock)
 
 import { BillingOperationError, InsufficientBalanceError } from '@/lib/billing/errors'
 import {
@@ -45,6 +60,19 @@ describe('billing/service', () => {
     ledgerMock.recordShadowUsage.mockResolvedValue(true)
     ledgerMock.rollbackFreeze.mockResolvedValue(true)
     entitlementsMock.assertOrganizationCanConsume.mockResolvedValue(null)
+    organizationBillingMock.confirmOrganizationCharge.mockResolvedValue(true)
+    organizationBillingMock.confirmOrganizationChargeWithRecord.mockResolvedValue(true)
+    organizationBillingMock.freezeOrganizationBalance.mockResolvedValue('org_freeze_1')
+    organizationBillingMock.getOrganizationBalance.mockResolvedValue({
+      id: 'org_balance_1',
+      organizationId: 'org_1',
+      balance: 10,
+      frozenAmount: 0,
+      totalSpent: 0,
+    })
+    organizationBillingMock.increaseOrganizationPendingFreezeAmount.mockResolvedValue(true)
+    organizationBillingMock.rollbackOrganizationFreeze.mockResolvedValue(true)
+    reportingMock.recordUsageCostOnly.mockResolvedValue(undefined)
   })
 
   it('returns raw execution result in OFF mode', async () => {
@@ -335,6 +363,70 @@ describe('billing/service', () => {
       ).rejects.toBeInstanceOf(InsufficientBalanceError)
     })
 
+    it('prepareTaskBilling freezes organization balance instead of personal balance for organization tasks', async () => {
+      modeMock.getBillingMode.mockResolvedValue('ENFORCE')
+      entitlementsMock.assertOrganizationCanConsume.mockResolvedValue({
+        organizationId: 'org_1',
+        planCreditApplied: 0,
+        balanceChargeApplied: calcVoice(5),
+      })
+
+      const prepared = await prepareTaskBilling({
+        id: 'task_org_enforce',
+        userId: 'u1',
+        projectId: 'project_org',
+        billingInfo: buildTaskInfo(),
+      })
+
+      const info = prepared as Extract<TaskBillingInfo, { billable: true }>
+      expect(info.status).toBe('frozen')
+      expect(info.organizationId).toBe('org_1')
+      expect(info.freezeScope).toBe('organization')
+      expect(info.freezeId).toBe('org_freeze_1')
+      expect(organizationBillingMock.freezeOrganizationBalance).toHaveBeenCalledWith(
+        'org_1',
+        calcVoice(5),
+        expect.objectContaining({
+          taskId: 'task_org_enforce',
+          userId: 'u1',
+          idempotencyKey: 'task_org_enforce',
+        }),
+      )
+      expect(ledgerMock.freezeBalance).not.toHaveBeenCalled()
+    })
+
+    it('prepareTaskBilling creates a zero-balance organization reservation when plan credit covers the estimate', async () => {
+      modeMock.getBillingMode.mockResolvedValue('ENFORCE')
+      entitlementsMock.assertOrganizationCanConsume.mockResolvedValue({
+        organizationId: 'org_1',
+        planCreditApplied: calcVoice(5),
+        balanceChargeApplied: 0,
+      })
+      organizationBillingMock.freezeOrganizationBalance.mockResolvedValueOnce('org_reservation_1')
+
+      const prepared = await prepareTaskBilling({
+        id: 'task_org_plan_credit_prepare',
+        userId: 'u1',
+        projectId: 'project_org',
+        billingInfo: buildTaskInfo(),
+      })
+
+      const info = prepared as Extract<TaskBillingInfo, { billable: true }>
+      expect(info.status).toBe('frozen')
+      expect(info.freezeScope).toBe('organization')
+      expect(info.freezeId).toBe('org_reservation_1')
+      expect(organizationBillingMock.freezeOrganizationBalance).toHaveBeenCalledWith(
+        'org_1',
+        0,
+        expect.objectContaining({
+          taskId: 'task_org_plan_credit_prepare',
+          userId: 'u1',
+          planCreditAmount: calcVoice(5),
+        }),
+      )
+      expect(ledgerMock.freezeBalance).not.toHaveBeenCalled()
+    })
+
     it('settleTaskBilling handles SHADOW and non-ENFORCE snapshots', async () => {
       const shadowSettled = await settleTaskBilling({
         id: 'task_shadow_settle',
@@ -437,6 +529,114 @@ describe('billing/service', () => {
           billingInfo: buildTaskInfo({ modeSnapshot: 'ENFORCE', freezeId: 'freeze_fail' }),
         }),
       ).rejects.toThrow('confirm failed')
+    })
+
+    it('settleTaskBilling confirms organization freeze and records organization usage without personal ledger confirmation', async () => {
+      const settled = await settleTaskBilling({
+        id: 'task_org_settle',
+        userId: 'u1',
+        projectId: 'project_org',
+        billingInfo: buildTaskInfo({
+          organizationId: 'org_1',
+          planCreditApplied: 0,
+          balanceChargeApplied: calcVoice(5),
+          modeSnapshot: 'ENFORCE',
+          freezeScope: 'organization',
+          freezeId: 'org_freeze_1',
+        }),
+      })
+
+      const info = settled as Extract<TaskBillingInfo, { billable: true }>
+      expect(info.status).toBe('settled')
+      expect(info.chargedCost).toBeCloseTo(calcVoice(5), 8)
+      expect(organizationBillingMock.confirmOrganizationChargeWithRecord).toHaveBeenCalledWith(
+        'org_freeze_1',
+        calcVoice(5),
+        expect.objectContaining({
+          projectId: 'project_org',
+          userId: 'u1',
+          organizationId: 'org_1',
+          cost: calcVoice(5),
+          balanceAmount: calcVoice(5),
+          metadata: expect.objectContaining({
+            organizationChargedBalanceAmount: calcVoice(5),
+          }),
+        }),
+      )
+      expect(ledgerMock.confirmChargeWithRecord).not.toHaveBeenCalled()
+      expect(reportingMock.recordUsageCostOnly).not.toHaveBeenCalled()
+    })
+
+    it('settleTaskBilling confirms plan-credit-only organization usage through a zero-balance reservation', async () => {
+      const settled = await settleTaskBilling({
+        id: 'task_org_plan_credit',
+        userId: 'u1',
+        projectId: 'project_org',
+        billingInfo: buildTaskInfo({
+          organizationId: 'org_1',
+          planCreditApplied: calcVoice(5),
+          balanceChargeApplied: 0,
+          modeSnapshot: 'ENFORCE',
+          freezeScope: 'organization',
+          freezeId: 'org_reservation_1',
+        }),
+      })
+
+      const info = settled as Extract<TaskBillingInfo, { billable: true }>
+      expect(info.status).toBe('settled')
+      expect(info.chargedCost).toBeCloseTo(calcVoice(5), 8)
+      expect(organizationBillingMock.confirmOrganizationChargeWithRecord).toHaveBeenCalledWith(
+        'org_reservation_1',
+        0,
+        expect.objectContaining({
+          projectId: 'project_org',
+          userId: 'u1',
+          organizationId: 'org_1',
+          cost: calcVoice(5),
+          planCreditAmount: calcVoice(5),
+          balanceAmount: 0,
+        }),
+      )
+      expect(ledgerMock.confirmChargeWithRecord).not.toHaveBeenCalled()
+      expect(reportingMock.recordUsageCostOnly).not.toHaveBeenCalled()
+    })
+
+    it('settleTaskBilling expands a zero-balance organization reservation when actual usage exceeds plan credit', async () => {
+      const quoted = calcVoice(5)
+      const actual = calcVoice(50)
+
+      const settled = await settleTaskBilling({
+        id: 'task_org_plan_credit_overage',
+        userId: 'u1',
+        projectId: 'project_org',
+        billingInfo: buildTaskInfo({
+          organizationId: 'org_1',
+          planCreditApplied: quoted,
+          balanceChargeApplied: 0,
+          modeSnapshot: 'ENFORCE',
+          freezeScope: 'organization',
+          freezeId: 'org_reservation_overage',
+        }),
+      }, {
+        result: { actualDurationSeconds: 50 },
+      })
+
+      const info = settled as Extract<TaskBillingInfo, { billable: true }>
+      expect(info.status).toBe('settled')
+      expect(info.chargedCost).toBeCloseTo(actual, 8)
+      expect(organizationBillingMock.increaseOrganizationPendingFreezeAmount).toHaveBeenCalledWith(
+        'org_reservation_overage',
+        expect.closeTo(actual - quoted, 8),
+      )
+      expect(organizationBillingMock.confirmOrganizationChargeWithRecord).toHaveBeenCalledWith(
+        'org_reservation_overage',
+        expect.closeTo(actual - quoted, 8),
+        expect.objectContaining({
+          balanceAmount: expect.closeTo(actual - quoted, 8),
+          planCreditAmount: quoted,
+        }),
+      )
+      expect(ledgerMock.confirmChargeWithRecord).not.toHaveBeenCalled()
     })
 
     it('settleTaskBilling throws BILLING_CONFIRM_FAILED when confirm and rollback both fail', async () => {
@@ -566,6 +766,22 @@ describe('billing/service', () => {
         billingInfo: buildTaskInfo({ modeSnapshot: 'ENFORCE', freezeId: 'freeze_rb_fail' }),
       })
       expect((rollbackFailed as Extract<TaskBillingInfo, { billable: true }>).status).toBe('failed')
+    })
+
+    it('rollbackTaskBilling rolls back organization freezes with organization billing service', async () => {
+      const rolledBack = await rollbackTaskBilling({
+        id: 'task_org_rb_ok',
+        billingInfo: buildTaskInfo({
+          organizationId: 'org_1',
+          freezeScope: 'organization',
+          modeSnapshot: 'ENFORCE',
+          freezeId: 'org_freeze_rb_ok',
+        }),
+      })
+
+      expect((rolledBack as Extract<TaskBillingInfo, { billable: true }>).status).toBe('rolled_back')
+      expect(organizationBillingMock.rollbackOrganizationFreeze).toHaveBeenCalledWith('org_freeze_rb_ok')
+      expect(ledgerMock.rollbackFreeze).not.toHaveBeenCalled()
     })
   })
 })

@@ -87,6 +87,7 @@ export const GET = apiHandler(async (req, ctx) => {
     by: ['userId'],
     where: {
       organizationId,
+      type: 'task',
       ...(startDate ? { createdAt: { gte: startDate } } : {}),
       ...(endDate ? { createdAt: { lte: endDate } } : {}),
     },
@@ -121,6 +122,7 @@ export const GET = apiHandler(async (req, ctx) => {
     by: ['type'],
     where: {
       organizationId,
+      type: 'task',
       ...(startDate ? { createdAt: { gte: startDate } } : {}),
       ...(endDate ? { createdAt: { lte: endDate } } : {}),
     },

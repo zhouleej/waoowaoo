@@ -8,6 +8,8 @@ export {
   addOrganizationBalance,
   freezeOrganizationBalance,
   confirmOrganizationCharge,
+  confirmOrganizationChargeWithRecord,
+  increaseOrganizationPendingFreezeAmount,
   rollbackOrganizationFreeze,
   checkOrganizationBalance,
   getOrganizationMemberQuota,

@@ -23,6 +23,14 @@ import {
   recordShadowUsage,
   rollbackFreeze,
 } from './ledger'
+import {
+  confirmOrganizationChargeWithRecord,
+  freezeOrganizationBalance,
+  getOrganizationBalance,
+  increaseOrganizationPendingFreezeAmount,
+  rollbackOrganizationFreeze,
+} from './organization'
+import { recordUsageCostOnly } from './reporting'
 import type { ApiType, UsageUnit } from './cost'
 import { getBillingMode } from './mode'
 import { BillingOperationError, InsufficientBalanceError } from './errors'
@@ -240,6 +248,53 @@ async function ensureFreezeCoverage(params: {
   await rollbackFreeze(params.freezeId)
   const balance = await getBalance(params.userId)
   throw new InsufficientBalanceError(chargedCost, balance.balance)
+}
+
+function resolveOrganizationChargeSplit(
+  info: Extract<TaskBillingInfo, { billable: true }>,
+  actualCost: number,
+) {
+  const normalizedActualCost = normalizeMoney(actualCost)
+  const reservedPlanCredit = normalizeMoney(Number(info.planCreditApplied || 0))
+  const planCreditAmount = Math.min(normalizedActualCost, reservedPlanCredit)
+  const balanceAmount = normalizeMoney(Math.max(0, normalizedActualCost - planCreditAmount))
+  return {
+    planCreditAmount,
+    balanceAmount,
+  }
+}
+
+async function getOrganizationAvailableBalance(organizationId: string): Promise<number> {
+  const balance = await getOrganizationBalance(organizationId)
+  if (!balance) return 0
+  return normalizeMoney(Number(balance.balance || 0) - Number(balance.frozenAmount || 0))
+}
+
+async function ensureOrganizationFreezeCoverage(params: {
+  freezeId: string
+  organizationId: string
+  actualBalanceAmount: number
+  quotedBalanceAmount: number
+}): Promise<number> {
+  const normalizedQuoted = normalizeMoney(params.quotedBalanceAmount)
+  const chargedBalanceAmount = normalizeMoney(params.actualBalanceAmount)
+  if (chargedBalanceAmount <= normalizedQuoted + MONEY_EPSILON) {
+    return chargedBalanceAmount
+  }
+
+  const overage = normalizeMoney(chargedBalanceAmount - normalizedQuoted)
+  if (overage <= MONEY_EPSILON) {
+    return chargedBalanceAmount
+  }
+
+  const expanded = await increaseOrganizationPendingFreezeAmount(params.freezeId, overage)
+  if (expanded) {
+    return chargedBalanceAmount
+  }
+
+  await rollbackOrganizationFreeze(params.freezeId)
+  const available = await getOrganizationAvailableBalance(params.organizationId)
+  throw new InsufficientBalanceError(chargedBalanceAmount, available)
 }
 
 function resolveActualForSync<T>(
@@ -797,6 +852,7 @@ export async function prepareTaskBilling(task: {
   id: string
   userId: string
   projectId: string
+  organizationId?: string | null
   billingInfo: TaskBillingInfo | { billable: false } | null
 }) {
   const info = task.billingInfo
@@ -841,15 +897,60 @@ export async function prepareTaskBilling(task: {
     return next
   }
 
-  const organizationPolicy = await assertOrganizationCanConsume(task.userId, quotedCost, info.taskType)
+  const organizationPolicy = await assertOrganizationCanConsume(task.userId, quotedCost, info.taskType, {
+    organizationId: task.organizationId !== undefined ? task.organizationId : info.organizationId,
+    projectId: task.projectId,
+  })
   if (organizationPolicy) {
     next.organizationId = organizationPolicy.organizationId
     next.planCreditApplied = organizationPolicy.planCreditApplied
     next.balanceChargeApplied = organizationPolicy.balanceChargeApplied
+    next.freezeScope = 'organization'
   }
 
   if (mode === 'SHADOW') {
     next.status = 'quoted'
+    next.maxFrozenCost = quotedCost
+    return next
+  }
+
+  if (organizationPolicy) {
+    const balanceCharge = normalizeMoney(Number(organizationPolicy.balanceChargeApplied || 0))
+    const freezeId = await freezeOrganizationBalance(organizationPolicy.organizationId, balanceCharge, {
+      userId: task.userId,
+      taskId: task.id,
+      idempotencyKey: info.billingKey || task.id,
+      planCreditAmount: organizationPolicy.planCreditApplied,
+      description: `任务余额冻结：${info.action}`,
+      metadata: {
+        taskType: info.taskType,
+        action: info.action,
+        apiType: info.apiType,
+        model: info.model,
+        quantity: info.quantity,
+        unit: info.unit,
+        billingKey: info.billingKey || task.id,
+        pricingVersion: info.pricingVersion || BUILTIN_PRICING_VERSION,
+        pricingSelections: info.metadata || {},
+        planCreditApplied: organizationPolicy.planCreditApplied,
+        balanceChargeApplied: balanceCharge,
+        ...(info.metadata || {}),
+      },
+    })
+    if (!freezeId) {
+      if (balanceCharge <= MONEY_EPSILON) {
+        throw new BillingOperationError('BILLING_CONFIRM_FAILED', 'create organization billing reservation failed', {
+          taskId: task.id,
+          organizationId: organizationPolicy.organizationId,
+          billingKey: info.billingKey || task.id,
+        })
+      }
+      const available = await getOrganizationAvailableBalance(organizationPolicy.organizationId)
+      throw new InsufficientBalanceError(balanceCharge, available)
+    }
+
+    next.status = 'frozen'
+    next.freezeId = freezeId
     next.maxFrozenCost = quotedCost
     return next
   }
@@ -878,6 +979,7 @@ export async function prepareTaskBilling(task: {
 
   next.status = 'frozen'
   next.freezeId = freezeId
+  next.freezeScope = 'user'
   next.maxFrozenCost = quotedCost
   return next
 }
@@ -961,7 +1063,7 @@ export async function settleTaskBilling(task: {
       taskType: info.taskType || null,
         organizationId: info.organizationId || null,
         planCreditAmount: info.planCreditApplied || 0,
-        balanceAmount: info.balanceChargeApplied || actual.actualCost,
+        balanceAmount: info.balanceChargeApplied ?? actual.actualCost,
       action: info.action,
       apiType: info.apiType,
       model: info.model,
@@ -993,6 +1095,123 @@ export async function settleTaskBilling(task: {
       modeSnapshot: mode,
       status: info.status === 'skipped' ? 'skipped' : 'settled',
       chargedCost: 0,
+    } satisfies TaskBillingInfo
+  }
+
+  if (info.freezeScope === 'organization' || info.organizationId) {
+    const organizationId = info.organizationId
+    if (!organizationId) {
+      return {
+        ...info,
+        status: 'failed',
+      } satisfies TaskBillingInfo
+    }
+
+    const recordModel = resolveRecordModel(info.model, actual.metadata)
+    const split = resolveOrganizationChargeSplit(info, actual.actualCost)
+    if (!info.freezeId && actual.actualCost > MONEY_EPSILON) {
+      throw new BillingOperationError('BILLING_CONFIRM_FAILED', 'organization task billing reservation is missing', {
+        taskId: task.id,
+        organizationId,
+      })
+    }
+
+    const chargedBalanceAmount = info.freezeId
+      ? await ensureOrganizationFreezeCoverage({
+        freezeId: info.freezeId,
+        organizationId,
+        actualBalanceAmount: split.balanceAmount,
+        quotedBalanceAmount: info.balanceChargeApplied || 0,
+      })
+      : 0
+
+    try {
+      const commonRecordParams = {
+        projectId: task.projectId,
+        userId: task.userId,
+        action: info.action,
+        apiType: info.apiType,
+        model: recordModel.model,
+        quantity: actual.actualQuantity,
+        unit: info.unit,
+        cost: actual.actualCost,
+        balanceAfter: 0,
+        freezeId: info.freezeId || undefined,
+        episodeId: typeof task.episodeId === 'string' ? task.episodeId : null,
+        taskType: info.taskType || null,
+        organizationId,
+        planCreditAmount: split.planCreditAmount,
+        balanceAmount: chargedBalanceAmount,
+        metadata: {
+          ...(info.metadata || {}),
+          ...(actual.metadata || {}),
+          billingKey: info.billingKey || task.id,
+          source: 'task',
+          taskType: info.taskType,
+          taskId: task.id,
+          mode: 'ENFORCE',
+          quotedCost,
+          actualCost: actual.actualCost,
+          chargedCost: actual.actualCost,
+          organizationChargedBalanceAmount: chargedBalanceAmount,
+          pricingVersion: info.pricingVersion || BUILTIN_PRICING_VERSION,
+          pricingSelections: info.metadata || {},
+          ...(recordModel.actualModels.length > 0 ? { actualModels: recordModel.actualModels } : {}),
+        },
+      }
+
+      if (info.freezeId) {
+        const confirmed = await confirmOrganizationChargeWithRecord(
+          info.freezeId,
+          chargedBalanceAmount,
+          commonRecordParams,
+        )
+        if (!confirmed) {
+          throw new BillingOperationError('BILLING_CONFIRM_FAILED', 'confirm organization task charge failed', {
+            taskId: task.id,
+            freezeId: info.freezeId,
+            organizationId,
+          })
+        }
+      } else {
+        await recordUsageCostOnly(prisma, {
+          ...commonRecordParams,
+          metadata: {
+            ...commonRecordParams.metadata,
+            organizationBalanceSettled: true,
+            skipUserBalanceTransaction: true,
+          },
+        })
+      }
+    } catch (error) {
+      const rolledBack = (await rollbackTaskBilling({
+        id: task.id,
+        billingInfo: info,
+      })) as TaskBillingInfo
+      if (rolledBack.billable && rolledBack.status !== 'rolled_back' && info.freezeId) {
+        throw new BillingOperationError('BILLING_CONFIRM_FAILED', 'confirm organization task charge failed; billing rollback failed', {
+          taskId: task.id,
+          freezeId: info.freezeId,
+          organizationId,
+        }, error)
+      }
+      if (error instanceof BillingOperationError) {
+        throw new BillingOperationError(error.code, error.message, {
+          ...(error.details || {}),
+          taskId: task.id,
+          freezeId: info.freezeId || null,
+          organizationId,
+        }, error)
+      }
+      throw error
+    }
+
+    return {
+      ...info,
+      status: 'settled',
+      chargedCost: actual.actualCost,
+      planCreditApplied: split.planCreditAmount,
+      balanceChargeApplied: chargedBalanceAmount,
     } satisfies TaskBillingInfo
   }
 
@@ -1076,7 +1295,15 @@ export async function rollbackTaskBilling(task: {
   if (info.modeSnapshot !== 'ENFORCE') return info
 
   try {
-    await rollbackFreeze(info.freezeId)
+    const rolledBack = info.freezeScope === 'organization' || info.organizationId
+      ? await rollbackOrganizationFreeze(info.freezeId)
+      : await rollbackFreeze(info.freezeId)
+    if (!rolledBack) {
+      return {
+        ...info,
+        status: 'failed',
+      } satisfies TaskBillingInfo
+    }
     return {
       ...info,
       status: 'rolled_back',

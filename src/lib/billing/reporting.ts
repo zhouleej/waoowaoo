@@ -88,6 +88,8 @@ export async function recordUsageCostOnly(
   params: PureRecordParams,
 ): Promise<void> {
   const hasProject = isProjectScoped(params.projectId)
+  const skipUserBalanceTransaction = params.metadata?.skipUserBalanceTransaction === true
+  const organizationBalanceSettled = params.metadata?.organizationBalanceSettled === true
 
   if (hasProject) {
     const project = await txOrPrisma.project.findUnique({
@@ -120,21 +122,23 @@ export async function recordUsageCostOnly(
     _ulogInfo(`[计费] 跳过 UsageCost 记录 (projectId=${params.projectId})，仅记录流水`)
   }
 
-  await txOrPrisma.balanceTransaction.create({
-    data: {
-      userId: params.userId,
-      type: 'consume',
-      amount: -params.cost,
-      balanceAfter: params.balanceAfter,
-      description: `${params.action} - ${params.model}${hasProject ? '' : ' (Asset Hub)'}`,
-      relatedId: params.freezeId || null,
-      freezeId: params.freezeId || null,
-      projectId: hasProject ? params.projectId : null,
-      episodeId: params.episodeId || null,
-      taskType: params.taskType || params.action || null,
-      billingMeta: buildBillingMeta(params),
-    },
-  })
+  if (!skipUserBalanceTransaction) {
+    await txOrPrisma.balanceTransaction.create({
+      data: {
+        userId: params.userId,
+        type: 'consume',
+        amount: -params.cost,
+        balanceAfter: params.balanceAfter,
+        description: `${params.action} - ${params.model}${hasProject ? '' : ' (Asset Hub)'}`,
+        relatedId: params.freezeId || null,
+        freezeId: params.freezeId || null,
+        projectId: hasProject ? params.projectId : null,
+        episodeId: params.episodeId || null,
+        taskType: params.taskType || params.action || null,
+        billingMeta: buildBillingMeta(params),
+      },
+    })
+  }
 
   if (params.organizationId && params.cost > 0) {
     await txOrPrisma.organizationMember.updateMany({
@@ -147,13 +151,13 @@ export async function recordUsageCostOnly(
         userId: params.userId,
         amount: params.cost,
         planCreditAmount: params.planCreditAmount || 0,
-        balanceAmount: params.balanceAmount || params.cost,
+        balanceAmount: params.balanceAmount ?? params.cost,
         type: 'task',
         description: `${params.action} - ${params.model}`,
         metadata: params.metadata as Prisma.InputJsonValue | undefined,
       },
     })
-    if ((params.balanceAmount || 0) > 0) {
+    if ((params.balanceAmount || 0) > 0 && !organizationBalanceSettled) {
       await txOrPrisma.organizationBalance.updateMany({
         where: { organizationId: params.organizationId },
         data: { balance: { decrement: params.balanceAmount || 0 }, totalSpent: { increment: params.balanceAmount || 0 } },
