@@ -1,5 +1,10 @@
+import { createRequire } from 'node:module'
 import { describe, expect, it } from 'vitest'
-import { inspectChangedFiles } from '../../../scripts/guards/changed-file-test-impact-guard.mjs'
+
+const require = createRequire(import.meta.url)
+const { inspectChangedFiles } = require('../../../scripts/guards/changed-file-test-impact-guard-core.cjs') as {
+  inspectChangedFiles: (files: string[]) => string[]
+}
 
 describe('changed-file-test-impact-guard', () => {
   it('requires api changes to be paired with contract, system, or regression tests', () => {

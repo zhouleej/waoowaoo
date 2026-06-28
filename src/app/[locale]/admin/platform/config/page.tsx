@@ -1,13 +1,14 @@
 'use client'
-/* eslint-disable @typescript-eslint/no-explicit-any, @next/next/no-html-link-for-pages, no-restricted-syntax */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
-import { useRouter } from '@/i18n/navigation'
+import { Link, useRouter } from '@/i18n/navigation'
 import Navbar from '@/components/Navbar'
 import ConfirmDialog from '@/components/ConfirmDialog'
-import { apiFetch } from '@/lib/api-fetch'
+import { apiJson } from '@/lib/api-fetch'
+import { usePlatformAdminCheck } from '@/hooks/common/usePlatformAdminCheck'
 
 export default function PlatformConfigPage() {
   const { data: session, status } = useSession()
@@ -23,18 +24,17 @@ export default function PlatformConfigPage() {
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
 
-  const isPlatformAdmin = (session?.user as any)?.isPlatformAdmin
+  const { isPlatformAdmin, loading: platformAdminLoading } = usePlatformAdminCheck(status === 'authenticated' && Boolean(session))
 
   useEffect(() => {
     if (status === 'loading') return
-    if (!session) router.push('/auth/signin')
+    if (!session) router.push({ pathname: '/auth/signin' })
   }, [session, status, router])
 
   const fetchConfigs = () => {
-    apiFetch('/api/platform/config')
-      .then(res => res.json())
-      .then(data => setConfigs(Array.isArray(data) ? data : []))
-      .catch(console.error)
+    apiJson('/api/platform/config')
+      .then((data: any) => setConfigs(Array.isArray(data) ? data : (data?.data || [])))
+      .catch(() => setConfigs([]))
   }
 
   useEffect(() => {
@@ -48,15 +48,15 @@ export default function PlatformConfigPage() {
     if (!newConfig.key.trim() || !newConfig.value.trim()) return
     setCreating(true)
     try {
-      await apiFetch('/api/platform/config', {
+      await apiJson('/api/platform/config', {
         method: 'POST',
         body: JSON.stringify(newConfig),
       })
       setShowModal(false)
       setNewConfig({ key: '', value: '', description: '' })
       fetchConfigs()
-    } catch (e) {
-      console.error(e)
+    } catch {
+      setShowModal(true)
     } finally {
       setCreating(false)
     }
@@ -66,11 +66,11 @@ export default function PlatformConfigPage() {
     if (!deleteTargetId) return
     setDeleting(true)
     try {
-      await apiFetch(`/api/platform/config/${deleteTargetId}`, { method: 'DELETE' })
+      await apiJson(`/api/platform/config/${deleteTargetId}`, { method: 'DELETE' })
       setDeleteTargetId(null)
       fetchConfigs()
-    } catch (e) {
-      console.error(e)
+    } catch {
+      setDeleteTargetId(deleteTargetId)
     } finally {
       setDeleting(false)
     }
@@ -78,18 +78,18 @@ export default function PlatformConfigPage() {
 
   const handleSave = async (key: string) => {
     try {
-      await apiFetch('/api/platform/config', {
+      await apiJson('/api/platform/config', {
         method: 'PATCH',
         body: JSON.stringify({ key, value: editValue }),
       })
       setConfigs(configs.map(c => c.key === key ? { ...c, value: editValue } : c))
       setEditingKey(null)
-    } catch (e) {
-      console.error(e)
+    } catch {
+      setEditingKey(key)
     }
   }
 
-  if (status === 'loading' || !session) {
+  if (status === 'loading' || !session || platformAdminLoading) {
     return (
       <div className="min-h-screen bg-[var(--glass-bg-root)]">
         <Navbar />
@@ -119,8 +119,8 @@ export default function PlatformConfigPage() {
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-3xl font-bold text-[var(--glass-text-primary)]">{t('systemConfig')}</h1>
           <div className="flex gap-3">
-            <button onClick={() => setShowModal(true)} className="glass-btn-base glass-btn-primary px-4 py-2">{'新增配置'}</button>
-            <a href="/admin/platform" className="glass-btn-base px-4 py-2">{t('back')}</a>
+            <button onClick={() => setShowModal(true)} className="glass-btn-base glass-btn-primary px-4 py-2">{t('createConfig')}</button>
+            <Link href={{ pathname: '/admin/platform' }} className="glass-btn-base px-4 py-2">{t('back')}</Link>
           </div>
         </div>
 
@@ -204,10 +204,10 @@ export default function PlatformConfigPage() {
       {showModal && (
         <div className="fixed inset-0 glass-overlay flex items-center justify-center z-50 backdrop-blur-sm">
           <div className="glass-surface-modal p-6 w-full max-w-md">
-            <h2 className="text-xl font-bold text-[var(--glass-text-primary)] mb-4">{'新增配置'}</h2>
+            <h2 className="text-xl font-bold text-[var(--glass-text-primary)] mb-4">{t('createConfig')}</h2>
             <form onSubmit={handleCreate}>
               <div className="mb-4">
-                <label className="block mb-2 text-sm text-[var(--glass-text-secondary)]">配置键</label>
+                <label className="block mb-2 text-sm text-[var(--glass-text-secondary)]">{t('configKey')}</label>
                 <input
                   type="text"
                   value={newConfig.key}
@@ -217,7 +217,7 @@ export default function PlatformConfigPage() {
                 />
               </div>
               <div className="mb-4">
-                <label className="block mb-2 text-sm text-[var(--glass-text-secondary)]">配置值</label>
+                <label className="block mb-2 text-sm text-[var(--glass-text-secondary)]">{t('configValue')}</label>
                 <input
                   type="text"
                   value={newConfig.value}
@@ -227,7 +227,7 @@ export default function PlatformConfigPage() {
                 />
               </div>
               <div className="mb-4">
-                <label className="block mb-2 text-sm text-[var(--glass-text-secondary)]">{'描述'}</label>
+                <label className="block mb-2 text-sm text-[var(--glass-text-secondary)]">{t('description')}</label>
                 <input
                   type="text"
                   value={newConfig.description}
@@ -237,7 +237,7 @@ export default function PlatformConfigPage() {
               </div>
               <div className="flex justify-end gap-3">
                 <button type="button" onClick={() => setShowModal(false)} className="glass-btn-base glass-btn-secondary px-4 py-2">{t('cancel')}</button>
-                <button type="submit" className="glass-btn-base glass-btn-primary px-4 py-2" disabled={creating}>{creating ? '创建中...' : t('save')}</button>
+                <button type="submit" className="glass-btn-base glass-btn-primary px-4 py-2" disabled={creating}>{creating ? t('creating') : t('save')}</button>
               </div>
             </form>
           </div>
@@ -246,9 +246,9 @@ export default function PlatformConfigPage() {
 
       <ConfirmDialog
         show={Boolean(deleteTargetId)}
-        title="删除配置项"
-        message="确定要删除该配置项吗？此操作不可撤销。"
-        confirmText={deleting ? '删除中...' : (t('delete') || '删除')}
+        title={t('deleteConfig')}
+        message={t('confirmDeleteConfig')}
+        confirmText={deleting ? t('deleting') : t('delete')}
         cancelText={t('cancel')}
         onConfirm={handleDelete}
         onCancel={() => (deleting ? undefined : setDeleteTargetId(null))}

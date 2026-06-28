@@ -1,8 +1,14 @@
+import { createRequire } from 'node:module'
 import { describe, expect, it } from 'vitest'
-import {
+
+const require = createRequire(import.meta.url)
+const {
   NORMALIZATION_HELPER_ALLOWLIST,
   inspectImageReferenceNormalization,
-} from '../../../scripts/guards/image-reference-normalization-guard.mjs'
+} = require('../../../scripts/guards/image-reference-normalization-guard-core.cjs') as {
+  NORMALIZATION_HELPER_ALLOWLIST: Set<string>
+  inspectImageReferenceNormalization: (relPath: string, content: string) => string[]
+}
 
 describe('image reference normalization guard', () => {
   it('allows shared helper exceptions explicitly', () => {

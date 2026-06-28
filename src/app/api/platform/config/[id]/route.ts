@@ -1,16 +1,13 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePlatformAdmin, createAdminAuditLog } from '@/lib/platform-admin'
-
-interface RouteParams {
-  params: Promise<{ id: string }>
-}
+import { apiHandler } from '@/lib/api-errors'
 
 /**
  * DELETE /api/platform/config/[id]
  * 删除指定 ID 的配置项
  */
-export async function DELETE(req: NextRequest, { params }: RouteParams) {
+export const DELETE = apiHandler<{ id: string }>(async (_req, { params }) => {
   const authResult = await requirePlatformAdmin()
   if (authResult instanceof NextResponse) return authResult
 
@@ -48,4 +45,4 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
   return NextResponse.json({
     message: 'Config deleted successfully',
   })
-}
+})

@@ -1,5 +1,10 @@
+import { createRequire } from 'node:module'
 import { describe, expect, it } from 'vitest'
-import { inspectTaskSubmitCompensation } from '../../../scripts/guards/task-submit-compensation-guard.mjs'
+
+const require = createRequire(import.meta.url)
+const { inspectTaskSubmitCompensation } = require('../../../scripts/guards/task-submit-compensation-guard-core.cjs') as {
+  inspectTaskSubmitCompensation: (relPath: string, content: string) => string[]
+}
 
 describe('task submit compensation guard', () => {
   it('passes routes that create data before submitTask and define rollback handling', () => {

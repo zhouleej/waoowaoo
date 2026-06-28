@@ -1,14 +1,15 @@
 'use client'
-/* eslint-disable @typescript-eslint/no-explicit-any, @next/next/no-html-link-for-pages, no-restricted-syntax */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useEffect, useState, useCallback, type ReactNode } from 'react'
 import { useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
-import { useRouter } from '@/i18n/navigation'
+import { Link, useRouter } from '@/i18n/navigation'
 import Navbar from '@/components/Navbar'
 import { apiFetch } from '@/lib/api-fetch'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import { useToast } from '@/contexts/ToastContext'
+import { usePlatformAdminCheck } from '@/hooks/common/usePlatformAdminCheck'
 
 interface Organization {
   id: string
@@ -77,11 +78,11 @@ export default function PlatformOrganizationsPage() {
   const [deleting, setDeleting] = useState(false)
   const [confirmAction, setConfirmAction] = useState<{ title: string; message: string; onConfirm: () => void; type?: 'danger' | 'warning' | 'info' } | null>(null)
 
-  const isPlatformAdmin = (session?.user as any)?.isPlatformAdmin
+  const { isPlatformAdmin, loading: platformAdminLoading } = usePlatformAdminCheck(status === 'authenticated' && Boolean(session))
 
   useEffect(() => {
     if (status === 'loading') return
-    if (!session) router.push('/auth/signin')
+    if (!session) router.push({ pathname: '/auth/signin' })
   }, [session, status, router])
 
   const fetchOrganizations = useCallback(async (page: number = 1) => {
@@ -155,7 +156,7 @@ export default function PlatformOrganizationsPage() {
     setActiveDetailTab('overview')
     setRechargeAmount('')
     try {
-      const membersRes = await apiFetch(`/api/organizations/${org.id}/members`)
+      const membersRes = await apiFetch(`/api/platform/organizations/${org.id}/members`)
       if (membersRes.ok) {
         const membersData = await membersRes.json()
         setMembers(Array.isArray(membersData) ? membersData : [])
@@ -286,7 +287,7 @@ export default function PlatformOrganizationsPage() {
     }
   }
 
-  if (status === 'loading' || !session) {
+  if (status === 'loading' || !session || platformAdminLoading) {
     return (
       <div className="min-h-screen bg-[var(--glass-bg-root)]">
         <Navbar />
@@ -319,7 +320,7 @@ export default function PlatformOrganizationsPage() {
             <button onClick={openCreateModal} className="glass-btn-base glass-btn-primary px-4 py-2">
               {t('newOrganization')}
             </button>
-            <a href="/admin/platform" className="glass-btn-base px-4 py-2">{t('back') || 'Back'}</a>
+            <Link href={{ pathname: '/admin/platform' }} className="glass-btn-base px-4 py-2">{t('back')}</Link>
           </div>
         </div>
 

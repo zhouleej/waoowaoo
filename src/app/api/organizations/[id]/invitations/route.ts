@@ -1,14 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { prisma } from '@/lib/prisma'
 import { badRequest, isErrorResponse, requireUserAuth } from '@/lib/api-auth'
+import { apiHandler } from '@/lib/api-errors'
 import { requireOrganizationRole, writeEnterpriseAudit } from '@/lib/saas/permissions'
 import { readString } from '@/lib/saas/validation'
 
-type Ctx = { params: Promise<{ id: string }> }
-
-export async function GET(_req: NextRequest, { params }: Ctx) {
+export const GET = apiHandler<{ id: string }>(async (_req, { params }) => {
   const auth = await requireUserAuth()
   if (isErrorResponse(auth)) return auth
   const { id } = await params
@@ -16,9 +15,9 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
   if (perm.error) return perm.error
   const data = await prisma.organizationInvitation.findMany({ where: { organizationId: id }, orderBy: { createdAt: 'desc' }, include: { invitedBy: { select: { id: true, name: true, email: true } } } })
   return NextResponse.json({ data })
-}
+})
 
-export async function POST(req: NextRequest, { params }: Ctx) {
+export const POST = apiHandler<{ id: string }>(async (req, { params }) => {
   const auth = await requireUserAuth()
   if (isErrorResponse(auth)) return auth
   const { id } = await params
@@ -51,4 +50,4 @@ export async function POST(req: NextRequest, { params }: Ctx) {
   } catch (error) {
     return badRequest(error instanceof Error ? error.message : '邀请参数无效')
   }
-}
+})

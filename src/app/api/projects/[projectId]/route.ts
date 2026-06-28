@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { addSignedUrlsToProject, deleteObjects } from '@/lib/storage'
 import { resolveStorageKeyFromMediaValue } from '@/lib/media/service'
 import { logProjectAction } from '@/lib/logging/semantic'
-import { requireUserAuth, isErrorResponse } from '@/lib/api-auth'
+import { requireProjectAuthLight, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
 import {
   collectProjectBailianManagedVoiceIds,
@@ -18,9 +18,8 @@ export const GET = apiHandler(async (
 ) => {
   const { projectId } = await context.params
   // 🔐 统一权限验证
-  const authResult = await requireUserAuth()
+  const authResult = await requireProjectAuthLight(projectId)
   if (isErrorResponse(authResult)) return authResult
-  const { session } = authResult
 
   // 只获取基础项目信息，不包含模式特定数据
   const project = await prisma.project.findUnique({
@@ -32,10 +31,6 @@ export const GET = apiHandler(async (
 
   if (!project) {
     throw new ApiError('NOT_FOUND')
-  }
-
-  if (project.userId !== session.user.id) {
-    throw new ApiError('FORBIDDEN')
   }
 
   // 更新最近访问时间（异步，不阻塞响应）
@@ -58,7 +53,7 @@ export const PATCH = apiHandler(async (
 ) => {
   const { projectId } = await context.params
   // 🔐 统一权限验证
-  const authResult = await requireUserAuth()
+  const authResult = await requireProjectAuthLight(projectId)
   if (isErrorResponse(authResult)) return authResult
   const session = authResult.session
   const body = await request.json()
@@ -70,10 +65,6 @@ export const PATCH = apiHandler(async (
 
   if (!project) {
     throw new ApiError('NOT_FOUND')
-  }
-
-  if (project.userId !== session.user.id) {
-    throw new ApiError('FORBIDDEN')
   }
 
   // 更新项目
@@ -192,7 +183,7 @@ export const DELETE = apiHandler(async (
 ) => {
   const { projectId } = await context.params
   // 🔐 统一权限验证
-  const authResult = await requireUserAuth()
+  const authResult = await requireProjectAuthLight(projectId)
   if (isErrorResponse(authResult)) return authResult
   const session = authResult.session
 
@@ -205,6 +196,7 @@ export const DELETE = apiHandler(async (
     throw new ApiError('NOT_FOUND')
   }
 
+  // 删除仍保持创建者权限，避免普通组织成员误删共享项目。
   if (project.userId !== session.user.id) {
     throw new ApiError('FORBIDDEN')
   }

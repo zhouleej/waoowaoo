@@ -1,5 +1,4 @@
 'use client'
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useState } from 'react'
 import Image from 'next/image'
@@ -9,6 +8,7 @@ import LanguageSwitcher from './LanguageSwitcher'
 import { AppIcon } from '@/components/ui/icons'
 import UpdateNoticeModal from './UpdateNoticeModal'
 import { useGithubReleaseUpdate } from '@/hooks/common/useGithubReleaseUpdate'
+import { usePlatformAdminCheck } from '@/hooks/common/usePlatformAdminCheck'
 import { Link } from '@/i18n/navigation'
 import { buildAuthenticatedHomeTarget } from '@/lib/home/default-route'
 
@@ -22,6 +22,7 @@ export default function Navbar() {
   const [checkMsgFading, setCheckMsgFading] = useState(false)
   const [manualChecking, setManualChecking] = useState(false)
   const downloadLogsHref = '/api/admin/download-logs'
+  const { isPlatformAdmin } = usePlatformAdminCheck(status === 'authenticated' && Boolean(session))
 
   const handleCheckUpdate = async () => {
     setCheckMsg(null)
@@ -104,7 +105,7 @@ export default function Navbar() {
                 </div>
               ) : session ? (
                 <>
-                  {(session.user as any)?.isPlatformAdmin && (
+                  {isPlatformAdmin && (
                     <div className="hidden xl:flex items-center gap-3">
                       <Link href={{ pathname: '/admin/platform' }} className="text-sm text-[var(--glass-tone-warning-fg)] hover:text-[var(--glass-tone-warning-fg)] font-medium transition-colors flex items-center gap-1" title={t('admin')}>
                         <AppIcon name="unplug" className="w-4 h-4" />{t('admin') || 'Admin'}

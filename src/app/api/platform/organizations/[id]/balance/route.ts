@@ -1,17 +1,15 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePlatformAdmin, createAdminAuditLog } from '@/lib/platform-admin'
-
-interface RouteParams {
-  params: Promise<{ id: string }>
-}
+import { addOrganizationBalance } from '@/lib/billing/organization'
+import { apiHandler } from '@/lib/api-errors'
 
 /**
  * POST /api/platform/organizations/[id]/balance
  * 平台管理员增加组织余额
  * 请求体：{ amount: number, reason?: string }
  */
-export async function POST(req: NextRequest, { params }: RouteParams) {
+export const POST = apiHandler<{ id: string }>(async (req, { params }) => {
   const authResult = await requirePlatformAdmin()
   if (authResult instanceof NextResponse) return authResult
 
@@ -19,7 +17,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
   const { id } = await params
 
   const body = await req.json()
-  const { amount, reason } = body
+  const { amount, reason, idempotencyKey } = body
 
   // 验证金额
   if (typeof amount !== 'number' || amount <= 0) {
@@ -42,16 +40,10 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     )
   }
 
-  // 查找或创建组织余额记录
-  const balance = await prisma.organizationBalance.upsert({
-    where: { organizationId: id },
-    update: {
-      balance: { increment: amount },
-    },
-    create: {
-      organizationId: id,
-      balance: amount,
-    },
+  const balance = await addOrganizationBalance(id, amount, {
+    reason: reason || '平台管理员增加组织余额',
+    operatorId: user.id,
+    idempotencyKey,
   })
 
   // 记录操作日志
@@ -65,7 +57,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       reason: reason || null,
       organizationName: organization.name,
       organizationSlug: organization.slug,
-      newBalance: Number(balance.balance),
+      newBalance: balance.balance,
     },
   })
 
@@ -76,10 +68,10 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       name: organization.name,
     },
     balance: {
-      current: Number(balance.balance),
+      current: balance.balance,
       added: amount,
-      frozenAmount: Number(balance.frozenAmount),
-      totalSpent: Number(balance.totalSpent),
+      frozenAmount: balance.frozenAmount,
+      totalSpent: balance.totalSpent,
     },
   })
-}
+})

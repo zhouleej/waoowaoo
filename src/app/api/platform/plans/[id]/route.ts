@@ -1,24 +1,23 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePlatformAdmin, createAdminAuditLog } from '@/lib/platform-admin'
+import { apiHandler } from '@/lib/api-errors'
 import { badRequest, notFound } from '@/lib/api-auth'
 import { readJsonObject, readNumber, readString } from '@/lib/saas/validation'
 import { serializePlan } from '@/lib/saas/serializers'
 import type { Prisma } from '@prisma/client'
 
-type Ctx = { params: Promise<{ id: string }> }
-
-export async function GET(_req: NextRequest, { params }: Ctx) {
+export const GET = apiHandler<{ id: string }>(async (_req, { params }) => {
   const auth = await requirePlatformAdmin()
   if (auth instanceof NextResponse) return auth
   const { id } = await params
   const plan = await prisma.pricingPlan.findUnique({ where: { id }, include: { entitlements: true, _count: { select: { subscriptions: true } } } })
   if (!plan) return notFound('PricingPlan')
   return NextResponse.json({ data: serializePlan(plan) })
-}
+})
 
-export async function PATCH(req: NextRequest, { params }: Ctx) {
+export const PATCH = apiHandler<{ id: string }>(async (req, { params }) => {
   const auth = await requirePlatformAdmin()
   if (auth instanceof NextResponse) return auth
   const { user } = auth
@@ -55,9 +54,9 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
   } catch (error) {
     return badRequest(error instanceof Error ? error.message : '套餐参数无效')
   }
-}
+})
 
-export async function DELETE(_req: NextRequest, { params }: Ctx) {
+export const DELETE = apiHandler<{ id: string }>(async (_req, { params }) => {
   const auth = await requirePlatformAdmin()
   if (auth instanceof NextResponse) return auth
   const { user } = auth
@@ -71,4 +70,4 @@ export async function DELETE(_req: NextRequest, { params }: Ctx) {
   }
   await createAdminAuditLog({ adminId: user.id, action: 'delete_plan', targetType: 'PricingPlan', targetId: id, details: { softDelete: plan._count.subscriptions > 0 } })
   return NextResponse.json({ success: true })
-}
+})

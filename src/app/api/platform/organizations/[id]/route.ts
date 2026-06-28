@@ -1,12 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePlatformAdmin, createAdminAuditLog } from '@/lib/platform-admin'
+import { apiHandler } from '@/lib/api-errors'
 
-interface RouteParams {
-  params: Promise<{ id: string }>
-}
-
-export async function GET(_req: NextRequest, { params }: RouteParams) {
+export const GET = apiHandler<{ id: string }>(async (_req, { params }) => {
   const authResult = await requirePlatformAdmin()
   if (authResult instanceof NextResponse) return authResult
   const { id } = await params
@@ -27,9 +24,9 @@ export async function GET(_req: NextRequest, { params }: RouteParams) {
   })
   if (!org) return NextResponse.json({ error: 'Organization not found' }, { status: 404 })
   return NextResponse.json({ data: org })
-}
+})
 
-export async function PATCH(req: NextRequest, { params }: RouteParams) {
+export const PATCH = apiHandler<{ id: string }>(async (req, { params }) => {
   const authResult = await requirePlatformAdmin()
   if (authResult instanceof NextResponse) return authResult
   const { user } = authResult
@@ -49,13 +46,13 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
   })
   await createAdminAuditLog({ adminId: user.id, action: 'update_organization', targetType: 'Organization', targetId: id, details: { changed: Object.keys(body) } })
   return NextResponse.json({ data: updated })
-}
+})
 
 /**
  * DELETE /api/platform/organizations/[id]
  * 删除组织（平台管理员专用）
  */
-export async function DELETE(_req: NextRequest, { params }: RouteParams) {
+export const DELETE = apiHandler<{ id: string }>(async (_req, { params }) => {
   const authResult = await requirePlatformAdmin()
   if (authResult instanceof NextResponse) return authResult
   const { user } = authResult
@@ -105,4 +102,4 @@ export async function DELETE(_req: NextRequest, { params }: RouteParams) {
   })
 
   return NextResponse.json({ message: 'Organization deleted successfully' })
-}
+})

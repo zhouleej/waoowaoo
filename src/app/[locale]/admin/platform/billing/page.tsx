@@ -9,6 +9,7 @@ import { AppIcon } from '@/components/ui/icons'
 import { useRouter } from '@/i18n/navigation'
 import { apiFetch } from '@/lib/api-fetch'
 import { useToast } from '@/contexts/ToastContext'
+import { usePlatformAdminCheck } from '@/hooks/common/usePlatformAdminCheck'
 
 type TabKey = 'plans' | 'subscriptions' | 'orders' | 'invoices'
 
@@ -102,11 +103,11 @@ export default function PlatformBillingPage() {
   const [creatingSubscription, setCreatingSubscription] = useState(false)
   const [confirmAction, setConfirmAction] = useState<{ title: string; message: string; onConfirm: () => void; type?: 'danger' | 'warning' | 'info' } | null>(null)
 
-  const isPlatformAdmin = Boolean((session?.user as { isPlatformAdmin?: boolean } | undefined)?.isPlatformAdmin)
+  const { isPlatformAdmin, loading: platformAdminLoading } = usePlatformAdminCheck(status === 'authenticated' && Boolean(session))
 
   useEffect(() => {
     if (status === 'loading') return
-    if (!session) router.push('/auth/signin')
+    if (!session) router.push({ pathname: '/auth/signin' })
   }, [router, session, status])
 
   const loadOrganizations = useCallback(async () => {
@@ -251,7 +252,7 @@ export default function PlatformBillingPage() {
     }
   }
 
-  if (status === 'loading' || !session) return <div className="min-h-screen bg-[var(--glass-bg-root)]"><Navbar /><div className="flex h-[calc(100vh-64px)] items-center justify-center text-[var(--glass-text-secondary)]">{t('loading')}</div></div>
+  if (status === 'loading' || !session || platformAdminLoading) return <div className="min-h-screen bg-[var(--glass-bg-root)]"><Navbar /><div className="flex h-[calc(100vh-64px)] items-center justify-center text-[var(--glass-text-secondary)]">{t('loading')}</div></div>
   if (!isPlatformAdmin) return <div className="min-h-screen bg-[var(--glass-bg-root)]"><Navbar /><div className="flex h-[calc(100vh-64px)] flex-col items-center justify-center"><h1 className="mb-3 text-2xl font-bold text-[var(--glass-text-primary)]">403</h1><p className="text-[var(--glass-text-secondary)]">{t('noPermission')}</p></div></div>
 
   return (

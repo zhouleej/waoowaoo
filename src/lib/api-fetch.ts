@@ -50,3 +50,25 @@ export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Pr
   }
   return fetch(input, mergeLocaleHeader(init))
 }
+
+function readApiErrorMessage(payload: unknown, fallback: string): string {
+  if (payload && typeof payload === 'object') {
+    const record = payload as Record<string, unknown>
+    if (typeof record.error === 'string') return record.error
+    if (record.error && typeof record.error === 'object') {
+      const errorRecord = record.error as Record<string, unknown>
+      if (typeof errorRecord.message === 'string') return errorRecord.message
+    }
+    if (typeof record.message === 'string') return record.message
+  }
+  return fallback
+}
+
+export async function apiJson<T = unknown>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
+  const response = await apiFetch(input, init)
+  const payload = await response.json().catch(() => null)
+  if (!response.ok) {
+    throw new Error(readApiErrorMessage(payload, response.statusText || 'Request failed'))
+  }
+  return payload as T
+}

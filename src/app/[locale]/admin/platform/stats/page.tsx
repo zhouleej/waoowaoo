@@ -1,12 +1,13 @@
 'use client'
-/* eslint-disable @typescript-eslint/no-explicit-any, @next/next/no-html-link-for-pages, no-restricted-syntax */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
-import { useRouter } from '@/i18n/navigation'
+import { Link, useRouter } from '@/i18n/navigation'
 import Navbar from '@/components/Navbar'
-import { apiFetch } from '@/lib/api-fetch'
+import { apiJson } from '@/lib/api-fetch'
+import { usePlatformAdminCheck } from '@/hooks/common/usePlatformAdminCheck'
 
 export default function PlatformStatsPage() {
   const { data: session, status } = useSession()
@@ -15,23 +16,22 @@ export default function PlatformStatsPage() {
   const [stats, setStats] = useState<any>(null)
   const [loading, setLoading] = useState(true)
 
-  const isPlatformAdmin = (session?.user as any)?.isPlatformAdmin
+  const { isPlatformAdmin, loading: platformAdminLoading } = usePlatformAdminCheck(status === 'authenticated' && Boolean(session))
 
   useEffect(() => {
     if (status === 'loading') return
-    if (!session) router.push('/auth/signin')
+    if (!session) router.push({ pathname: '/auth/signin' })
   }, [session, status, router])
 
   useEffect(() => {
     if (!isPlatformAdmin) return
-    apiFetch('/api/platform/stats')
-      .then(res => res.json())
+    apiJson('/api/platform/stats')
       .then(setStats)
-      .catch(console.error)
+      .catch(() => setStats(null))
       .finally(() => setLoading(false))
   }, [isPlatformAdmin])
 
-  if (status === 'loading' || !session) {
+  if (status === 'loading' || !session || platformAdminLoading) {
     return (
       <div className="min-h-screen bg-[var(--glass-bg-root)]">
         <Navbar />
@@ -60,7 +60,7 @@ export default function PlatformStatsPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-3xl font-bold text-[var(--glass-text-primary)]">{t('platformStats')}</h1>
-          <a href="/admin/platform" className="glass-btn-base px-4 py-2">{t('back')}</a>
+          <Link href={{ pathname: '/admin/platform' }} className="glass-btn-base px-4 py-2">{t('back')}</Link>
         </div>
 
         {loading ? (

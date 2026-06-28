@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePlatformAdmin } from '@/lib/platform-admin'
+import { apiHandler } from '@/lib/api-errors'
 
 /**
  * GET /api/platform/audit-logs
@@ -8,7 +9,7 @@ import { requirePlatformAdmin } from '@/lib/platform-admin'
  * 查询参数：page, limit, action, adminId
  * 返回：日志列表
  */
-export async function GET(req: NextRequest) {
+export const GET = apiHandler(async (req) => {
   const authResult = await requirePlatformAdmin()
   if (authResult instanceof NextResponse) return authResult
 
@@ -81,4 +82,4 @@ export async function GET(req: NextRequest) {
       actions: actions.map((a) => a.action),
     },
   })
-}
+})
