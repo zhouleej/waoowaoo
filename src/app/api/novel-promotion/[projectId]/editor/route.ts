@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireProjectAuthLight, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
+import { requireNovelPromotionEpisodeInProject } from '@/lib/saas/novel-promotion-resource-access'
 
 /**
  * GET /api/novel-promotion/[projectId]/editor
@@ -22,6 +23,8 @@ export const GET = apiHandler(async (
     if (!episodeId) {
         throw new ApiError('INVALID_PARAMS')
     }
+
+    await requireNovelPromotionEpisodeInProject(projectId, episodeId)
 
     // 查找编辑器项目
     const editorProject = await prisma.videoEditorProject.findUnique({
@@ -114,6 +117,8 @@ export const DELETE = apiHandler(async (
     if (!episodeId) {
         throw new ApiError('INVALID_PARAMS')
     }
+
+    await requireNovelPromotionEpisodeInProject(projectId, episodeId)
 
     await prisma.videoEditorProject.delete({
         where: { episodeId }

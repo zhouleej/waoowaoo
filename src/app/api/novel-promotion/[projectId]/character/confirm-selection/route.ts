@@ -6,6 +6,7 @@ import { decodeImageUrlsFromDb, encodeImageUrls } from '@/lib/contracts/image-ur
 import { resolveStorageKeyFromMediaValue } from '@/lib/media/service'
 import { requireProjectAuthLight, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
+import { requireNovelPromotionCharacterAppearanceInProject } from '@/lib/saas/novel-promotion-resource-access'
 
 /**
  * POST - 确认选择并删除未选中的候选图片
@@ -30,6 +31,11 @@ export const POST = apiHandler(async (
   const { characterId, appearanceId } = body
 
   if (!characterId || !appearanceId) {
+    throw new ApiError('INVALID_PARAMS')
+  }
+
+  const scopedAppearance = await requireNovelPromotionCharacterAppearanceInProject(projectId, appearanceId)
+  if (scopedAppearance.characterId !== characterId) {
     throw new ApiError('INVALID_PARAMS')
   }
 

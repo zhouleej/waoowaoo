@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { apiHandler } from '@/lib/api-errors'
+import { NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/prisma'
 import { requirePlatformAdmin, createAdminAuditLog } from '@/lib/platform-admin'
+import { apiHandler } from '@/lib/api-errors'
 
 /**
  * GET /api/platform/users
@@ -10,7 +10,7 @@ import { requirePlatformAdmin, createAdminAuditLog } from '@/lib/platform-admin'
  * 查询参数：page, limit, search
  * 返回：用户列表
  */
-export const GET = apiHandler(async (req: NextRequest) => {
+export const GET = apiHandler(async (req) => {
   const authResult = await requirePlatformAdmin()
   if (authResult instanceof NextResponse) return authResult
 
@@ -127,7 +127,7 @@ export const GET = apiHandler(async (req: NextRequest) => {
  * POST /api/platform/users
  * 创建用户
  */
-export const POST = apiHandler(async (req: NextRequest) => {
+export const POST = apiHandler(async (req) => {
   const authResult = await requirePlatformAdmin()
   if (authResult instanceof NextResponse) return authResult
   const { user: admin } = authResult

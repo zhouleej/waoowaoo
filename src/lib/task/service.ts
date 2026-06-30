@@ -161,8 +161,19 @@ export async function rollbackTaskBillingForTask(params: {
   }
 }
 
+async function resolveProjectOrganizationId(projectId: string): Promise<string | null> {
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: { organizationId: true },
+  })
+  return project?.organizationId || null
+}
+
 export async function createTask(input: CreateTaskInput) {
   const model = taskModel
+  const organizationId = input.organizationId === undefined
+    ? await resolveProjectOrganizationId(input.projectId)
+    : input.organizationId
 
   if (input.dedupeKey) {
     const existing = await model.findFirst({
@@ -219,6 +230,7 @@ export async function createTask(input: CreateTaskInput) {
   const createData = {
     userId: input.userId,
     projectId: input.projectId,
+    organizationId: organizationId || null,
     episodeId: input.episodeId || null,
     type: input.type,
     targetType: input.targetType,
@@ -298,6 +310,8 @@ export async function getTaskById(taskId: string) {
 }
 
 export async function queryTasks(filters: {
+  userId?: string
+  organizationId?: string | null
   projectId?: string
   targetType?: string
   targetId?: string
@@ -307,6 +321,8 @@ export async function queryTasks(filters: {
 }) {
   return await taskModel.findMany({
     where: {
+      ...(filters.userId ? { userId: filters.userId } : {}),
+      ...(filters.organizationId !== undefined ? { organizationId: filters.organizationId } : {}),
       ...(filters.projectId ? { projectId: filters.projectId } : {}),
       ...(filters.targetType ? { targetType: filters.targetType } : {}),
       ...(filters.targetId ? { targetId: filters.targetId } : {}),

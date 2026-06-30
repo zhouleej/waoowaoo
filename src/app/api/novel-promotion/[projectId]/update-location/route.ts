@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { removeLocationPromptSuffix } from '@/lib/constants'
 import { requireProjectAuthLight, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
+import { requireNovelPromotionLocationImageInProject } from '@/lib/saas/novel-promotion-resource-access'
 
 export const POST = apiHandler(async (
   request: NextRequest,
@@ -23,10 +24,16 @@ export const POST = apiHandler(async (
 
   // 更新场景描述（移除可能存在的系统后缀，后缀只在生成图片时添加）
   const cleanDescription = removeLocationPromptSuffix(newDescription.trim())
+  const numericImageIndex = Number(imageIndex)
+  if (!Number.isFinite(numericImageIndex)) {
+    throw new ApiError('INVALID_PARAMS')
+  }
+
+  await requireNovelPromotionLocationImageInProject(projectId, locationId, numericImageIndex)
 
   // 更新 LocationImage 表中对应的记录
   const locationImage = await prisma.locationImage.findFirst({
-    where: { locationId, imageIndex }
+    where: { locationId, imageIndex: numericImageIndex }
   })
 
   if (!locationImage) {

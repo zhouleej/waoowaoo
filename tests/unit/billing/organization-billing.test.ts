@@ -5,6 +5,7 @@ const mockPrisma = {
   organizationBalance: {
     findUnique: vi.fn(),
     update: vi.fn(),
+    updateMany: vi.fn(),
     create: vi.fn()
   },
   organizationMember: {
@@ -12,19 +13,34 @@ const mockPrisma = {
   },
   organizationUsage: {
     create: vi.fn(),
+    findFirst: vi.fn(),
+    findUnique: vi.fn(),
+    update: vi.fn(),
+    updateMany: vi.fn(),
     aggregate: vi.fn().mockResolvedValue({ _sum: { amount: 0 } })
   },
   $transaction: vi.fn((callback) => callback(mockPrisma))
 }
 
+const reportingMock = vi.hoisted(() => ({
+  recordUsageCostOnly: vi.fn(),
+}))
+
 vi.mock('@/lib/prisma', () => ({
   prisma: mockPrisma
 }))
+
+vi.mock('@/lib/billing/reporting', () => reportingMock)
 
 // Import after mocking
 const { 
   getOrganizationBalance, 
   addOrganizationBalance,
+  freezeOrganizationBalance,
+  confirmOrganizationCharge,
+  confirmOrganizationChargeWithRecord,
+  increaseOrganizationPendingFreezeAmount,
+  rollbackOrganizationFreeze,
   checkOrganizationBalance,
   checkMemberQuota,
   recordOrganizationUsage
@@ -33,6 +49,8 @@ const {
 describe('Organization Billing Core Functions', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockPrisma.organizationUsage.aggregate.mockResolvedValue({ _sum: { amount: 0 } })
+    mockPrisma.organizationUsage.findFirst.mockResolvedValue(null)
   })
 
   describe('getOrganizationBalance', () => {
@@ -80,6 +98,385 @@ describe('Organization Billing Core Functions', () => {
       const result = await addOrganizationBalance('org-1', 1000)
       
       expect(result?.balance).toBe(2000)
+    })
+
+    it('should not add balance twice for the same idempotency key', async () => {
+      const existingUsage = {
+        id: 'usage-existing',
+        organizationId: 'org-1',
+        userId: 'operator-1',
+        amount: 1000,
+        type: 'recharge',
+        orderId: null,
+        idempotencyKey: 'idem-1',
+        description: 'existing recharge',
+        metadata: {},
+        createdAt: new Date(),
+      }
+      const existingBalance = {
+        id: 'org-bal-1',
+        organizationId: 'org-1',
+        balance: 1000,
+        frozenAmount: 0,
+        totalSpent: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }
+
+      mockPrisma.organizationUsage.findFirst.mockResolvedValue(existingUsage)
+      mockPrisma.organizationBalance.findUnique.mockResolvedValue(existingBalance)
+
+      const result = await addOrganizationBalance('org-1', 1000, {
+        operatorId: 'operator-1',
+        idempotencyKey: 'idem-1',
+      })
+
+      expect(result.balance).toBe(1000)
+      expect(mockPrisma.organizationUsage.findFirst).toHaveBeenCalledWith({
+        where: {
+          organizationId: 'org-1',
+          type: 'recharge',
+          idempotencyKey: 'idem-1',
+        },
+      })
+      expect(mockPrisma.organizationBalance.update).not.toHaveBeenCalled()
+      expect(mockPrisma.organizationUsage.create).not.toHaveBeenCalled()
+    })
+
+    it('should return existing balance when a concurrent recharge already claimed the idempotency key', async () => {
+      const existingBalance = {
+        id: 'org-bal-1',
+        organizationId: 'org-1',
+        balance: 1000,
+        frozenAmount: 0,
+        totalSpent: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }
+      const uniqueError = Object.assign(new Error('unique constraint'), { code: 'P2002' })
+
+      mockPrisma.organizationUsage.findFirst.mockResolvedValue(null)
+      mockPrisma.organizationUsage.create.mockRejectedValue(uniqueError)
+      mockPrisma.organizationBalance.findUnique.mockResolvedValue(existingBalance)
+
+      const result = await addOrganizationBalance('org-1', 1000, {
+        operatorId: 'operator-1',
+        idempotencyKey: 'idem-1',
+      })
+
+      expect(result.balance).toBe(1000)
+      expect(mockPrisma.organizationBalance.update).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('organization freeze lifecycle', () => {
+    it('should freeze organization balance and return a persistent freeze record id', async () => {
+      const mockBalance = {
+        id: 'org-bal-1',
+        organizationId: 'org-1',
+        balance: 1000,
+        frozenAmount: 0,
+        totalSpent: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }
+      mockPrisma.organizationBalance.findUnique.mockResolvedValue(mockBalance)
+      mockPrisma.organizationBalance.updateMany.mockResolvedValue({ count: 1 })
+      mockPrisma.organizationUsage.create.mockResolvedValue({
+        id: 'org-freeze-1',
+        organizationId: 'org-1',
+        userId: 'system',
+        amount: 200,
+        type: 'freeze',
+        metadata: { status: 'pending' },
+      })
+
+      const freezeId = await freezeOrganizationBalance('org-1', 200, {
+        userId: 'user-1',
+        taskId: 'task-1',
+        idempotencyKey: 'freeze-key-1',
+        planCreditAmount: 50,
+      })
+
+      expect(freezeId).toBe('org-freeze-1')
+      expect(mockPrisma.organizationUsage.create).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({
+          organizationId: 'org-1',
+          userId: 'user-1',
+          amount: 200,
+          planCreditAmount: 50,
+          type: 'freeze',
+          taskId: 'task-1',
+          idempotencyKey: 'freeze-key-1',
+        }),
+      }))
+    })
+
+    it('should reuse an existing organization freeze with the same idempotency key', async () => {
+      mockPrisma.organizationUsage.findFirst.mockResolvedValue({
+        id: 'org-freeze-existing',
+        organizationId: 'org-1',
+        amount: 200,
+        planCreditAmount: 0,
+        taskId: 'task-1',
+        type: 'freeze',
+        metadata: { status: 'pending' },
+        idempotencyKey: 'freeze-key-1',
+      })
+
+      const freezeId = await freezeOrganizationBalance('org-1', 200, {
+        userId: 'user-1',
+        taskId: 'task-1',
+        idempotencyKey: 'freeze-key-1',
+      })
+
+      expect(freezeId).toBe('org-freeze-existing')
+      expect(mockPrisma.organizationBalance.updateMany).not.toHaveBeenCalled()
+      expect(mockPrisma.organizationUsage.create).not.toHaveBeenCalled()
+    })
+
+    it('should create a zero-balance reservation for plan-credit-only usage', async () => {
+      const mockBalance = {
+        id: 'org-bal-1',
+        organizationId: 'org-1',
+        balance: 1000,
+        frozenAmount: 0,
+        totalSpent: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }
+      mockPrisma.organizationBalance.findUnique.mockResolvedValue(mockBalance)
+      mockPrisma.organizationUsage.create.mockResolvedValue({
+        id: 'org-reservation-1',
+        organizationId: 'org-1',
+        userId: 'user-1',
+        amount: 0,
+        planCreditAmount: 200,
+        balanceAmount: 0,
+        type: 'freeze',
+        metadata: { status: 'pending' },
+      })
+
+      const freezeId = await freezeOrganizationBalance('org-1', 0, {
+        userId: 'user-1',
+        taskId: 'task-plan-credit',
+        idempotencyKey: 'reservation-key-1',
+        planCreditAmount: 200,
+      })
+
+      expect(freezeId).toBe('org-reservation-1')
+      expect(mockPrisma.organizationBalance.updateMany).not.toHaveBeenCalled()
+      expect(mockPrisma.organizationUsage.create).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({
+          organizationId: 'org-1',
+          userId: 'user-1',
+          amount: 0,
+          planCreditAmount: 200,
+          balanceAmount: 0,
+          type: 'freeze',
+        }),
+      }))
+    })
+
+    it('should expand a pending organization freeze when overage is needed', async () => {
+      const usage = {
+        id: 'org-freeze-1',
+        organizationId: 'org-1',
+        userId: 'system',
+        amount: 200,
+        balanceAmount: 200,
+        type: 'freeze',
+        metadata: { status: 'pending', freezeAmount: 200 },
+      }
+      mockPrisma.organizationUsage.findUnique.mockResolvedValue(usage)
+      mockPrisma.organizationBalance.updateMany.mockResolvedValue({ count: 1 })
+      mockPrisma.organizationUsage.updateMany.mockResolvedValue({ count: 1 })
+
+      const result = await increaseOrganizationPendingFreezeAmount('org-freeze-1', 50)
+
+      expect(result).toBe(true)
+      expect(mockPrisma.organizationBalance.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: {
+          organizationId: 'org-1',
+          balance: { gte: 50 },
+        },
+        data: {
+          balance: { decrement: 50 },
+          frozenAmount: { increment: 50 },
+        },
+      }))
+      expect(mockPrisma.organizationUsage.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({
+          amount: { increment: 50 },
+          balanceAmount: { increment: 50 },
+        }),
+      }))
+    })
+
+    it('should confirm a pending organization freeze exactly once', async () => {
+      const usage = {
+        id: 'org-freeze-1',
+        organizationId: 'org-1',
+        userId: 'system',
+        amount: 200,
+        type: 'freeze',
+        metadata: { status: 'pending' },
+      }
+      mockPrisma.organizationUsage.findUnique.mockResolvedValue(usage)
+      mockPrisma.organizationUsage.updateMany.mockResolvedValue({ count: 1 })
+      mockPrisma.organizationBalance.updateMany.mockResolvedValue({ count: 1 })
+      mockPrisma.organizationUsage.update.mockResolvedValue({ ...usage, metadata: { status: 'confirmed' } })
+
+      const result = await confirmOrganizationCharge('org-freeze-1', 200)
+
+      expect(result).toBe(true)
+      expect(mockPrisma.organizationUsage.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: {
+          id: 'org-freeze-1',
+          type: 'freeze',
+        },
+      }))
+      expect(mockPrisma.organizationBalance.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: expect.objectContaining({
+          organizationId: 'org-1',
+          frozenAmount: { gte: 200 },
+        }),
+        data: expect.objectContaining({
+          frozenAmount: { decrement: 200 },
+          totalSpent: { increment: 200 },
+        }),
+      }))
+      expect(mockPrisma.organizationUsage.update).toHaveBeenCalledWith(expect.objectContaining({
+        where: { id: 'org-freeze-1' },
+        data: expect.objectContaining({
+          type: 'charge',
+        }),
+      }))
+    })
+
+    it('should confirm a pending organization freeze and record task usage in one transaction', async () => {
+      const usage = {
+        id: 'org-freeze-1',
+        organizationId: 'org-1',
+        userId: 'system',
+        amount: 200,
+        type: 'freeze',
+        metadata: { status: 'pending', freezeAmount: 200 },
+      }
+      mockPrisma.organizationUsage.findUnique.mockResolvedValue(usage)
+      mockPrisma.organizationUsage.updateMany.mockResolvedValue({ count: 1 })
+      mockPrisma.organizationBalance.updateMany.mockResolvedValue({ count: 1 })
+      mockPrisma.organizationUsage.update.mockResolvedValue({ ...usage, metadata: { status: 'confirmed' } })
+
+      const result = await confirmOrganizationChargeWithRecord('org-freeze-1', 180, {
+        projectId: 'project-1',
+        userId: 'user-1',
+        action: 'voice_line',
+        apiType: 'voice',
+        model: 'index-tts2',
+        quantity: 5,
+        unit: 'second',
+        cost: 200,
+        balanceAfter: 0,
+        organizationId: 'org-1',
+        planCreditAmount: 20,
+        balanceAmount: 180,
+        metadata: { taskId: 'task-1' },
+      })
+
+      expect(result).toBe(true)
+      expect(reportingMock.recordUsageCostOnly).toHaveBeenCalledWith(
+        mockPrisma,
+        expect.objectContaining({
+          projectId: 'project-1',
+          userId: 'user-1',
+          organizationId: 'org-1',
+          cost: 200,
+          balanceAmount: 180,
+          metadata: expect.objectContaining({
+            taskId: 'task-1',
+            organizationFreezeId: 'org-freeze-1',
+            organizationBalanceSettled: true,
+            skipUserBalanceTransaction: true,
+          }),
+        }),
+      )
+    })
+
+    it('should reject duplicate confirmation after another worker claimed the freeze', async () => {
+      const usage = {
+        id: 'org-freeze-1',
+        organizationId: 'org-1',
+        userId: 'system',
+        amount: 200,
+        type: 'freeze',
+        metadata: { status: 'pending' },
+      }
+      mockPrisma.organizationUsage.findUnique.mockResolvedValue(usage)
+      mockPrisma.organizationUsage.updateMany.mockResolvedValue({ count: 0 })
+
+      const result = await confirmOrganizationCharge('org-freeze-1', 200)
+
+      expect(result).toBe(false)
+      expect(mockPrisma.organizationBalance.updateMany).not.toHaveBeenCalled()
+      expect(mockPrisma.organizationUsage.update).not.toHaveBeenCalled()
+    })
+
+    it('should roll back a pending organization freeze', async () => {
+      const usage = {
+        id: 'org-freeze-1',
+        organizationId: 'org-1',
+        userId: 'system',
+        amount: 200,
+        type: 'freeze',
+        metadata: { status: 'pending' },
+      }
+      mockPrisma.organizationUsage.findUnique.mockResolvedValue(usage)
+      mockPrisma.organizationUsage.updateMany.mockResolvedValue({ count: 1 })
+      mockPrisma.organizationBalance.updateMany.mockResolvedValue({ count: 1 })
+      mockPrisma.organizationUsage.update.mockResolvedValue({ ...usage, metadata: { status: 'rolled_back' } })
+
+      const result = await rollbackOrganizationFreeze('org-freeze-1')
+
+      expect(result).toBe(true)
+      expect(mockPrisma.organizationUsage.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: {
+          id: 'org-freeze-1',
+          type: 'freeze',
+        },
+      }))
+      expect(mockPrisma.organizationBalance.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: expect.objectContaining({
+          organizationId: 'org-1',
+          frozenAmount: { gte: 200 },
+        }),
+        data: expect.objectContaining({
+          balance: { increment: 200 },
+          frozenAmount: { decrement: 200 },
+        }),
+      }))
+      expect(mockPrisma.organizationUsage.update).toHaveBeenCalledWith(expect.objectContaining({
+        where: { id: 'org-freeze-1' },
+      }))
+    })
+
+    it('should reject duplicate rollback after another worker claimed the freeze', async () => {
+      const usage = {
+        id: 'org-freeze-1',
+        organizationId: 'org-1',
+        userId: 'system',
+        amount: 200,
+        type: 'freeze',
+        metadata: { status: 'pending' },
+      }
+      mockPrisma.organizationUsage.findUnique.mockResolvedValue(usage)
+      mockPrisma.organizationUsage.updateMany.mockResolvedValue({ count: 0 })
+
+      const result = await rollbackOrganizationFreeze('org-freeze-1')
+
+      expect(result).toBe(false)
+      expect(mockPrisma.organizationBalance.updateMany).not.toHaveBeenCalled()
+      expect(mockPrisma.organizationUsage.update).not.toHaveBeenCalled()
     })
   })
 

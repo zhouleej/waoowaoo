@@ -4,6 +4,11 @@ import { requireUserAuth, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
 import { toMoneyNumber } from '@/lib/billing/money'
 import { isArtStyleValue } from '@/lib/constants'
+import {
+  invalidOrganizationIdResponse,
+  readRequestedOrganizationId,
+  resolveCurrentOrganization,
+} from '@/lib/saas/current-organization'
 import { resolveTaskLocale } from '@/lib/task/resolve-locale'
 import {
   formatProjectValidationIssue,
@@ -36,9 +41,30 @@ export const GET = apiHandler(async (request: NextRequest) => {
   const page = parseInt(searchParams.get('page') || '1', 10)
   const pageSize = parseInt(searchParams.get('pageSize') || '12', 10)
   const search = searchParams.get('search') || ''
+  let requestedOrganizationId: string | null
+  try {
+    requestedOrganizationId = readRequestedOrganizationId(searchParams.get('organizationId'))
+  } catch (error) {
+    return invalidOrganizationIdResponse(error)
+  }
+
+  const preference = requestedOrganizationId
+    ? null
+    : await prisma.userPreference.findUnique({
+      where: { userId: session.user.id },
+      select: { currentOrganizationId: true },
+    })
+  const organizationContext = await resolveCurrentOrganization(
+    session.user.id,
+    requestedOrganizationId,
+    preference?.currentOrganizationId,
+  )
+  if ('error' in organizationContext) return organizationContext.error
 
   // 构建查询条件
-  const where: Record<string, unknown> = { userId: session.user.id }
+  const where: Record<string, unknown> = organizationContext.organizationId
+    ? { organizationId: organizationContext.organizationId }
+    : { userId: session.user.id, organizationId: null }
 
   // 如果有搜索关键词，搜索名称和描述
   // 注意：SQLite 不支持 mode: 'insensitive'，但 SQLite 的 LIKE 默认即大小写不敏感（ASCII 范围）
@@ -207,13 +233,26 @@ export const POST = apiHandler(async (request: NextRequest) => {
   const userPreference = await prisma.userPreference.findUnique({
     where: { userId: session.user.id }
   })
+  let requestedOrganizationId: string | null
+  try {
+    requestedOrganizationId = readRequestedOrganizationId((body as Record<string, unknown>).organizationId)
+  } catch (error) {
+    return invalidOrganizationIdResponse(error)
+  }
+  const organizationContext = await resolveCurrentOrganization(
+    session.user.id,
+    requestedOrganizationId,
+    userPreference?.currentOrganizationId,
+  )
+  if ('error' in organizationContext) return organizationContext.error
 
   // 创建基础项目
   const project = await prisma.project.create({
     data: {
       name: name.trim(),
       description: description?.trim() || null,
-      userId: session.user.id
+      userId: session.user.id,
+      ...(organizationContext.organizationId ? { organizationId: organizationContext.organizationId } : {}),
     }
   })
 

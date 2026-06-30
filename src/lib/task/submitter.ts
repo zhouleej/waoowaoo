@@ -19,7 +19,7 @@ import {
   isBillableTaskType,
   prepareTaskBilling,
 } from '@/lib/billing'
-import { ApiError } from '@/lib/api-errors'
+import { ApiError, normalizeError } from '@/lib/api-errors'
 import { getTaskFlowMeta } from '@/lib/llm-observe/stage-pipeline'
 import type { Locale } from '@/i18n/routing'
 import { attachTaskToRun, createRun, findReusableActiveRun } from '@/lib/run-runtime/service'
@@ -248,6 +248,7 @@ export async function submitTask(params: {
         id: task.id,
         userId: params.userId,
         projectId: params.projectId,
+        organizationId: task.organizationId || null,
         billingInfo: preparedBillingInfo,
       })) as TaskBillingInfo | null
       if (preparedBillingInfo) {
@@ -262,8 +263,9 @@ export async function submitTask(params: {
           available: error.available,
         })
       }
-      await markTaskFailed(task.id, 'INTERNAL_ERROR', error instanceof Error ? error.message : String(error))
-      throw error
+      const apiError = normalizeError(error)
+      await markTaskFailed(task.id, apiError.code, apiError.message)
+      throw apiError
     }
   }
 

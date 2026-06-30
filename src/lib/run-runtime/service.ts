@@ -850,8 +850,7 @@ export async function listRuns(input: ListRunsInput) {
     : undefined
   const rows = await runtimeClient.graphRun.findMany({
     where: {
-      userId: input.userId,
-      ...(input.projectId ? { projectId: input.projectId } : {}),
+      ...(input.projectId ? { projectId: input.projectId } : { userId: input.userId }),
       ...(input.workflowType ? { workflowType: input.workflowType } : {}),
       ...(input.targetType ? { targetType: input.targetType } : {}),
       ...(input.targetId ? { targetId: input.targetId } : {}),

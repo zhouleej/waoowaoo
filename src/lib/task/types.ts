@@ -109,6 +109,7 @@ export type TaskBillingInfo =
     balanceChargeApplied?: number
     billingKey?: string
     freezeId?: string | null
+    freezeScope?: 'user' | 'organization'
     modeSnapshot?: BillingMode | null
     status?: 'skipped' | 'quoted' | 'frozen' | 'settled' | 'rolled_back' | 'failed'
     chargedCost?: number
@@ -149,6 +150,7 @@ export type SSEEvent = {
 export type CreateTaskInput = {
   userId: string
   projectId: string
+  organizationId?: string | null
   episodeId?: string | null
   type: TaskType
   targetType: string

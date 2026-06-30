@@ -1,14 +1,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { NextRequest, NextResponse } from 'next/server'
-import { apiHandler } from '@/lib/api-errors'
+import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePlatformAdmin, createAdminAuditLog } from '@/lib/platform-admin'
+import { apiHandler } from '@/lib/api-errors'
 import { badRequest } from '@/lib/api-auth'
 import { nextOrderNo, parsePagination, readJsonObject, readNumber, readString } from '@/lib/saas/validation'
 import { serializePlan } from '@/lib/saas/serializers'
 import type { Prisma } from '@prisma/client'
 
-export const GET = apiHandler(async (req: NextRequest) => {
+export const GET = apiHandler(async (req) => {
   const auth = await requirePlatformAdmin()
   if (auth instanceof NextResponse) return auth
   try {
@@ -29,7 +29,7 @@ export const GET = apiHandler(async (req: NextRequest) => {
   }
 })
 
-export const POST = apiHandler(async (req: NextRequest) => {
+export const POST = apiHandler(async (req) => {
   const auth = await requirePlatformAdmin()
   if (auth instanceof NextResponse) return auth
   const { user } = auth

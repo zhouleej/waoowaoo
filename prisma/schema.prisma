@@ -557,6 +557,7 @@ model OrganizationUsage {
   type           String   // task, asset, storage
   taskId         String?
   orderId        String?
+  idempotencyKey String?  @db.VarChar(128)
   description    String?  @db.Text
   metadata       Json?
   createdAt      DateTime @default(now())
@@ -568,6 +569,7 @@ model OrganizationUsage {
   @@index([taskId])
   @@index([orderId])
   @@index([createdAt])
+  @@unique([organizationId, idempotencyKey], map: "organization_usages_org_idempotency_key")
   @@map("organization_usages")
 }
 
@@ -758,6 +760,7 @@ model UserPreference {
   updatedAt       DateTime @default(now()) @updatedAt
   imageResolution String   @default("2K")
   capabilityDefaults String? @db.Text
+  currentOrganizationId String?
 
   // API Key 配置（极简版）
   llmBaseUrl  String? @default("https://openrouter.ai/api/v1")

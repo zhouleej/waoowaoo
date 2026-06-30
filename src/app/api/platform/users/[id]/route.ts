@@ -1,18 +1,14 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { apiHandler } from '@/lib/api-errors'
+import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePlatformAdmin, createAdminAuditLog } from '@/lib/platform-admin'
-
-interface RouteParams {
-  params: Promise<{ id: string }>
-}
+import { apiHandler } from '@/lib/api-errors'
 
 /**
  * GET /api/platform/users/[id]
  * 获取用户详情
  * 返回：用户信息及所属组织、消费记录
  */
-export const GET = apiHandler(async (_req: NextRequest, { params }: RouteParams) => {
+export const GET = apiHandler<{ id: string }>(async (_req, { params }) => {
   const authResult = await requirePlatformAdmin()
   if (authResult instanceof NextResponse) return authResult
 
@@ -146,7 +142,7 @@ export const GET = apiHandler(async (_req: NextRequest, { params }: RouteParams)
  * 更新用户平台属性
  * 请求体：{ isPlatformAdmin?: boolean, isGlobalLocked?: boolean }
  */
-export const PATCH = apiHandler(async (req: NextRequest, { params }: RouteParams) => {
+export const PATCH = apiHandler<{ id: string }>(async (req, { params }) => {
   const authResult = await requirePlatformAdmin()
   if (authResult instanceof NextResponse) return authResult
 
@@ -223,7 +219,7 @@ export const PATCH = apiHandler(async (req: NextRequest, { params }: RouteParams
  * 删除用户（平台管理员专用）
  * 注意：不能删除平台管理员自己
  */
-export const DELETE = apiHandler(async (req: NextRequest, { params }: RouteParams) => {
+export const DELETE = apiHandler<{ id: string }>(async (_req, { params }) => {
   const authResult = await requirePlatformAdmin()
   if (authResult instanceof NextResponse) return authResult
   const { user: admin } = authResult

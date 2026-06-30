@@ -6,10 +6,13 @@ import { useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
 import { Link, useRouter } from '@/i18n/navigation'
 import Navbar from '@/components/Navbar'
-import { apiFetch } from '@/lib/api-fetch'
+import { getPlatformErrorMessage } from '@/components/platform/errors'
+import { PlatformAccessDenied, PlatformPageError } from '@/components/platform/PlatformPageState'
+import { apiFetch, apiVoid, throwIfNotOk } from '@/lib/api-fetch'
 import { AppIcon } from '@/components/ui/icons'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import { useToast } from '@/contexts/ToastContext'
+import { usePlatformAdminCheck } from '@/hooks/common/usePlatformAdminCheck'
 
 interface Pagination {
   page: number
@@ -55,13 +58,16 @@ export default function PlatformUsersPage() {
   const router = useRouter()
   const [users, setUsers] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchInput, setSearchInput] = useState('')
   const [pagination, setPagination] = useState<Pagination>({ page: 1, limit: 10, total: 0, totalPages: 1 })
 
   // 用户详情弹窗
   const [selectedUser, setSelectedUser] = useState<UserDetail | null>(null)
+  const [detailUserId, setDetailUserId] = useState<string | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
+  const [detailError, setDetailError] = useState<string | null>(null)
   const [showDetailModal, setShowDetailModal] = useState(false)
 
   // 锁定/解锁确认
@@ -90,8 +96,14 @@ export default function PlatformUsersPage() {
   const [allOrganizations, setAllOrganizations] = useState<any[]>([])
   const [selectedOrgId, setSelectedOrgId] = useState('')
   const [linkingOrg, setLinkingOrg] = useState(false)
+  const [linkOrgError, setLinkOrgError] = useState<string | null>(null)
 
-  const isPlatformAdmin = (session?.user as any)?.isPlatformAdmin
+  const {
+    isPlatformAdmin,
+    loading: platformAdminLoading,
+    error: platformAdminError,
+    retry: retryPlatformAdminCheck,
+  } = usePlatformAdminCheck(status === 'authenticated' && Boolean(session))
 
   useEffect(() => {
     if (status === 'loading') return
@@ -101,6 +113,7 @@ export default function PlatformUsersPage() {
   const fetchUsers = useCallback(async (page: number = 1, search: string = '') => {
     if (!isPlatformAdmin) return
     setLoading(true)
+    setLoadError(null)
     try {
       const params = new URLSearchParams({
         page: page.toString(),
@@ -110,17 +123,19 @@ export default function PlatformUsersPage() {
         params.set('search', search.trim())
       }
       const res = await apiFetch(`/api/platform/users?${params}`)
+      await throwIfNotOk(res, t('loadFailed'))
       const data = await res.json()
       setUsers(Array.isArray(data) ? data : (data?.data || []))
       if (data?.pagination) {
         setPagination(data.pagination)
       }
-    } catch (e) {
-      console.error(e)
+    } catch (error) {
+      setUsers([])
+      setLoadError(getPlatformErrorMessage(error, t('loadFailed')))
     } finally {
       setLoading(false)
     }
-  }, [isPlatformAdmin, pagination.limit])
+  }, [isPlatformAdmin, pagination.limit, t])
 
   useEffect(() => {
     fetchUsers(1, searchQuery)
@@ -145,21 +160,22 @@ export default function PlatformUsersPage() {
     setShowDetailModal(true)
     setDetailLoading(true)
     setSelectedUser(null)
+    setDetailUserId(userId)
+    setDetailError(null)
     try {
       const res = await apiFetch(`/api/platform/users/${userId}`)
-      if (res.ok) {
-        const data = await res.json()
-        // API 返回 { user: {...}, organizations: [...], recentUsage: [...] }
-        // 需要展平为前端使用的格式
-        const userData = data.user || data
-        setSelectedUser({
-          ...userData,
-          organizations: data.organizations || [],
-          consumption: data.recentUsage || [],
-        })
-      }
-    } catch (e) {
-      console.error(e)
+      await throwIfNotOk(res, t('loadFailed'))
+      const data = await res.json()
+      // API 返回 { user: {...}, organizations: [...], recentUsage: [...] }
+      // 需要展平为前端使用的格式
+      const userData = data.user || data
+      setSelectedUser({
+        ...userData,
+        organizations: data.organizations || [],
+        consumption: data.recentUsage || [],
+      })
+    } catch (error) {
+      setDetailError(getPlatformErrorMessage(error, t('loadFailed')))
     } finally {
       setDetailLoading(false)
     }
@@ -174,21 +190,19 @@ export default function PlatformUsersPage() {
   const handleLockConfirm = async () => {
     if (!lockTarget) return
     try {
-      const res = await apiFetch(`/api/platform/users/${lockTarget.id}`, {
+      await apiVoid(`/api/platform/users/${lockTarget.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ isGlobalLocked: !lockTarget.isLocked })
       })
-      if (res.ok) {
-        // 刷新列表和详情
-        fetchUsers(pagination.page, searchQuery)
-        if (selectedUser?.id === lockTarget.id) {
-          setSelectedUser(prev => prev ? { ...prev, isGlobalLocked: !lockTarget.isLocked } : null)
-        }
-        showToast(t('operationSuccess'), 'success')
+      // 刷新列表和详情
+      fetchUsers(pagination.page, searchQuery)
+      if (selectedUser?.id === lockTarget.id) {
+        setSelectedUser(prev => prev ? { ...prev, isGlobalLocked: !lockTarget.isLocked } : null)
       }
-    } catch (e) {
-      console.error(e)
+      showToast(t('operationSuccess'), 'success')
+    } catch (error) {
+      showToast(getPlatformErrorMessage(error, t('saveFailed')), 'error')
     }
     setShowLockConfirm(false)
     setLockTarget(null)
@@ -203,20 +217,18 @@ export default function PlatformUsersPage() {
   const handleAdminConfirm = async () => {
     if (!adminTarget) return
     try {
-      const res = await apiFetch(`/api/platform/users/${adminTarget.id}`, {
+      await apiVoid(`/api/platform/users/${adminTarget.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ isPlatformAdmin: !adminTarget.isAdmin })
       })
-      if (res.ok) {
-        fetchUsers(pagination.page, searchQuery)
-        if (selectedUser?.id === adminTarget.id) {
-          setSelectedUser(prev => prev ? { ...prev, isPlatformAdmin: !adminTarget.isAdmin } : null)
-        }
-        showToast(t('operationSuccess'), 'success')
+      fetchUsers(pagination.page, searchQuery)
+      if (selectedUser?.id === adminTarget.id) {
+        setSelectedUser(prev => prev ? { ...prev, isPlatformAdmin: !adminTarget.isAdmin } : null)
       }
-    } catch (e) {
-      console.error(e)
+      showToast(t('operationSuccess'), 'success')
+    } catch (error) {
+      showToast(getPlatformErrorMessage(error, t('saveFailed')), 'error')
     }
     setShowAdminConfirm(false)
     setAdminTarget(null)
@@ -232,22 +244,17 @@ export default function PlatformUsersPage() {
     if (!deleteTarget) return
     setDeleting(true)
     try {
-      const res = await apiFetch(`/api/platform/users/${deleteTarget.id}`, {
+      await apiVoid(`/api/platform/users/${deleteTarget.id}`, {
         method: 'DELETE',
       })
-      if (!res.ok) {
-        const err = await res.json().catch(() => null)
-        throw new Error(err?.error || t('deleteFailed'))
-      }
       showToast(t('deleteSuccess'), 'success')
       setShowDeleteConfirm(false)
       setDeleteTarget(null)
       setShowDetailModal(false)
       setSelectedUser(null)
       fetchUsers(pagination.page, searchQuery)
-    } catch (e: any) {
-      console.error(e)
-      showToast(e?.message || t('deleteFailed'), 'error')
+    } catch (error) {
+      showToast(getPlatformErrorMessage(error, t('deleteFailed')), 'error')
     } finally {
       setDeleting(false)
     }
@@ -274,7 +281,7 @@ export default function PlatformUsersPage() {
     }
     setCreatingUser(true)
     try {
-      const res = await apiFetch('/api/platform/users', {
+      await apiVoid('/api/platform/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -283,16 +290,11 @@ export default function PlatformUsersPage() {
           password: createUserPassword,
         }),
       })
-      if (!res.ok) {
-        const err = await res.json().catch(() => null)
-        throw new Error(err?.error || '创建失败')
-      }
       showToast(t('createSuccess'), 'success')
       closeCreateModal()
       fetchUsers(1, searchQuery)
-    } catch (e: any) {
-      console.error(e)
-      showToast(e?.message || t('createFailed'), 'error')
+    } catch (error) {
+      showToast(getPlatformErrorMessage(error, t('createFailed')), 'error')
     } finally {
       setCreatingUser(false)
     }
@@ -302,16 +304,18 @@ export default function PlatformUsersPage() {
     if (!selectedUser) return
     setShowLinkOrgModal(true)
     setSelectedOrgId('')
+    setLinkOrgError(null)
     try {
       const res = await apiFetch('/api/platform/organizations?limit=100')
+      await throwIfNotOk(res, t('loadFailed'))
       const data = await res.json()
       const orgs = Array.isArray(data) ? data : (data?.data || [])
       // 过滤掉用户已经在的组织
       const userOrgIds = (selectedUser.organizations || []).map((o: any) => o.id)
       setAllOrganizations(orgs.filter((o: any) => !userOrgIds.includes(o.id)))
-    } catch (e) {
-      console.error(e)
+    } catch (error) {
       setAllOrganizations([])
+      setLinkOrgError(getPlatformErrorMessage(error, t('loadFailed')))
     }
   }
 
@@ -319,22 +323,17 @@ export default function PlatformUsersPage() {
     if (!selectedUser || !selectedOrgId) return
     setLinkingOrg(true)
     try {
-      const res = await apiFetch(`/api/platform/users/${selectedUser.id}/organizations`, {
+      await apiVoid(`/api/platform/users/${selectedUser.id}/organizations`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ organizationId: selectedOrgId, role: 'member' }),
       })
-      if (!res.ok) {
-        const err = await res.json().catch(() => null)
-        throw new Error(err?.error || t('linkFailed'))
-      }
       showToast(t('linkSuccess'), 'success')
       setShowLinkOrgModal(false)
       // 刷新用户详情
       handleRowClick(selectedUser.id)
-    } catch (e: any) {
-      console.error(e)
-      showToast(e?.message || t('linkFailed'), 'error')
+    } catch (error) {
+      showToast(getPlatformErrorMessage(error, t('linkFailed')), 'error')
     } finally {
       setLinkingOrg(false)
     }
@@ -343,29 +342,40 @@ export default function PlatformUsersPage() {
   const handleUnlinkOrg = async (organizationId: string) => {
     if (!selectedUser) return
     try {
-      const res = await apiFetch(`/api/platform/users/${selectedUser.id}/organizations`, {
+      await apiVoid(`/api/platform/users/${selectedUser.id}/organizations`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ organizationId }),
       })
-      if (!res.ok) {
-        const err = await res.json().catch(() => null)
-        throw new Error(err?.error || t('unlinkFailed'))
-      }
       showToast(t('unlinkSuccess'), 'success')
       handleRowClick(selectedUser.id)
-    } catch (e: any) {
-      console.error(e)
-      showToast(e?.message || t('unlinkFailed'), 'error')
+    } catch (error) {
+      showToast(getPlatformErrorMessage(error, t('unlinkFailed')), 'error')
     }
   }
 
-  if (status === 'loading' || !session) {
+  if (status === 'loading' || !session || platformAdminLoading) {
     return (
       <div className="min-h-screen bg-[var(--glass-bg-root)]">
         <Navbar />
         <div className="flex items-center justify-center h-[calc(100vh-64px)]">
-          <div className="animate-pulse text-[var(--glass-text-secondary)]">{t('loading') || 'Loading...'}</div>
+          <div className="animate-pulse text-[var(--glass-text-secondary)]">{t('loading')}</div>
+        </div>
+      </div>
+    )
+  }
+
+  if (platformAdminError) {
+    return (
+      <div className="min-h-screen bg-[var(--glass-bg-root)]">
+        <Navbar />
+        <div className="mx-auto max-w-3xl px-4 py-16">
+          <PlatformPageError
+            title={t('platformAdminCheckFailed')}
+            message={platformAdminError.message}
+            retryLabel={t('retry')}
+            onRetry={retryPlatformAdminCheck}
+          />
         </div>
       </div>
     )
@@ -375,10 +385,7 @@ export default function PlatformUsersPage() {
     return (
       <div className="min-h-screen bg-[var(--glass-bg-root)]">
         <Navbar />
-        <div className="flex flex-col items-center justify-center h-[calc(100vh-64px)]">
-          <h1 className="text-2xl font-bold text-[var(--glass-text-primary)] mb-4">403 - Access Denied</h1>
-          <p className="text-[var(--glass-text-secondary)]">You do not have permission to access this page.</p>
-        </div>
+        <PlatformAccessDenied title={t('accessDeniedTitle')} message={t('noPermission')} />
       </div>
     )
   }
@@ -388,12 +395,12 @@ export default function PlatformUsersPage() {
       <Navbar />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex items-center justify-between mb-8">
-          <h1 className="text-3xl font-bold text-[var(--glass-text-primary)]">{t('users') || 'Users'}</h1>
+          <h1 className="text-3xl font-bold text-[var(--glass-text-primary)]">{t('users')}</h1>
           <div className="flex items-center gap-3">
             <button onClick={openCreateModal} className="glass-btn-base glass-btn-primary px-4 py-2">
               {t('newUser')}
             </button>
-            <Link href={{ pathname: '/admin/platform' }} className="glass-btn-base px-4 py-2">{t('back') || 'Back'}</Link>
+            <Link href={{ pathname: '/admin/platform' }} className="glass-btn-base px-4 py-2">{t('back')}</Link>
           </div>
         </div>
 
@@ -420,21 +427,23 @@ export default function PlatformUsersPage() {
         </div>
 
         <div className="glass-surface overflow-hidden">
-          {loading ? (
-            <div className="p-8 text-center text-[var(--glass-text-secondary)]">{t('loading') || 'Loading...'}</div>
+          {loadError ? (
+            <PlatformPageError title={t('requestFailed')} message={loadError} retryLabel={t('retry')} onRetry={() => fetchUsers(pagination.page || 1, searchQuery)} />
+          ) : loading ? (
+            <div className="p-8 text-center text-[var(--glass-text-secondary)]">{t('loading')}</div>
           ) : users.length === 0 ? (
-            <div className="p-8 text-center text-[var(--glass-text-secondary)]">{t('noUsers') || 'No users found'}</div>
+            <div className="p-8 text-center text-[var(--glass-text-secondary)]">{t('noUsers')}</div>
           ) : (
             <>
               <table className="w-full">
                 <thead className="bg-[var(--glass-bg-muted)]">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">{t('username') || 'Username'}</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">{t('email') || 'Email'}</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">{t('role') || 'Role'}</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">{t('status') || 'Status'}</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">{t('createdAt') || 'Created'}</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">{t('actions') || 'Actions'}</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">{t('username')}</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">{t('email')}</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">{t('role')}</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">{t('status')}</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">{t('createdAt')}</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-[var(--glass-text-secondary)] uppercase tracking-wider">{t('actions')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[var(--glass-stroke-base)]">
@@ -448,22 +457,22 @@ export default function PlatformUsersPage() {
                         {user.name}
                         {user.isPlatformAdmin && (
                           <span className="ml-2 px-2 py-0.5 text-xs rounded-full bg-[var(--glass-tone-warning-bg)] text-[var(--glass-tone-warning-fg)]">
-                            Admin
+                            {t('admin')}
                           </span>
                         )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-[var(--glass-text-secondary)]">{user.email || '-'}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-[var(--glass-text-secondary)]">
-                        {user.isPlatformAdmin ? (t('platformAdmin') || 'Platform Admin') : (t('user') || 'User')}
+                        {user.isPlatformAdmin ? t('platformAdmin') : t('user')}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         {user.isGlobalLocked ? (
                           <span className="px-2 py-1 text-xs rounded-full bg-[var(--glass-tone-danger-bg)] text-[var(--glass-tone-danger-fg)]">
-                            {t('locked') || 'Locked'}
+                            {t('locked')}
                           </span>
                         ) : (
                           <span className="px-2 py-1 text-xs rounded-full bg-[var(--glass-tone-success-bg)] text-[var(--glass-tone-success-fg)]">
-                            {t('normal') || 'Normal'}
+                            {t('normal')}
                           </span>
                         )}
                       </td>
@@ -555,7 +564,14 @@ export default function PlatformUsersPage() {
 
             {/* 内容 */}
             <div className="overflow-y-auto flex-1 px-5 py-4 sm:px-6 sm:py-5">
-              {detailLoading ? (
+              {detailError ? (
+                <PlatformPageError
+                  title={t('requestFailed')}
+                  message={detailError}
+                  retryLabel={t('retry')}
+                  onRetry={() => { if (detailUserId) void handleRowClick(detailUserId) }}
+                />
+              ) : detailLoading ? (
                 <div className="py-8 text-center text-[var(--glass-text-secondary)]">{t('loading')}</div>
               ) : selectedUser ? (
                 <div className="space-y-6">
@@ -569,7 +585,7 @@ export default function PlatformUsersPage() {
                           {selectedUser.name}
                           {selectedUser.isPlatformAdmin && (
                             <span className="px-2 py-0.5 text-xs rounded-full bg-[var(--glass-tone-warning-bg)] text-[var(--glass-tone-warning-fg)]">
-                              Admin
+                              {t('admin')}
                             </span>
                           )}
                         </span>
@@ -749,7 +765,7 @@ export default function PlatformUsersPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm text-[var(--glass-text-secondary)] mb-1">密码 *</label>
+                <label className="block text-sm text-[var(--glass-text-secondary)] mb-1">{t('password')} *</label>
                 <input
                   type="password"
                   value={createUserPassword}
@@ -760,7 +776,7 @@ export default function PlatformUsersPage() {
               </div>
             </div>
             <div className="flex items-center justify-end gap-3 px-5 py-4 sm:px-6 border-t border-[var(--glass-stroke-base)]">
-              <button onClick={closeCreateModal} className="glass-btn-base px-4 py-2">取消</button>
+              <button onClick={closeCreateModal} className="glass-btn-base px-4 py-2">{t('cancel')}</button>
               <button
                 onClick={handleCreateUser}
                 disabled={creatingUser}
@@ -783,33 +799,39 @@ export default function PlatformUsersPage() {
               <button onClick={() => setShowLinkOrgModal(false)} className="text-[var(--glass-text-secondary)] hover:text-[var(--glass-text-primary)] text-2xl leading-none">&times;</button>
             </div>
             <div className="px-5 py-4 sm:px-6 space-y-4">
-              <div>
-                <label className="block text-sm text-[var(--glass-text-secondary)] mb-1">{t('selectOrganization')}</label>
-                <select
-                  value={selectedOrgId}
-                  onChange={(e) => setSelectedOrgId(e.target.value)}
-                  className="glass-input-base w-full px-3 py-2"
-                >
-                  <option value="">{t('selectOrganization')}</option>
-                  {allOrganizations.map((org) => (
-                    <option key={org.id} value={org.id}>
-                      {org.name} ({org.slug})
-                    </option>
-                  ))}
-                </select>
-                {allOrganizations.length === 0 && (
-                  <p className="text-xs text-[var(--glass-text-tertiary)] mt-1">{t('noLinkableOrganizations')}</p>
-                )}
-              </div>
-              <p className="text-xs text-[var(--glass-text-tertiary)]">
-                {t('linkOrganizationHint', { name: selectedUser?.name || '-' })}
-              </p>
+              {linkOrgError ? (
+                <PlatformPageError title={t('requestFailed')} message={linkOrgError} retryLabel={t('retry')} onRetry={() => { void openLinkOrgModal() }} />
+              ) : (
+                <>
+                  <div>
+                    <label className="block text-sm text-[var(--glass-text-secondary)] mb-1">{t('selectOrganization')}</label>
+                    <select
+                      value={selectedOrgId}
+                      onChange={(e) => setSelectedOrgId(e.target.value)}
+                      className="glass-input-base w-full px-3 py-2"
+                    >
+                      <option value="">{t('selectOrganization')}</option>
+                      {allOrganizations.map((org) => (
+                        <option key={org.id} value={org.id}>
+                          {org.name} ({org.slug})
+                        </option>
+                      ))}
+                    </select>
+                    {allOrganizations.length === 0 && (
+                      <p className="text-xs text-[var(--glass-text-tertiary)] mt-1">{t('noLinkableOrganizations')}</p>
+                    )}
+                  </div>
+                  <p className="text-xs text-[var(--glass-text-tertiary)]">
+                    {t('linkOrganizationHint', { name: selectedUser?.name || '-' })}
+                  </p>
+                </>
+              )}
             </div>
             <div className="flex items-center justify-end gap-3 px-5 py-4 sm:px-6 border-t border-[var(--glass-stroke-base)]">
-              <button onClick={() => setShowLinkOrgModal(false)} className="glass-btn-base px-4 py-2">取消</button>
+              <button onClick={() => setShowLinkOrgModal(false)} className="glass-btn-base px-4 py-2">{t('cancel')}</button>
               <button
                 onClick={handleLinkOrg}
-                disabled={!selectedOrgId || linkingOrg}
+                disabled={!selectedOrgId || linkingOrg || Boolean(linkOrgError)}
                 className="glass-btn-base glass-btn-primary px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {linkingOrg ? t('linking') : t('confirmLink')}

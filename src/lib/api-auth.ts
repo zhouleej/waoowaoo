@@ -105,6 +105,7 @@ export interface ProjectAuthContextWithIncludes<T extends ProjectAuthIncludes = 
     project: {
         id: string
         userId: string
+        organizationId?: string | null
         name: string
         [key: string]: unknown
     }
@@ -261,10 +262,9 @@ export async function requireProjectAuth<T extends ProjectAuthIncludes = Project
         return notFound('Project')
     }
 
-    // 5. 所有权验证
-    if (project.userId !== session.user.id) {
-        return forbidden()
-    }
+    // 5. 项目访问验证：个人项目按创建者，组织项目按 active 成员身份
+    const projectAccessError = await checkProjectAccess(project, session)
+    if (projectAccessError) return projectAccessError
 
     // 6. NovelPromotionData 检查
     if (!project.novelPromotionData) {
@@ -317,6 +317,35 @@ async function checkGlobalLock(userId: string): Promise<NextResponse | null> {
     return null
 }
 
+type ProjectAccessRow = {
+    id: string
+    userId: string
+    organizationId?: string | null
+}
+
+async function checkProjectAccess(project: ProjectAccessRow, session: AuthSession): Promise<NextResponse | null> {
+    if (!project.organizationId) {
+        return project.userId === session.user.id ? null : forbidden()
+    }
+
+    const membership = await withPrismaRetry(() =>
+        prisma.organizationMember.findUnique({
+            where: {
+                organizationId_userId: {
+                    organizationId: project.organizationId!,
+                    userId: session.user.id,
+                },
+            },
+            include: { organization: true },
+        })
+    )
+
+    if (!membership) return forbidden('无权访问该企业项目')
+    if (membership.organization.status !== 'active') return forbidden('企业已被禁用')
+    if (membership.status !== 'active') return forbidden('成员已被禁用')
+    return null
+}
+
 /**
  * 仅验证 Session，不检查项目权限
  * 适用于用户级 API（如资产库）
@@ -353,7 +382,7 @@ export async function requireUserAuth(): Promise<{ session: AuthSession } | Next
  */
 export async function requireProjectAuthLight(
     projectId: string
-): Promise<{ session: AuthSession; project: { id: string; userId: string; name: string; [key: string]: unknown } } | NextResponse> {
+): Promise<{ session: AuthSession; project: { id: string; userId: string; organizationId?: string | null; name: string; [key: string]: unknown } } | NextResponse> {
     const session = await getAuthSession()
     if (!session?.user?.id) {
         return unauthorized()
@@ -379,9 +408,8 @@ export async function requireProjectAuthLight(
         return notFound('Project')
     }
 
-    if (project.userId !== session.user.id) {
-        return forbidden()
-    }
+    const projectAccessError = await checkProjectAccess(project, session)
+    if (projectAccessError) return projectAccessError
 
     return { session, project }
 }

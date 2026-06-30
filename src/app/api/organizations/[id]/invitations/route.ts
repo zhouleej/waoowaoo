@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { prisma } from '@/lib/prisma'
 import { badRequest, isErrorResponse, requireUserAuth } from '@/lib/api-auth'
@@ -7,9 +7,7 @@ import { apiHandler } from '@/lib/api-errors'
 import { requireOrganizationRole, writeEnterpriseAudit } from '@/lib/saas/permissions'
 import { readString } from '@/lib/saas/validation'
 
-type Ctx = { params: Promise<{ id: string }> }
-
-export const GET = apiHandler(async (_req: NextRequest, { params }: Ctx) => {
+export const GET = apiHandler<{ id: string }>(async (_req, { params }) => {
   const auth = await requireUserAuth()
   if (isErrorResponse(auth)) return auth
   const { id } = await params
@@ -19,7 +17,7 @@ export const GET = apiHandler(async (_req: NextRequest, { params }: Ctx) => {
   return NextResponse.json({ data })
 })
 
-export const POST = apiHandler(async (req: NextRequest, { params }: Ctx) => {
+export const POST = apiHandler<{ id: string }>(async (req, { params }) => {
   const auth = await requireUserAuth()
   if (isErrorResponse(auth)) return auth
   const { id } = await params

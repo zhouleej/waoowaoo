@@ -1,13 +1,15 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { NextRequest, NextResponse } from 'next/server'
-import { apiHandler } from '@/lib/api-errors'
+import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePlatformAdmin, createAdminAuditLog } from '@/lib/platform-admin'
+import { apiHandler } from '@/lib/api-errors'
 import { badRequest, notFound } from '@/lib/api-auth'
 import { parsePagination, readNumber, readString } from '@/lib/saas/validation'
 import { serializeSubscription } from '@/lib/saas/serializers'
+import { parseSubscriptionStatus } from '@/lib/saas/billing-status'
+import { syncOrganizationSubscriptionState } from '@/lib/saas/billing-state'
 
-export const GET = apiHandler(async (req: NextRequest) => {
+export const GET = apiHandler(async (req) => {
   const auth = await requirePlatformAdmin()
   if (auth instanceof NextResponse) return auth
   try {
@@ -28,7 +30,7 @@ export const GET = apiHandler(async (req: NextRequest) => {
   }
 })
 
-export const POST = apiHandler(async (req: NextRequest) => {
+export const POST = apiHandler(async (req) => {
   const auth = await requirePlatformAdmin()
   if (auth instanceof NextResponse) return auth
   const { user } = auth
@@ -44,12 +46,13 @@ export const POST = apiHandler(async (req: NextRequest) => {
     if (!org) return notFound('Organization')
     if (!plan) return notFound('PricingPlan')
     if (plan.status !== 'active') return badRequest('套餐不可订阅')
+    const status = parseSubscriptionStatus(readString(body.status ?? 'active', '订阅状态', { max: 32 }) || 'active')
     const sub = await prisma.$transaction(async (tx) => {
       await tx.organizationSubscription.updateMany({ where: { organizationId, status: { in: ['trialing', 'active', 'past_due'] } }, data: { status: 'canceled', canceledAt: new Date(), autoRenew: false } })
       const created = await tx.organizationSubscription.create({
         data: {
           organizationId, planId,
-          status: readString(body.status ?? 'active', '订阅状态', { max: 32 }),
+          status,
           currentPeriodStart: body.currentPeriodStart ? new Date(body.currentPeriodStart) : new Date(),
           currentPeriodEnd: body.currentPeriodEnd ? new Date(body.currentPeriodEnd) : null,
           autoRenew: Boolean(body.autoRenew),
@@ -57,7 +60,7 @@ export const POST = apiHandler(async (req: NextRequest) => {
           metadata: body.metadata && typeof body.metadata === 'object' ? body.metadata : undefined,
         },
       })
-      await tx.organization.update({ where: { id: organizationId }, data: { currentPlanId: planId, currentSubscriptionId: created.id, businessStatus: 'paid' } })
+      await syncOrganizationSubscriptionState(tx, created)
       return tx.organizationSubscription.findUniqueOrThrow({ where: { id: created.id }, include: { organization: true, plan: true } })
     })
     await createAdminAuditLog({ adminId: user.id, action: 'create_subscription', targetType: 'OrganizationSubscription', targetId: sub.id, details: { organizationId, planId } })

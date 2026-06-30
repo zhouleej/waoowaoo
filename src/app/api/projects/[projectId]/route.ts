@@ -4,12 +4,57 @@ import { prisma } from '@/lib/prisma'
 import { addSignedUrlsToProject, deleteObjects } from '@/lib/storage'
 import { resolveStorageKeyFromMediaValue } from '@/lib/media/service'
 import { logProjectAction } from '@/lib/logging/semantic'
-import { requireUserAuth, isErrorResponse } from '@/lib/api-auth'
+import { requireProjectAuthLight, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
+import type { Prisma } from '@prisma/client'
 import {
   collectProjectBailianManagedVoiceIds,
   cleanupUnreferencedBailianVoices,
 } from '@/lib/providers/bailian'
+
+const PROJECT_PATCH_BLOCKED_FIELDS = new Set([
+  'id',
+  'userId',
+  'organizationId',
+  'createdAt',
+  'updatedAt',
+  'lastAccessedAt',
+])
+
+function pickProjectPatchData(body: unknown): Prisma.ProjectUpdateInput {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    throw new ApiError('INVALID_PARAMS', { message: '请求体必须是JSON对象' })
+  }
+
+  const input = body as Record<string, unknown>
+  for (const field of PROJECT_PATCH_BLOCKED_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(input, field)) {
+      throw new ApiError('INVALID_PARAMS', { message: `不允许更新项目归属字段 ${field}` })
+    }
+  }
+
+  const data: Prisma.ProjectUpdateInput = {}
+  if (Object.prototype.hasOwnProperty.call(input, 'name')) {
+    if (typeof input.name !== 'string' || !input.name.trim()) {
+      throw new ApiError('INVALID_PARAMS', { message: '项目名称不能为空' })
+    }
+    data.name = input.name.trim()
+  }
+  if (Object.prototype.hasOwnProperty.call(input, 'description')) {
+    if (input.description !== null && input.description !== undefined && typeof input.description !== 'string') {
+      throw new ApiError('INVALID_PARAMS', { message: '项目描述格式不正确' })
+    }
+    data.description = typeof input.description === 'string' && input.description.trim()
+      ? input.description.trim()
+      : null
+  }
+
+  if (Object.keys(data).length === 0) {
+    throw new ApiError('INVALID_PARAMS', { message: '没有可更新的项目字段' })
+  }
+
+  return data
+}
 
 // GET - 获取项目详情
 export const GET = apiHandler(async (
@@ -18,9 +63,8 @@ export const GET = apiHandler(async (
 ) => {
   const { projectId } = await context.params
   // 🔐 统一权限验证
-  const authResult = await requireUserAuth()
+  const authResult = await requireProjectAuthLight(projectId)
   if (isErrorResponse(authResult)) return authResult
-  const { session } = authResult
 
   // 只获取基础项目信息，不包含模式特定数据
   const project = await prisma.project.findUnique({
@@ -32,10 +76,6 @@ export const GET = apiHandler(async (
 
   if (!project) {
     throw new ApiError('NOT_FOUND')
-  }
-
-  if (project.userId !== session.user.id) {
-    throw new ApiError('FORBIDDEN')
   }
 
   // 更新最近访问时间（异步，不阻塞响应）
@@ -58,7 +98,7 @@ export const PATCH = apiHandler(async (
 ) => {
   const { projectId } = await context.params
   // 🔐 统一权限验证
-  const authResult = await requireUserAuth()
+  const authResult = await requireProjectAuthLight(projectId)
   if (isErrorResponse(authResult)) return authResult
   const session = authResult.session
   const body = await request.json()
@@ -72,14 +112,11 @@ export const PATCH = apiHandler(async (
     throw new ApiError('NOT_FOUND')
   }
 
-  if (project.userId !== session.user.id) {
-    throw new ApiError('FORBIDDEN')
-  }
-
   // 更新项目
+  const updateData = pickProjectPatchData(body)
   const updatedProject = await prisma.project.update({
     where: { id: projectId },
-    data: body
+    data: updateData
   })
 
   logProjectAction(
@@ -88,7 +125,7 @@ export const PATCH = apiHandler(async (
     session.user.name,
     projectId,
     updatedProject.name,
-    { changes: body }
+    { changes: updateData }
   )
 
   return NextResponse.json({ project: updatedProject })
@@ -192,7 +229,7 @@ export const DELETE = apiHandler(async (
 ) => {
   const { projectId } = await context.params
   // 🔐 统一权限验证
-  const authResult = await requireUserAuth()
+  const authResult = await requireProjectAuthLight(projectId)
   if (isErrorResponse(authResult)) return authResult
   const session = authResult.session
 
@@ -205,6 +242,7 @@ export const DELETE = apiHandler(async (
     throw new ApiError('NOT_FOUND')
   }
 
+  // 删除仍保持创建者权限，避免普通组织成员误删共享项目。
   if (project.userId !== session.user.id) {
     throw new ApiError('FORBIDDEN')
   }

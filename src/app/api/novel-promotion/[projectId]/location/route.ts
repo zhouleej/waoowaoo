@@ -8,6 +8,7 @@ import {
 import { requireProjectAuth, requireProjectAuthLight, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
 import { normalizeImageGenerationCount } from '@/lib/image-generation/count'
+import { requireNovelPromotionLocationInProject } from '@/lib/saas/novel-promotion-resource-access'
 function toObject(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
   return value as Record<string, unknown>
@@ -34,6 +35,8 @@ export const DELETE = apiHandler(async (
   if (!locationId) {
     throw new ApiError('INVALID_PARAMS')
   }
+
+  await requireNovelPromotionLocationInProject(projectId, locationId)
 
   // 删除场景（LocationImage 会级联删除）
   await prisma.novelPromotionLocation.delete({
@@ -124,6 +127,8 @@ export const PATCH = apiHandler(async (
   if (!locationId) {
     throw new ApiError('INVALID_PARAMS')
   }
+
+  await requireNovelPromotionLocationInProject(projectId, locationId)
 
   // 如果提供了 name 或 summary，更新场景信息
   if (name !== undefined || body.summary !== undefined) {

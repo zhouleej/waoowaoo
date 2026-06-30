@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
-import { apiHandler } from '@/lib/api-errors'
 import { prisma } from '@/lib/prisma'
 import { requirePlatformAdmin } from '@/lib/platform-admin'
+import { apiHandler } from '@/lib/api-errors'
 
 /**
  * GET /api/platform/stats

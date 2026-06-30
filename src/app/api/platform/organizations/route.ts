@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { apiHandler } from '@/lib/api-errors'
+import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePlatformAdmin, createAdminAuditLog } from '@/lib/platform-admin'
+import { apiHandler } from '@/lib/api-errors'
 
 /**
  * GET /api/platform/organizations
@@ -9,7 +9,7 @@ import { requirePlatformAdmin, createAdminAuditLog } from '@/lib/platform-admin'
  * 查询参数：page, limit, search, status
  * 返回：组织列表（包含余额、成员数量）
  */
-export const GET = apiHandler(async (req: NextRequest) => {
+export const GET = apiHandler(async (req) => {
   const authResult = await requirePlatformAdmin()
   if (authResult instanceof NextResponse) return authResult
 
@@ -98,7 +98,7 @@ export const GET = apiHandler(async (req: NextRequest) => {
  * POST /api/platform/organizations
  * 创建组织
  */
-export const POST = apiHandler(async (req: NextRequest) => {
+export const POST = apiHandler(async (req) => {
   const authResult = await requirePlatformAdmin()
   if (authResult instanceof NextResponse) return authResult
   const { user } = authResult

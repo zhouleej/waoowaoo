@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { apiHandler } from '@/lib/api-errors'
+import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePlatformAdmin, createAdminAuditLog } from '@/lib/platform-admin'
+import { apiHandler } from '@/lib/api-errors'
 
 /**
  * GET /api/platform/config
@@ -33,7 +33,7 @@ export const GET = apiHandler(async () => {
  * 请求体：{ key: string, value: string }
  * 需要记录操作日志
  */
-export const PATCH = apiHandler(async (req: NextRequest) => {
+export const PATCH = apiHandler(async (req) => {
   const authResult = await requirePlatformAdmin()
   if (authResult instanceof NextResponse) return authResult
 
@@ -112,7 +112,7 @@ export const PATCH = apiHandler(async (req: NextRequest) => {
  * 请求体：{ key: string, value: string, description?: string }
  * 如果 key 已存在则返回错误
  */
-export const POST = apiHandler(async (req: NextRequest) => {
+export const POST = apiHandler(async (req) => {
   const authResult = await requirePlatformAdmin()
   if (authResult instanceof NextResponse) return authResult
 

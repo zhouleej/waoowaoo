@@ -6,6 +6,7 @@ import { listTaskLifecycleEvents, publishTaskEvent } from '@/lib/task/publisher'
 import { cancelTask, getTaskById } from '@/lib/task/service'
 import { TASK_EVENT_TYPE } from '@/lib/task/types'
 import { normalizeTaskError } from '@/lib/errors/normalize'
+import { requireProjectScopedResourceAccess } from '@/lib/saas/resource-access'
 
 function toObject(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
@@ -22,9 +23,11 @@ export const GET = apiHandler(async (
   const { taskId } = await context.params
 
   const task = await getTaskById(taskId)
-  if (!task || task.userId !== session.user.id) {
+  if (!task) {
     throw new ApiError('NOT_FOUND')
   }
+  const access = await requireProjectScopedResourceAccess(session, task)
+  if (isErrorResponse(access)) return access
 
   const includeEvents = request.nextUrl.searchParams.get('includeEvents') === '1'
   const eventsLimitRaw = Number.parseInt(request.nextUrl.searchParams.get('eventsLimit') || '500', 10)
@@ -49,9 +52,11 @@ export const DELETE = apiHandler(async (
   const { taskId } = await context.params
 
   const task = await getTaskById(taskId)
-  if (!task || task.userId !== session.user.id) {
+  if (!task) {
     throw new ApiError('NOT_FOUND')
   }
+  const access = await requireProjectScopedResourceAccess(session, task)
+  if (isErrorResponse(access)) return access
 
   const { task: updatedTask, cancelled } = await cancelTask(taskId)
   if (!updatedTask) {

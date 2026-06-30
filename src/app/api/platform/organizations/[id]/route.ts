@@ -1,13 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { apiHandler } from '@/lib/api-errors'
+import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePlatformAdmin, createAdminAuditLog } from '@/lib/platform-admin'
+import { apiHandler } from '@/lib/api-errors'
 
-interface RouteParams {
-  params: Promise<{ id: string }>
-}
-
-export const GET = apiHandler(async (_req: NextRequest, { params }: RouteParams) => {
+export const GET = apiHandler<{ id: string }>(async (_req, { params }) => {
   const authResult = await requirePlatformAdmin()
   if (authResult instanceof NextResponse) return authResult
   const { id } = await params
@@ -30,7 +26,7 @@ export const GET = apiHandler(async (_req: NextRequest, { params }: RouteParams)
   return NextResponse.json({ data: org })
 })
 
-export const PATCH = apiHandler(async (req: NextRequest, { params }: RouteParams) => {
+export const PATCH = apiHandler<{ id: string }>(async (req, { params }) => {
   const authResult = await requirePlatformAdmin()
   if (authResult instanceof NextResponse) return authResult
   const { user } = authResult
@@ -56,7 +52,7 @@ export const PATCH = apiHandler(async (req: NextRequest, { params }: RouteParams
  * DELETE /api/platform/organizations/[id]
  * 删除组织（平台管理员专用）
  */
-export const DELETE = apiHandler(async (_req: NextRequest, { params }: RouteParams) => {
+export const DELETE = apiHandler<{ id: string }>(async (_req, { params }) => {
   const authResult = await requirePlatformAdmin()
   if (authResult instanceof NextResponse) return authResult
   const { user } = authResult

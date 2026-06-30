@@ -1,16 +1,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { NextRequest, NextResponse } from 'next/server'
-import { apiHandler } from '@/lib/api-errors'
+import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePlatformAdmin, createAdminAuditLog } from '@/lib/platform-admin'
+import { apiHandler } from '@/lib/api-errors'
 import { badRequest, notFound } from '@/lib/api-auth'
 import { readJsonObject, readNumber, readString } from '@/lib/saas/validation'
 import { serializePlan } from '@/lib/saas/serializers'
 import type { Prisma } from '@prisma/client'
 
-type Ctx = { params: Promise<{ id: string }> }
-
-export const GET = apiHandler(async (_req: NextRequest, { params }: Ctx) => {
+export const GET = apiHandler<{ id: string }>(async (_req, { params }) => {
   const auth = await requirePlatformAdmin()
   if (auth instanceof NextResponse) return auth
   const { id } = await params
@@ -19,7 +17,7 @@ export const GET = apiHandler(async (_req: NextRequest, { params }: Ctx) => {
   return NextResponse.json({ data: serializePlan(plan) })
 })
 
-export const PATCH = apiHandler(async (req: NextRequest, { params }: Ctx) => {
+export const PATCH = apiHandler<{ id: string }>(async (req, { params }) => {
   const auth = await requirePlatformAdmin()
   if (auth instanceof NextResponse) return auth
   const { user } = auth
@@ -58,7 +56,7 @@ export const PATCH = apiHandler(async (req: NextRequest, { params }: Ctx) => {
   }
 })
 
-export const DELETE = apiHandler(async (_req: NextRequest, { params }: Ctx) => {
+export const DELETE = apiHandler<{ id: string }>(async (_req, { params }) => {
   const auth = await requirePlatformAdmin()
   if (auth instanceof NextResponse) return auth
   const { user } = auth

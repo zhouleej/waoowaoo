@@ -14,6 +14,10 @@ import {
   hasCharacterAppearanceOutput,
   hasLocationImageOutput
 } from '@/lib/task/has-output'
+import {
+  requireNovelPromotionCharacterAppearanceInProject,
+  requireNovelPromotionLocationInProject,
+} from '@/lib/saas/novel-promotion-resource-access'
 
 export const POST = apiHandler(async (
   request: NextRequest,
@@ -48,7 +52,15 @@ export const POST = apiHandler(async (
 
   const targetType = type === 'character' ? 'CharacterAppearance' : 'LocationImage'
   const targetId = type === 'character' ? appearanceId : id
+  if (type === 'character') {
+    const appearance = await requireNovelPromotionCharacterAppearanceInProject(projectId, appearanceId)
+    if (appearance.characterId !== id) {
+      throw new ApiError('INVALID_PARAMS')
+    }
+  }
   if (type === 'location') {
+    await requireNovelPromotionLocationInProject(projectId, id)
+
     const location = await prisma.novelPromotionLocation.findUnique({
       where: { id },
       select: { name: true, summary: true },

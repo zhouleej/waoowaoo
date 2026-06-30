@@ -6,11 +6,35 @@
 import { logInfo as _ulogInfo, logError as _ulogError } from '@/lib/logging/core'
 import { prisma } from '@/lib/prisma'
 import { toMoneyNumber, roundMoney, type MoneyValue } from './money'
+import type { Prisma } from '@prisma/client'
+import { recordUsageCostOnly } from './reporting'
+import type { ApiType, UsageUnit } from './cost'
+import { BillingOperationError } from './errors'
 
 const MONEY_SCALE = 6
 
 function normalizeMoney(value: number): number {
   return roundMoney(value, MONEY_SCALE)
+}
+
+function readRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
+}
+
+function isPendingFreezeUsage(usage: { type: string; metadata: Prisma.JsonValue | null }): boolean {
+  const metadata = readRecord(usage.metadata)
+  return usage.type === 'freeze' && metadata.status === 'pending'
+}
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return Boolean(
+    error &&
+      typeof error === 'object' &&
+      'code' in error &&
+      (error as { code?: unknown }).code === 'P2002',
+  )
 }
 
 type OrganizationBalanceSnapshot = {
@@ -53,6 +77,28 @@ function toBalanceSnapshot(balance: {
   }
 }
 
+type OrganizationBalanceRecord = Parameters<typeof toBalanceSnapshot>[0]
+type OrganizationBillingClient = Pick<Prisma.TransactionClient, 'organizationBalance' | 'organizationUsage'>
+
+type OrganizationUsageRecordParams = {
+  projectId: string
+  userId: string
+  action: string
+  apiType: ApiType
+  model: string
+  quantity: number
+  unit: UsageUnit
+  cost: number
+  balanceAfter: number
+  freezeId?: string
+  episodeId?: string | null
+  taskType?: string | null
+  organizationId?: string | null
+  planCreditAmount?: number
+  balanceAmount?: number
+  metadata?: Record<string, unknown>
+}
+
 /**
  * 获取组织余额
  */
@@ -90,6 +136,100 @@ export async function ensureOrganizationBalance(organizationId: string): Promise
   return toBalanceSnapshot(balance)
 }
 
+async function ensureOrganizationBalanceWithClient(
+  client: OrganizationBillingClient,
+  organizationId: string,
+): Promise<OrganizationBalanceRecord> {
+  let balance = await client.organizationBalance.findUnique({
+    where: { organizationId },
+  })
+
+  if (!balance) {
+    balance = await client.organizationBalance.create({
+      data: {
+        organizationId,
+        balance: 0,
+        frozenAmount: 0,
+        totalSpent: 0,
+      },
+    })
+  }
+
+  return balance
+}
+
+async function addOrganizationBalanceWithClient(
+  client: OrganizationBillingClient,
+  organizationId: string,
+  amount: number,
+  options?: {
+    reason?: string
+    operatorId?: string
+    externalOrderId?: string
+    idempotencyKey?: string
+  },
+): Promise<OrganizationBalanceRecord> {
+  const normalizedAmount = normalizeMoney(Number(amount))
+  if (!Number.isFinite(normalizedAmount) || normalizedAmount <= 0) {
+    throw new Error('amount must be a positive number')
+  }
+
+  const idempotencyKey = options?.idempotencyKey?.trim()
+
+  if (idempotencyKey) {
+    const existingRecharge = await client.organizationUsage.findFirst({
+      where: {
+        organizationId,
+        type: 'recharge',
+        idempotencyKey,
+      },
+    })
+    if (existingRecharge) {
+      return ensureOrganizationBalanceWithClient(client, organizationId)
+    }
+  }
+
+  await client.organizationUsage.create({
+    data: {
+      organizationId,
+      userId: options?.operatorId || 'system',
+      amount: normalizedAmount,
+      balanceAmount: normalizedAmount,
+      type: 'recharge',
+      orderId: options?.externalOrderId || null,
+      idempotencyKey: idempotencyKey || null,
+      description: options?.reason || '组织余额充值',
+      metadata: {
+        externalOrderId: options?.externalOrderId || null,
+      },
+    },
+  })
+
+  let balance = await client.organizationBalance.findUnique({
+    where: { organizationId },
+  })
+
+  if (!balance) {
+    balance = await client.organizationBalance.create({
+      data: {
+        organizationId,
+        balance: normalizedAmount,
+        frozenAmount: 0,
+        totalSpent: 0,
+      },
+    })
+  } else {
+    balance = await client.organizationBalance.update({
+      where: { organizationId },
+      data: {
+        balance: { increment: normalizedAmount },
+      },
+    })
+  }
+
+  return balance
+}
+
 /**
  * 增加组织余额
  */
@@ -103,41 +243,44 @@ export async function addOrganizationBalance(
     idempotencyKey?: string
   },
 ): Promise<OrganizationBalanceSnapshot> {
-  const normalizedAmount = normalizeMoney(Number(amount))
-  if (!Number.isFinite(normalizedAmount) || normalizedAmount <= 0) {
-    throw new Error('amount must be a positive number')
+  const idempotencyKey = options?.idempotencyKey?.trim()
+  let updatedBalance: OrganizationBalanceRecord
+  try {
+    updatedBalance = await prisma.$transaction(async (tx) => {
+      return addOrganizationBalanceWithClient(tx, organizationId, amount, options)
+    })
+  } catch (error) {
+    if (idempotencyKey && isUniqueConstraintError(error)) {
+      return ensureOrganizationBalance(organizationId)
+    }
+    throw error
   }
 
-  const updatedBalance = await prisma.$transaction(async (tx) => {
-    // 确保余额记录存在
-    let balance = await tx.organizationBalance.findUnique({
-      where: { organizationId },
-    })
-
-    if (!balance) {
-      balance = await tx.organizationBalance.create({
-        data: {
-          organizationId,
-          balance: normalizedAmount,
-          frozenAmount: 0,
-          totalSpent: 0,
-        },
-      })
-    } else {
-      balance = await tx.organizationBalance.update({
-        where: { organizationId },
-        data: {
-          balance: { increment: normalizedAmount },
-        },
-      })
-    }
-
-    return balance
-  })
-
-  _ulogInfo(`[OrganizationBalance] add balance success: organizationId=${organizationId}, amount=¥${normalizedAmount}, reason=${options?.reason || 'N/A'}`)
+  _ulogInfo(`[OrganizationBalance] add balance success: organizationId=${organizationId}, amount=¥${normalizeMoney(Number(amount))}, reason=${options?.reason || 'N/A'}`)
 
   return toBalanceSnapshot(updatedBalance)
+}
+
+export async function addOrganizationBalanceInTransaction(
+  tx: Prisma.TransactionClient,
+  organizationId: string,
+  amount: number,
+  options?: {
+    reason?: string
+    operatorId?: string
+    externalOrderId?: string
+    idempotencyKey?: string
+  },
+): Promise<OrganizationBalanceSnapshot> {
+  const idempotencyKey = options?.idempotencyKey?.trim()
+  try {
+    return toBalanceSnapshot(await addOrganizationBalanceWithClient(tx, organizationId, amount, options))
+  } catch (error) {
+    if (idempotencyKey && isUniqueConstraintError(error)) {
+      return toBalanceSnapshot(await ensureOrganizationBalanceWithClient(tx, organizationId))
+    }
+    throw error
+  }
 }
 
 /**
@@ -146,14 +289,50 @@ export async function addOrganizationBalance(
 export async function freezeOrganizationBalance(
   organizationId: string,
   amount: number,
+  options?: {
+    userId?: string
+    taskId?: string
+    idempotencyKey?: string
+    planCreditAmount?: number
+    description?: string
+    metadata?: Record<string, unknown>
+  },
 ): Promise<string | null> {
   const normalizedAmount = normalizeMoney(Number(amount))
-  if (!Number.isFinite(normalizedAmount) || normalizedAmount <= 0) {
+  const normalizedPlanCredit = normalizeMoney(Number(options?.planCreditAmount || 0))
+  if (
+    !Number.isFinite(normalizedAmount)
+    || !Number.isFinite(normalizedPlanCredit)
+    || normalizedAmount < 0
+    || normalizedPlanCredit < 0
+    || (normalizedAmount <= 0 && normalizedPlanCredit <= 0)
+  ) {
     return null
   }
 
   try {
     const result = await prisma.$transaction(async (tx) => {
+      const idempotencyKey = options?.idempotencyKey?.trim()
+      if (idempotencyKey) {
+        const existing = await tx.organizationUsage.findFirst({
+          where: {
+            organizationId,
+            idempotencyKey,
+          },
+          select: { id: true, amount: true, planCreditAmount: true, taskId: true, type: true, metadata: true },
+        })
+        if (
+          existing?.id
+          && isPendingFreezeUsage(existing)
+          && normalizeMoney(toMoneyNumber(existing.amount)) === normalizedAmount
+          && normalizeMoney(toMoneyNumber(existing.planCreditAmount)) === normalizedPlanCredit
+          && (!options?.taskId || existing.taskId === options.taskId)
+        ) {
+          return existing.id
+        }
+        if (existing?.id) return null
+      }
+
       // 确保余额记录存在
       let balance = await tx.organizationBalance.findUnique({
         where: { organizationId },
@@ -170,29 +349,130 @@ export async function freezeOrganizationBalance(
         })
       }
 
-      // 尝试扣减余额并增加冻结金额
-      const updated = await tx.organizationBalance.updateMany({
-        where: {
-          organizationId,
-          balance: { gte: normalizedAmount },
-        },
+      if (normalizedAmount > 0) {
+        // 尝试扣减余额并增加冻结金额
+        const updated = await tx.organizationBalance.updateMany({
+          where: {
+            organizationId,
+            balance: { gte: normalizedAmount },
+          },
+          data: {
+            balance: { decrement: normalizedAmount },
+            frozenAmount: { increment: normalizedAmount },
+          },
+        })
+
+        if (updated.count === 0) {
+          return null
+        }
+      }
+
+      const freeze = await tx.organizationUsage.create({
         data: {
-          balance: { decrement: normalizedAmount },
-          frozenAmount: { increment: normalizedAmount },
+          organizationId,
+          userId: options?.userId || 'system',
+          amount: normalizedAmount,
+          planCreditAmount: normalizedPlanCredit,
+          balanceAmount: normalizedAmount,
+          type: 'freeze',
+          taskId: options?.taskId || null,
+          idempotencyKey: idempotencyKey || null,
+          description: options?.description || '组织余额冻结',
+          metadata: {
+            ...(options?.metadata || {}),
+            status: 'pending',
+            freezeAmount: normalizedAmount,
+          },
         },
       })
 
-      if (updated.count === 0) {
-        return null
-      }
-
-      return `org_freeze_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
+      return freeze.id
     })
 
     return result
   } catch (error) {
+    if (options?.idempotencyKey && isUniqueConstraintError(error)) {
+      const existing = await prisma.organizationUsage.findFirst({
+        where: {
+          organizationId,
+          idempotencyKey: options.idempotencyKey.trim(),
+        },
+        select: { id: true, amount: true, planCreditAmount: true, taskId: true, type: true, metadata: true },
+      })
+      if (
+        existing?.id
+        && isPendingFreezeUsage(existing)
+        && normalizeMoney(toMoneyNumber(existing.amount)) === normalizedAmount
+        && normalizeMoney(toMoneyNumber(existing.planCreditAmount)) === normalizedPlanCredit
+        && (!options?.taskId || existing.taskId === options.taskId)
+      ) {
+        return existing.id
+      }
+    }
     _ulogError('[OrganizationBilling] freeze failed:', error)
     return null
+  }
+}
+
+export async function increaseOrganizationPendingFreezeAmount(
+  freezeId: string,
+  delta: number,
+): Promise<boolean> {
+  const normalizedDelta = normalizeMoney(Number(delta))
+  if (!Number.isFinite(normalizedDelta) || normalizedDelta < 0) {
+    return false
+  }
+  if (normalizedDelta === 0) {
+    return true
+  }
+
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const freeze = await tx.organizationUsage.findUnique({
+        where: { id: freezeId },
+      })
+      if (!freeze || !isPendingFreezeUsage(freeze)) return false
+
+      const updated = await tx.organizationBalance.updateMany({
+        where: {
+          organizationId: freeze.organizationId,
+          balance: { gte: normalizedDelta },
+        },
+        data: {
+          balance: { decrement: normalizedDelta },
+          frozenAmount: { increment: normalizedDelta },
+        },
+      })
+      if (updated.count === 0) {
+        return false
+      }
+
+      const metadata = readRecord(freeze.metadata)
+      const currentFreezeAmount = normalizeMoney(toMoneyNumber(freeze.amount))
+      const nextFreezeAmount = normalizeMoney(currentFreezeAmount + normalizedDelta)
+      const claimed = await tx.organizationUsage.updateMany({
+        where: {
+          id: freeze.id,
+          type: 'freeze',
+        },
+        data: {
+          amount: { increment: normalizedDelta },
+          balanceAmount: { increment: normalizedDelta },
+          metadata: {
+            ...metadata,
+            status: 'pending',
+            freezeAmount: nextFreezeAmount,
+          },
+        },
+      })
+      if (claimed.count === 0) {
+        throw new Error(`Unable to expand organization freeze ${freeze.id}`)
+      }
+      return true
+    })
+  } catch (error) {
+    _ulogError('[OrganizationBilling] increase pending freeze failed:', error)
+    return false
   }
 }
 
@@ -200,7 +480,7 @@ export async function freezeOrganizationBalance(
  * 确认扣款（从冻结金额转为实际消费）
  */
 export async function confirmOrganizationCharge(
-  _freezeId: string,
+  freezeId: string,
   amount: number,
 ): Promise<boolean> {
   const normalizedAmount = normalizeMoney(Number(amount))
@@ -209,30 +489,163 @@ export async function confirmOrganizationCharge(
   }
 
   try {
-    await prisma.$transaction(async (tx) => {
-      // 获取最新的冻结金额记录
-      const balance = await tx.organizationBalance.findUnique({
-        where: { organizationId: (await tx.organizationBalance.findUnique({ where: { id: _freezeId } }))?.organizationId || '' },
+    const confirmed = await prisma.$transaction(async (tx) => {
+      const freeze = await tx.organizationUsage.findUnique({
+        where: { id: freezeId },
+      })
+      if (!freeze || !isPendingFreezeUsage(freeze)) return false
+
+      const frozenAmount = normalizeMoney(toMoneyNumber(freeze.amount))
+      const chargedAmount = Math.min(normalizedAmount, frozenAmount)
+      const refundAmount = normalizeMoney(Math.max(0, frozenAmount - chargedAmount))
+
+      const claim = await tx.organizationUsage.updateMany({
+        where: {
+          id: freeze.id,
+          type: 'freeze',
+        },
+        data: {
+          type: 'freeze_confirming',
+          metadata: {
+            status: 'confirming',
+            freezeAmount: frozenAmount,
+            chargedAmount,
+            refundedAmount: refundAmount,
+          },
+        },
+      })
+      if (claim.count === 0) return false
+
+      const updated = await tx.organizationBalance.updateMany({
+        where: {
+          organizationId: freeze.organizationId,
+          frozenAmount: { gte: frozenAmount },
+        },
+        data: {
+          frozenAmount: { decrement: frozenAmount },
+          totalSpent: { increment: chargedAmount },
+          ...(refundAmount > 0 ? { balance: { increment: refundAmount } } : {}),
+        },
+      })
+      if (updated.count === 0) {
+        throw new Error(`Unable to confirm organization freeze ${freeze.id}`)
+      }
+
+      await tx.organizationUsage.update({
+        where: { id: freeze.id },
+        data: {
+          amount: chargedAmount,
+          balanceAmount: chargedAmount,
+          type: 'charge',
+          metadata: {
+            status: 'confirmed',
+            freezeAmount: frozenAmount,
+            chargedAmount,
+            refundedAmount: refundAmount,
+          },
+        },
       })
 
-      // 直接扣除冻结金额并增加总消费
-      const refundAmount = normalizeMoney(Math.max(0, -normalizedAmount)) // 如果 amount 是负数则退款
-
-      if (balance) {
-        await tx.organizationBalance.update({
-          where: { id: balance.id },
-          data: {
-            frozenAmount: { decrement: normalizedAmount },
-            totalSpent: { increment: normalizedAmount },
-            ...(refundAmount > 0 ? { balance: { increment: refundAmount } } : {}),
-          },
-        })
-      }
+      return true
     })
 
-    return true
+    return confirmed
   } catch (error) {
     _ulogError('[OrganizationBilling] confirm charge failed:', error)
+    return false
+  }
+}
+
+export async function confirmOrganizationChargeWithRecord(
+  freezeId: string,
+  amount: number,
+  recordParams: OrganizationUsageRecordParams,
+): Promise<boolean> {
+  const normalizedAmount = normalizeMoney(Number(amount))
+  if (!Number.isFinite(normalizedAmount) || normalizedAmount < 0) {
+    return false
+  }
+
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const freeze = await tx.organizationUsage.findUnique({
+        where: { id: freezeId },
+      })
+      if (!freeze || !isPendingFreezeUsage(freeze)) return false
+
+      const frozenAmount = normalizeMoney(toMoneyNumber(freeze.amount))
+      const chargedAmount = Math.min(normalizedAmount, frozenAmount)
+      const refundAmount = normalizeMoney(Math.max(0, frozenAmount - chargedAmount))
+
+      const claim = await tx.organizationUsage.updateMany({
+        where: {
+          id: freeze.id,
+          type: 'freeze',
+        },
+        data: {
+          type: 'freeze_confirming',
+          metadata: {
+            ...readRecord(freeze.metadata),
+            status: 'confirming',
+            freezeAmount: frozenAmount,
+            chargedAmount,
+            refundedAmount: refundAmount,
+          },
+        },
+      })
+      if (claim.count === 0) return false
+
+      const updated = await tx.organizationBalance.updateMany({
+        where: {
+          organizationId: freeze.organizationId,
+          frozenAmount: { gte: frozenAmount },
+        },
+        data: {
+          frozenAmount: { decrement: frozenAmount },
+          totalSpent: { increment: chargedAmount },
+          ...(refundAmount > 0 ? { balance: { increment: refundAmount } } : {}),
+        },
+      })
+      if (updated.count === 0) {
+        throw new Error(`Unable to confirm organization freeze ${freeze.id}`)
+      }
+
+      await tx.organizationUsage.update({
+        where: { id: freeze.id },
+        data: {
+          amount: chargedAmount,
+          balanceAmount: chargedAmount,
+          type: 'charge',
+          metadata: {
+            ...readRecord(freeze.metadata),
+            status: 'confirmed',
+            freezeAmount: frozenAmount,
+            chargedAmount,
+            refundedAmount: refundAmount,
+          },
+        },
+      })
+
+      await recordUsageCostOnly(tx, {
+        ...recordParams,
+        organizationId: freeze.organizationId,
+        balanceAmount: recordParams.balanceAmount ?? chargedAmount,
+        freezeId,
+        metadata: {
+          ...(recordParams.metadata || {}),
+          organizationFreezeId: freezeId,
+          organizationBalanceSettled: true,
+          skipUserBalanceTransaction: true,
+        },
+      })
+
+      return true
+    })
+  } catch (error) {
+    _ulogError('[OrganizationBilling] confirm charge with record failed:', error)
+    if (error instanceof BillingOperationError) {
+      throw error
+    }
     return false
   }
 }
@@ -240,11 +653,59 @@ export async function confirmOrganizationCharge(
 /**
  * 回滚组织余额冻结
  */
-export async function rollbackOrganizationFreeze(_freezeId: string): Promise<boolean> {
+export async function rollbackOrganizationFreeze(freezeId: string): Promise<boolean> {
   try {
-    // 对于简单场景，直接通过消费记录回滚
-    // 这里简化处理，实际可能需要存储冻结记录
-    return true
+    const rolledBack = await prisma.$transaction(async (tx) => {
+      const freeze = await tx.organizationUsage.findUnique({
+        where: { id: freezeId },
+      })
+      if (!freeze || !isPendingFreezeUsage(freeze)) return false
+
+      const frozenAmount = normalizeMoney(toMoneyNumber(freeze.amount))
+      const claim = await tx.organizationUsage.updateMany({
+        where: {
+          id: freeze.id,
+          type: 'freeze',
+        },
+        data: {
+          type: 'freeze_rolling_back',
+          metadata: {
+            status: 'rolling_back',
+            freezeAmount: frozenAmount,
+          },
+        },
+      })
+      if (claim.count === 0) return false
+
+      const updated = await tx.organizationBalance.updateMany({
+        where: {
+          organizationId: freeze.organizationId,
+          frozenAmount: { gte: frozenAmount },
+        },
+        data: {
+          balance: { increment: frozenAmount },
+          frozenAmount: { decrement: frozenAmount },
+        },
+      })
+      if (updated.count === 0) {
+        throw new Error(`Unable to roll back organization freeze ${freeze.id}`)
+      }
+
+      await tx.organizationUsage.update({
+        where: { id: freeze.id },
+        data: {
+          type: 'freeze_rollback',
+          metadata: {
+            status: 'rolled_back',
+            freezeAmount: frozenAmount,
+          },
+        },
+      })
+
+      return true
+    })
+
+    return rolledBack
   } catch (error) {
     _ulogError('[OrganizationBilling] rollback freeze failed:', error)
     return false
@@ -315,6 +776,7 @@ export async function checkMemberQuota(organizationId: string, userId: string): 
     where: {
       organizationId,
       userId,
+      type: 'task',
       createdAt: { gte: startOfMonth },
     },
     _sum: {
@@ -389,6 +851,7 @@ export async function getOrganizationUsage(
 ) {
   const where: Record<string, unknown> = {
     organizationId,
+    type: 'task',
   }
 
   if (options?.startDate) {
@@ -442,6 +905,7 @@ export async function getMemberUsage(
   const where: Record<string, unknown> = {
     organizationId,
     userId,
+    type: 'task',
   }
 
   if (options?.startDate) {

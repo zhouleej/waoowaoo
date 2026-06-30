@@ -1,13 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { badRequest, isErrorResponse, notFound, requireUserAuth } from '@/lib/api-auth'
 import { apiHandler } from '@/lib/api-errors'
 import { requireOrganizationRole, writeEnterpriseAudit } from '@/lib/saas/permissions'
 
-type Ctx = { params: Promise<{ id: string; invitationId: string }> }
-
-export const PATCH = apiHandler(async (req: NextRequest, { params }: Ctx) => {
+export const PATCH = apiHandler<{ id: string; invitationId: string }>(async (req, { params }) => {
   const auth = await requireUserAuth()
   if (isErrorResponse(auth)) return auth
   const { id, invitationId } = await params
@@ -23,7 +21,7 @@ export const PATCH = apiHandler(async (req: NextRequest, { params }: Ctx) => {
   return NextResponse.json({ data: updated })
 })
 
-export const DELETE = apiHandler(async (_req: NextRequest, { params }: Ctx) => {
+export const DELETE = apiHandler<{ id: string; invitationId: string }>(async (_req, { params }) => {
   const auth = await requireUserAuth()
   if (isErrorResponse(auth)) return auth
   const { id, invitationId } = await params

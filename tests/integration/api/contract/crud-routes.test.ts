@@ -38,9 +38,11 @@ const prismaMock = vi.hoisted(() => ({
     update: vi.fn(),
   },
   novelPromotionClip: {
+    findFirst: vi.fn(),
     update: vi.fn(),
   },
   novelPromotionStoryboard: {
+    findFirst: vi.fn(),
     findUnique: vi.fn(),
     update: vi.fn(),
   },
@@ -240,6 +242,15 @@ describe('api contract - crud routes (behavior)', () => {
       props: JSON.stringify(['Bronze Dagger']),
       content: 'clip content',
       screenplay: JSON.stringify({ scenes: [{ id: 1 }] }),
+    })
+    prismaMock.novelPromotionClip.findFirst.mockResolvedValue({
+      id: 'clip-1',
+      episodeId: 'episode-1',
+    })
+    prismaMock.novelPromotionStoryboard.findFirst.mockResolvedValue({
+      id: 'storyboard-1',
+      episodeId: 'episode-1',
+      clipId: 'clip-1',
     })
     prismaMock.novelPromotionStoryboard.findUnique.mockResolvedValue({
       id: 'storyboard-1',

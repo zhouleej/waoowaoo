@@ -15,6 +15,10 @@ import {
 } from '@/lib/model-capabilities/lookup'
 import { resolveBuiltinPricing } from '@/lib/model-pricing/lookup'
 import { resolveProjectModelCapabilityGenerationOptions } from '@/lib/config-service'
+import {
+  requireNovelPromotionEpisodeInProject,
+  requireNovelPromotionPanelByStoryboardIndexInProject,
+} from '@/lib/saas/novel-promotion-resource-access'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value)
@@ -209,9 +213,16 @@ export const POST = apiHandler(async (
       throw new ApiError('INVALID_PARAMS')
     }
 
+    await requireNovelPromotionEpisodeInProject(projectId, episodeId)
+
     const panels = await prisma.novelPromotionPanel.findMany({
       where: {
-        storyboard: { episodeId },
+        storyboard: {
+          episodeId,
+          episode: {
+            novelPromotionProject: { projectId },
+          },
+        },
         imageUrl: { not: null },
         OR: [
           { videoUrl: null },
@@ -254,14 +265,7 @@ export const POST = apiHandler(async (
     throw new ApiError('INVALID_PARAMS')
   }
 
-  const panel = await prisma.novelPromotionPanel.findFirst({
-    where: { storyboardId, panelIndex: Number(panelIndex) },
-    select: { id: true },
-  })
-
-  if (!panel) {
-    throw new ApiError('NOT_FOUND')
-  }
+  const panel = await requireNovelPromotionPanelByStoryboardIndexInProject(projectId, storyboardId, Number(panelIndex))
 
   const result = await submitTask({
     userId: session.user.id,

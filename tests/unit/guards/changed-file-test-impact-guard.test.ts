@@ -1,16 +1,9 @@
+import { createRequire } from 'node:module'
 import { describe, expect, it } from 'vitest'
-import { execFileSync } from 'node:child_process'
-import { resolve } from 'node:path'
 
-function inspectChangedFiles(files: string[]): string[] {
-  const modulePath = resolve(process.cwd(), 'scripts/guards/changed-file-test-impact-guard.mjs')
-  const script = `
-    const { pathToFileURL } = await import('node:url')
-    const mod = await import(pathToFileURL(${JSON.stringify(modulePath)}).href)
-    const result = mod.inspectChangedFiles(${JSON.stringify(files)})
-    process.stdout.write(JSON.stringify(result))
-  `
-  return JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8' })) as string[]
+const require = createRequire(import.meta.url)
+const { inspectChangedFiles } = require('../../../scripts/guards/changed-file-test-impact-guard-core.cjs') as {
+  inspectChangedFiles: (files: string[]) => string[]
 }
 
 describe('changed-file-test-impact-guard', () => {

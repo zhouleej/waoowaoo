@@ -1,26 +1,26 @@
-import { describe, expect, it } from 'vitest'
-import { execFileSync } from 'node:child_process'
-import { resolve } from 'node:path'
+import { beforeAll, describe, expect, it } from 'vitest'
+import { createRequire } from 'node:module'
 
-function evaluateGuard<T>(expression: string): T {
-  const modulePath = resolve(process.cwd(), 'scripts/guards/api-route-contract-guard.mjs')
-  const script = `
-    const { pathToFileURL } = await import('node:url')
-    const mod = await import(pathToFileURL(${JSON.stringify(modulePath)}).href)
-    const result = ${expression}
-    process.stdout.write(JSON.stringify(result))
-  `
-  return JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8' })) as T
-}
+let API_HANDLER_ALLOWLIST: Set<string>
+let PUBLIC_ROUTE_ALLOWLIST: Set<string>
+let inspectRouteContract: (relPath: string, content: string) => string[]
 
-function inspectRouteContract(relPath: string, content: string): string[] {
-  return evaluateGuard<string[]>(`mod.inspectRouteContract(${JSON.stringify(relPath)}, ${JSON.stringify(content)})`)
-}
+beforeAll(async () => {
+  const require = createRequire(import.meta.url)
+  const guard = require('../../../scripts/guards/api-route-contract-guard-core.cjs') as {
+    API_HANDLER_ALLOWLIST: Set<string>
+    PUBLIC_ROUTE_ALLOWLIST: Set<string>
+    inspectRouteContract: (relPath: string, content: string) => string[]
+  }
+  API_HANDLER_ALLOWLIST = guard.API_HANDLER_ALLOWLIST
+  PUBLIC_ROUTE_ALLOWLIST = guard.PUBLIC_ROUTE_ALLOWLIST
+  inspectRouteContract = guard.inspectRouteContract
+})
 
 describe('api route contract guard', () => {
   it('allows explicit public and framework-managed exceptions', () => {
-    expect(evaluateGuard<boolean>(`mod.API_HANDLER_ALLOWLIST.has('src/app/api/auth/[...nextauth]/route.ts')`)).toBe(true)
-    expect(evaluateGuard<boolean>(`mod.PUBLIC_ROUTE_ALLOWLIST.has('src/app/api/system/boot-id/route.ts')`)).toBe(true)
+    expect(API_HANDLER_ALLOWLIST.has('src/app/api/auth/[...nextauth]/route.ts')).toBe(true)
+    expect(PUBLIC_ROUTE_ALLOWLIST.has('src/app/api/system/boot-id/route.ts')).toBe(true)
     expect(
       inspectRouteContract(
         'src/app/api/system/boot-id/route.ts',
@@ -42,6 +42,45 @@ describe('api route contract guard', () => {
     expect(inspectRouteContract('src/app/api/user/secure/route.ts', content)).toEqual([])
   })
 
+  it('passes platform routes that use apiHandler and platform admin auth', () => {
+    const content = `
+      import { requirePlatformAdmin } from '@/lib/platform-admin'
+      import { apiHandler } from '@/lib/api-errors'
+      export const GET = apiHandler(async () => {
+        await requirePlatformAdmin()
+        return Response.json({ ok: true })
+      })
+    `
+
+    expect(inspectRouteContract('src/app/api/platform/secure/route.ts', content)).toEqual([])
+  })
+
+  it('passes platform admin check routes that use apiHandler and platform admin check auth', () => {
+    const content = `
+      import { checkPlatformAdmin } from '@/lib/platform-admin'
+      import { apiHandler } from '@/lib/api-errors'
+      export const GET = apiHandler(async () => {
+        const result = await checkPlatformAdmin()
+        return Response.json(result)
+      })
+    `
+
+    expect(inspectRouteContract('src/app/api/platform/admin/check/route.ts', content)).toEqual([])
+  })
+
+  it('passes organization routes that use apiHandler and organization role auth', () => {
+    const content = `
+      import { requireOrganizationRole } from '@/lib/saas/permissions'
+      import { apiHandler } from '@/lib/api-errors'
+      export const GET = apiHandler(async () => {
+        await requireOrganizationRole('org-1', 'user-1', ['member'])
+        return Response.json({ ok: true })
+      })
+    `
+
+    expect(inspectRouteContract('src/app/api/organizations/secure/route.ts', content)).toEqual([])
+  })
+
   it('flags protected routes that skip apiHandler or auth', () => {
     const missingApiHandler = `
       import { requireUserAuth } from '@/lib/api-auth'
@@ -59,7 +98,7 @@ describe('api route contract guard', () => {
       'src/app/api/user/secure/route.ts missing apiHandler wrapper',
     ])
     expect(inspectRouteContract('src/app/api/user/secure/route.ts', missingAuth)).toEqual([
-      'src/app/api/user/secure/route.ts missing requireUserAuth/requireProjectAuth/requireProjectAuthLight/requirePlatformAdmin/checkPlatformAdmin',
+      'src/app/api/user/secure/route.ts missing requireUserAuth/requireProjectAuth/requireProjectAuthLight/requirePlatformAdmin/checkPlatformAdmin/requireOrganizationRole',
     ])
   })
 })

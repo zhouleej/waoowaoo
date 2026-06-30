@@ -1,7 +1,7 @@
 import { logError as _ulogError } from '@/lib/logging/core'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireUserAuth, isErrorResponse } from '@/lib/api-auth'
+import { requireProjectAuthLight, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
 import { attachMediaFieldsToProject } from '@/lib/media/attach'
 
@@ -20,9 +20,8 @@ export const GET = apiHandler(async (
   const { projectId } = await context.params
 
   // 🔐 统一权限验证
-  const authResult = await requireUserAuth()
+  const authResult = await requireProjectAuthLight(projectId)
   if (isErrorResponse(authResult)) return authResult
-  const { session } = authResult
 
   // 获取基础项目信息
   const project = await prisma.project.findUnique({
@@ -32,10 +31,6 @@ export const GET = apiHandler(async (
 
   if (!project) {
     throw new ApiError('NOT_FOUND')
-  }
-
-  if (project.userId !== session.user.id) {
-    throw new ApiError('FORBIDDEN')
   }
 
   // 🔥 更新最近访问时间（异步，不阻塞响应）

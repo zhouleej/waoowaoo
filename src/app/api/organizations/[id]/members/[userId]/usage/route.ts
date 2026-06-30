@@ -108,6 +108,7 @@ export const GET = apiHandler(async (req, ctx) => {
       where: {
         organizationId,
         userId: targetUserId,
+        type: 'task',
         createdAt: { gte: startOfMonth },
       },
       _sum: {
@@ -132,6 +133,7 @@ export const GET = apiHandler(async (req, ctx) => {
     where: {
       organizationId,
       userId: targetUserId,
+      type: 'task',
       ...(startDate ? { createdAt: { gte: startDate } } : {}),
       ...(endDate ? { createdAt: { lte: endDate } } : {}),
     },

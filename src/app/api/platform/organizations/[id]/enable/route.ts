@@ -1,17 +1,13 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { apiHandler } from '@/lib/api-errors'
+import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePlatformAdmin, createAdminAuditLog } from '@/lib/platform-admin'
-
-interface RouteParams {
-  params: Promise<{ id: string }>
-}
+import { apiHandler } from '@/lib/api-errors'
 
 /**
  * POST /api/platform/organizations/[id]/enable
  * 启用组织
  */
-export const POST = apiHandler(async (req: NextRequest, { params }: RouteParams) => {
+export const POST = apiHandler<{ id: string }>(async (_req, { params }) => {
   const authResult = await requirePlatformAdmin()
   if (authResult instanceof NextResponse) return authResult
 

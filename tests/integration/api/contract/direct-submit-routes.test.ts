@@ -149,6 +149,23 @@ const prismaMock = vi.hoisted(() => ({
       ],
     })),
   },
+  novelPromotionCharacter: {
+    findFirst: vi.fn(async () => ({ id: 'character-1' })),
+  },
+  characterAppearance: {
+    findFirst: vi.fn(async () => ({
+      id: 'appearance-1',
+      characterId: 'character-1',
+    })),
+  },
+  novelPromotionLocation: {
+    findFirst: vi.fn(async () => ({ id: 'location-1' })),
+    findUnique: vi.fn(async () => ({
+      id: 'location-1',
+      name: 'Old Town',
+      summary: 'Old Town summary',
+    })),
+  },
   novelPromotionEpisode: {
     findFirst: vi.fn(async () => ({
       id: 'episode-1',

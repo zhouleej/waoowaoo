@@ -1,15 +1,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { NextRequest, NextResponse } from 'next/server'
-import { apiHandler } from '@/lib/api-errors'
+import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePlatformAdmin, createAdminAuditLog } from '@/lib/platform-admin'
+import { apiHandler } from '@/lib/api-errors'
 import { badRequest, notFound } from '@/lib/api-auth'
 import { readString } from '@/lib/saas/validation'
 import { serializeInvoice } from '@/lib/saas/serializers'
+import { parseInvoiceStatus } from '@/lib/saas/billing-status'
 
-type Ctx = { params: Promise<{ id: string }> }
-
-export const GET = apiHandler(async (_req: NextRequest, { params }: Ctx) => {
+export const GET = apiHandler<{ id: string }>(async (_req, { params }) => {
   const auth = await requirePlatformAdmin()
   if (auth instanceof NextResponse) return auth
   const { id } = await params
@@ -18,7 +17,7 @@ export const GET = apiHandler(async (_req: NextRequest, { params }: Ctx) => {
   return NextResponse.json({ data: serializeInvoice(invoice) })
 })
 
-export const PATCH = apiHandler(async (req: NextRequest, { params }: Ctx) => {
+export const PATCH = apiHandler<{ id: string }>(async (req, { params }) => {
   const auth = await requirePlatformAdmin()
   if (auth instanceof NextResponse) return auth
   const { user } = auth
@@ -28,7 +27,9 @@ export const PATCH = apiHandler(async (req: NextRequest, { params }: Ctx) => {
   let body: any
   try { body = await req.json() } catch { return badRequest('请求体必须是JSON') }
   try {
-    const status = body.status === undefined ? undefined : readString(body.status, '发票状态', { required: true, max: 32 })
+    const status = body.status === undefined
+      ? undefined
+      : parseInvoiceStatus(readString(body.status, '发票状态', { required: true, max: 32 }))
     const invoice = await prisma.billingInvoice.update({
       where: { id },
       data: {

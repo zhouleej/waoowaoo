@@ -1,18 +1,14 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { apiHandler } from '@/lib/api-errors'
+import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePlatformAdmin, createAdminAuditLog } from '@/lib/platform-admin'
-
-interface RouteParams {
-  params: Promise<{ id: string }>
-}
+import { apiHandler } from '@/lib/api-errors'
 
 /**
  * POST /api/platform/users/[id]/organizations
  * 将用户关联到组织
  * 请求体：{ organizationId: string, role?: string }
  */
-export const POST = apiHandler(async (req: NextRequest, { params }: RouteParams) => {
+export const POST = apiHandler<{ id: string }>(async (req, { params }) => {
   const authResult = await requirePlatformAdmin()
   if (authResult instanceof NextResponse) return authResult
   const { user: admin } = authResult
@@ -98,7 +94,7 @@ export const POST = apiHandler(async (req: NextRequest, { params }: RouteParams)
  * 将用户从组织移除
  * 请求体：{ organizationId: string }
  */
-export const DELETE = apiHandler(async (req: NextRequest, { params }: RouteParams) => {
+export const DELETE = apiHandler<{ id: string }>(async (req, { params }) => {
   const authResult = await requirePlatformAdmin()
   if (authResult instanceof NextResponse) return authResult
   const { user: admin } = authResult

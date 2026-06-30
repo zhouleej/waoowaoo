@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireUserAuth, isErrorResponse } from '@/lib/api-auth'
+import { requireProjectAuthLight, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
 import { attachMediaFieldsToProject } from '@/lib/media/attach'
 
@@ -19,23 +19,8 @@ export const GET = apiHandler(async (
     const { projectId } = await context.params
 
     // 🔐 统一权限验证
-    const authResult = await requireUserAuth()
+    const authResult = await requireProjectAuthLight(projectId)
     if (isErrorResponse(authResult)) return authResult
-    const { session } = authResult
-
-    // 验证项目所有权
-    const project = await prisma.project.findUnique({
-        where: { id: projectId },
-        select: { userId: true }
-    })
-
-    if (!project) {
-        throw new ApiError('NOT_FOUND')
-    }
-
-    if (project.userId !== session.user.id) {
-        throw new ApiError('FORBIDDEN')
-    }
 
     // 获取 characters 和 locations（包含嵌套数据）
     const novelPromotionData = await prisma.novelPromotionProject.findUnique({

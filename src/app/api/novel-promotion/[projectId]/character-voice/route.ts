@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { uploadObject, generateUniqueKey, getSignedUrl } from '@/lib/storage'
 import { requireProjectAuthLight, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
+import { requireNovelPromotionCharacterInProject } from '@/lib/saas/novel-promotion-resource-access'
 
 /**
  * PATCH /api/novel-promotion/[projectId]/character-voice
@@ -26,6 +27,8 @@ export const PATCH = apiHandler(async (
   if (!characterId) {
     throw new ApiError('INVALID_PARAMS')
   }
+
+  await requireNovelPromotionCharacterInProject(projectId, characterId)
 
   // 更新角色音色设置
   const character = await prisma.novelPromotionCharacter.update({
@@ -72,6 +75,8 @@ export const POST = apiHandler(async (
       throw new ApiError('INVALID_PARAMS')
     }
 
+    await requireNovelPromotionCharacterInProject(projectId, characterId)
+
     // 解码 base64 音频
     const audioBuffer = Buffer.from(audioBase64, 'base64')
 
@@ -112,6 +117,8 @@ export const POST = apiHandler(async (
   if (!file || !characterId) {
     throw new ApiError('INVALID_PARAMS')
   }
+
+  await requireNovelPromotionCharacterInProject(projectId, characterId)
 
   // 验证文件类型
   const allowedTypes = ['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/ogg', 'audio/m4a', 'audio/x-m4a']

@@ -1,13 +1,16 @@
 'use client'
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
 import { Link, useRouter } from '@/i18n/navigation'
 import Navbar from '@/components/Navbar'
 import ConfirmDialog from '@/components/ConfirmDialog'
-import { apiFetch } from '@/lib/api-fetch'
+import { getPlatformErrorMessage } from '@/components/platform/errors'
+import { PlatformAccessDenied, PlatformPageError } from '@/components/platform/PlatformPageState'
+import { apiJson } from '@/lib/api-fetch'
+import { usePlatformAdminCheck } from '@/hooks/common/usePlatformAdminCheck'
 
 export default function PlatformConfigPage() {
   const { data: session, status } = useSession()
@@ -22,41 +25,54 @@ export default function PlatformConfigPage() {
   const [creating, setCreating] = useState(false)
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
-  const isPlatformAdmin = (session?.user as any)?.isPlatformAdmin
+  const {
+    isPlatformAdmin,
+    loading: platformAdminLoading,
+    error: platformAdminError,
+    retry: retryPlatformAdminCheck,
+  } = usePlatformAdminCheck(status === 'authenticated' && Boolean(session))
 
   useEffect(() => {
     if (status === 'loading') return
     if (!session) router.push({ pathname: '/auth/signin' })
   }, [session, status, router])
 
-  const fetchConfigs = () => {
-    apiFetch('/api/platform/config')
-      .then(res => res.json())
-      .then(data => setConfigs(Array.isArray(data) ? data : []))
-      .catch(console.error)
-  }
+  const fetchConfigs = useCallback(async () => {
+    if (!isPlatformAdmin) return
+    setLoading(true)
+    setLoadError(null)
+    try {
+      const data = await apiJson('/api/platform/config')
+      setConfigs(Array.isArray(data) ? data : ((data as any)?.data || []))
+    } catch (error) {
+      setConfigs([])
+      setLoadError(getPlatformErrorMessage(error, t('loadFailed')))
+    } finally {
+      setLoading(false)
+    }
+  }, [isPlatformAdmin, t])
 
   useEffect(() => {
-    if (!isPlatformAdmin) return
-    fetchConfigs()
-    setLoading(false)
-  }, [isPlatformAdmin])
+    void fetchConfigs()
+  }, [fetchConfigs])
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!newConfig.key.trim() || !newConfig.value.trim()) return
     setCreating(true)
     try {
-      await apiFetch('/api/platform/config', {
+      await apiJson('/api/platform/config', {
         method: 'POST',
         body: JSON.stringify(newConfig),
       })
       setShowModal(false)
       setNewConfig({ key: '', value: '', description: '' })
-      fetchConfigs()
-    } catch (e) {
-      console.error(e)
+      await fetchConfigs()
+    } catch (error) {
+      setLoadError(getPlatformErrorMessage(error, t('saveFailed')))
+      setShowModal(true)
     } finally {
       setCreating(false)
     }
@@ -66,11 +82,12 @@ export default function PlatformConfigPage() {
     if (!deleteTargetId) return
     setDeleting(true)
     try {
-      await apiFetch(`/api/platform/config/${deleteTargetId}`, { method: 'DELETE' })
+      await apiJson(`/api/platform/config/${deleteTargetId}`, { method: 'DELETE' })
       setDeleteTargetId(null)
-      fetchConfigs()
-    } catch (e) {
-      console.error(e)
+      await fetchConfigs()
+    } catch (error) {
+      setLoadError(getPlatformErrorMessage(error, t('deleteFailed')))
+      setDeleteTargetId(deleteTargetId)
     } finally {
       setDeleting(false)
     }
@@ -78,18 +95,19 @@ export default function PlatformConfigPage() {
 
   const handleSave = async (key: string) => {
     try {
-      await apiFetch('/api/platform/config', {
+      await apiJson('/api/platform/config', {
         method: 'PATCH',
         body: JSON.stringify({ key, value: editValue }),
       })
       setConfigs(configs.map(c => c.key === key ? { ...c, value: editValue } : c))
       setEditingKey(null)
-    } catch (e) {
-      console.error(e)
+    } catch (error) {
+      setLoadError(getPlatformErrorMessage(error, t('saveFailed')))
+      setEditingKey(key)
     }
   }
 
-  if (status === 'loading' || !session) {
+  if (status === 'loading' || !session || platformAdminLoading) {
     return (
       <div className="min-h-screen bg-[var(--glass-bg-root)]">
         <Navbar />
@@ -100,14 +118,27 @@ export default function PlatformConfigPage() {
     )
   }
 
+  if (platformAdminError) {
+    return (
+      <div className="min-h-screen bg-[var(--glass-bg-root)]">
+        <Navbar />
+        <div className="mx-auto max-w-3xl px-4 py-16">
+          <PlatformPageError
+            title={t('platformAdminCheckFailed')}
+            message={platformAdminError.message}
+            retryLabel={t('retry')}
+            onRetry={retryPlatformAdminCheck}
+          />
+        </div>
+      </div>
+    )
+  }
+
   if (!isPlatformAdmin) {
     return (
       <div className="min-h-screen bg-[var(--glass-bg-root)]">
         <Navbar />
-        <div className="flex flex-col items-center justify-center h-[calc(100vh-64px)]">
-          <h1 className="text-2xl font-bold text-[var(--glass-text-primary)] mb-4">403 - Access Denied</h1>
-          <p className="text-[var(--glass-text-secondary)]">{t('noPermission')}</p>
-        </div>
+        <PlatformAccessDenied title={t('accessDeniedTitle')} message={t('noPermission')} />
       </div>
     )
   }
@@ -119,13 +150,15 @@ export default function PlatformConfigPage() {
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-3xl font-bold text-[var(--glass-text-primary)]">{t('systemConfig')}</h1>
           <div className="flex gap-3">
-            <button onClick={() => setShowModal(true)} className="glass-btn-base glass-btn-primary px-4 py-2">{'新增配置'}</button>
+            <button onClick={() => setShowModal(true)} className="glass-btn-base glass-btn-primary px-4 py-2">{t('createConfig')}</button>
             <Link href={{ pathname: '/admin/platform' }} className="glass-btn-base px-4 py-2">{t('back')}</Link>
           </div>
         </div>
 
         <div className="glass-surface overflow-hidden">
-          {loading ? (
+          {loadError ? (
+            <PlatformPageError title={t('requestFailed')} message={loadError} retryLabel={t('retry')} onRetry={fetchConfigs} />
+          ) : loading ? (
             <div className="p-8 text-center text-[var(--glass-text-secondary)]">{t('loading')}</div>
           ) : configs.length === 0 ? (
             <div className="p-8 text-center text-[var(--glass-text-secondary)]">{t('noConfigItems')}</div>
@@ -188,7 +221,7 @@ export default function PlatformConfigPage() {
                             onClick={() => setDeleteTargetId(config.id)}
                             className="text-sm text-[var(--glass-tone-danger-fg)] hover:underline"
                           >
-                            {t('delete') || '删除'}
+                            {t('delete')}
                           </button>
                         </div>
                       )}
@@ -204,10 +237,10 @@ export default function PlatformConfigPage() {
       {showModal && (
         <div className="fixed inset-0 glass-overlay flex items-center justify-center z-50 backdrop-blur-sm">
           <div className="glass-surface-modal p-6 w-full max-w-md">
-            <h2 className="text-xl font-bold text-[var(--glass-text-primary)] mb-4">{'新增配置'}</h2>
+            <h2 className="text-xl font-bold text-[var(--glass-text-primary)] mb-4">{t('createConfig')}</h2>
             <form onSubmit={handleCreate}>
               <div className="mb-4">
-                <label className="block mb-2 text-sm text-[var(--glass-text-secondary)]">配置键</label>
+                <label className="block mb-2 text-sm text-[var(--glass-text-secondary)]">{t('configKey')}</label>
                 <input
                   type="text"
                   value={newConfig.key}
@@ -217,7 +250,7 @@ export default function PlatformConfigPage() {
                 />
               </div>
               <div className="mb-4">
-                <label className="block mb-2 text-sm text-[var(--glass-text-secondary)]">配置值</label>
+                <label className="block mb-2 text-sm text-[var(--glass-text-secondary)]">{t('configValue')}</label>
                 <input
                   type="text"
                   value={newConfig.value}
@@ -227,7 +260,7 @@ export default function PlatformConfigPage() {
                 />
               </div>
               <div className="mb-4">
-                <label className="block mb-2 text-sm text-[var(--glass-text-secondary)]">{'描述'}</label>
+                <label className="block mb-2 text-sm text-[var(--glass-text-secondary)]">{t('description')}</label>
                 <input
                   type="text"
                   value={newConfig.description}
@@ -237,7 +270,7 @@ export default function PlatformConfigPage() {
               </div>
               <div className="flex justify-end gap-3">
                 <button type="button" onClick={() => setShowModal(false)} className="glass-btn-base glass-btn-secondary px-4 py-2">{t('cancel')}</button>
-                <button type="submit" className="glass-btn-base glass-btn-primary px-4 py-2" disabled={creating}>{creating ? '创建中...' : t('save')}</button>
+                <button type="submit" className="glass-btn-base glass-btn-primary px-4 py-2" disabled={creating}>{creating ? t('creating') : t('save')}</button>
               </div>
             </form>
           </div>
@@ -246,9 +279,9 @@ export default function PlatformConfigPage() {
 
       <ConfirmDialog
         show={Boolean(deleteTargetId)}
-        title="删除配置项"
-        message="确定要删除该配置项吗？此操作不可撤销。"
-        confirmText={deleting ? '删除中...' : (t('delete') || '删除')}
+        title={t('deleteConfig')}
+        message={t('confirmDeleteConfig')}
+        confirmText={deleting ? t('deleting') : t('delete')}
         cancelText={t('cancel')}
         onConfirm={handleDelete}
         onCancel={() => (deleting ? undefined : setDeleteTargetId(null))}

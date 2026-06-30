@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { apiHandler, ApiError } from '@/lib/api-errors'
-import { isErrorResponse, requireUserAuth } from '@/lib/api-auth'
+import { isErrorResponse, requireProjectAuthLight, requireUserAuth } from '@/lib/api-auth'
 import { createRun, listRuns } from '@/lib/run-runtime/service'
 import { RUN_STATUS, type RunStatus } from '@/lib/run-runtime/types'
 
@@ -62,6 +62,10 @@ export const GET = apiHandler(async (request: NextRequest) => {
     && !!workflowType
     && !!targetType
     && !!targetId
+  if (projectId) {
+    const projectAuth = await requireProjectAuthLight(projectId)
+    if (isErrorResponse(projectAuth)) return projectAuth
+  }
   const runs = await listRuns({
     userId: session.user.id,
     projectId: projectId || undefined,
@@ -102,6 +106,8 @@ export const POST = apiHandler(async (request: NextRequest) => {
   if (!projectId || !workflowType || !targetType || !targetId) {
     throw new ApiError('INVALID_PARAMS')
   }
+  const projectAuth = await requireProjectAuthLight(projectId)
+  if (isErrorResponse(projectAuth)) return projectAuth
 
   const run = await createRun({
     userId: session.user.id,

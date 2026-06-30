@@ -82,7 +82,7 @@ export const POST = apiHandler(async (req, ctx) => {
 
   // 解析请求体
   const body = await req.json()
-  const { amount, paymentMethod } = body
+  const { amount, paymentMethod, idempotencyKey } = body
 
   // 验证参数
   if (typeof amount !== 'number' || amount <= 0) {
@@ -114,17 +114,8 @@ export const POST = apiHandler(async (req, ctx) => {
     {
       reason: `组织余额充值 - ${paymentMethod || 'unknown payment method'}`,
       operatorId: session.user.id,
+      idempotencyKey,
     }
-  )
-
-  // 记录充值交易（可选：也可以添加到组织交易表）
-  await withPrismaRetry(() =>
-    prisma.organizationBalance.update({
-      where: { organizationId },
-      data: {
-        balance: { increment: amount },
-      },
-    })
   )
 
   return NextResponse.json({

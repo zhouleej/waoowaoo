@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireProjectAuthLight, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
+import { requireNovelPromotionPanelByStoryboardIndexInProject } from '@/lib/saas/novel-promotion-resource-access'
 
 // POST - 更新 panel 的首尾帧链接状态
 export const POST = apiHandler(async (
@@ -21,12 +22,19 @@ export const POST = apiHandler(async (
     throw new ApiError('INVALID_PARAMS')
   }
 
+  const numericPanelIndex = Number(panelIndex)
+  if (!Number.isFinite(numericPanelIndex)) {
+    throw new ApiError('INVALID_PARAMS')
+  }
+
+  await requireNovelPromotionPanelByStoryboardIndexInProject(projectId, storyboardId, numericPanelIndex)
+
   // 更新 panel 的链接状态
   await prisma.novelPromotionPanel.update({
     where: {
       storyboardId_panelIndex: {
         storyboardId,
-        panelIndex
+        panelIndex: numericPanelIndex
       }
     },
     data: {

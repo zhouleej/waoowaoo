@@ -19,6 +19,13 @@ vi.mock('@/lib/api-auth', () => {
       if (!authState.authenticated) return unauthorized()
       return { session: { user: { id: 'user-1' } } }
     },
+    requireProjectAuthLight: async (projectId: string) => {
+      if (!authState.authenticated) return unauthorized()
+      return {
+        session: { user: { id: 'user-1' } },
+        project: { id: projectId, userId: 'other-user', organizationId: 'org-1' },
+      }
+    },
   }
 })
 
@@ -92,5 +99,29 @@ describe('api contract - run cancel route', () => {
       runId: 'run-1',
       eventType: 'run.canceled',
     }))
+  })
+
+  it('allows an organization project member to cancel a run created by another member', async () => {
+    const { POST } = await import('@/app/api/runs/[runId]/cancel/route')
+    getRunByIdMock.mockResolvedValueOnce({
+      id: 'run-1',
+      userId: 'other-user',
+      projectId: 'project-1',
+      taskId: 'task-1',
+    })
+
+    const req = buildMockRequest({
+      path: '/api/runs/run-1/cancel',
+      method: 'POST',
+    })
+    const res = await POST(req, {
+      params: Promise.resolve({ runId: 'run-1' }),
+    })
+
+    expect(res.status).toBe(200)
+    expect(requestRunCancelMock).toHaveBeenCalledWith({
+      runId: 'run-1',
+      userId: 'other-user',
+    })
   })
 })
