@@ -1,12 +1,8 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { withPrismaRetry } from '@/lib/prisma-retry'
-import { requireUserAuth, isErrorResponse, unauthorized, forbidden, notFound, badRequest } from '@/lib/api-auth'
+import { requireUserAuth, isErrorResponse, forbidden, notFound, badRequest } from '@/lib/api-auth'
 import { apiHandler } from '@/lib/api-errors'
-
-type RouteParams = {
-  id: string
-}
 
 /**
  * GET /api/organizations/[id]

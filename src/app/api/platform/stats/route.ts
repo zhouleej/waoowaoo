@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
+import { apiHandler } from '@/lib/api-errors'
 import { prisma } from '@/lib/prisma'
 import { requirePlatformAdmin } from '@/lib/platform-admin'
 
@@ -13,7 +14,7 @@ import { requirePlatformAdmin } from '@/lib/platform-admin'
  *   - organizationStats（各组织消费排行）
  *   - userStats（活跃用户排行）
  */
-export async function GET(req: NextRequest) {
+export const GET = apiHandler(async () => {
   const authResult = await requirePlatformAdmin()
   if (authResult instanceof NextResponse) return authResult
 
@@ -156,4 +157,4 @@ export async function GET(req: NextRequest) {
     organizationStats: orgStats,
     userStats,
   })
-}
+})

@@ -4,7 +4,6 @@
  */
 
 import { getServerSession } from 'next-auth/next'
-import { headers as readHeaders } from 'next/headers'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { NextResponse } from 'next/server'

@@ -27,6 +27,8 @@ const AUTH_CALL_PATTERNS = [
   /\brequireUserAuth\s*\(/,
   /\brequireProjectAuth\s*\(/,
   /\brequireProjectAuthLight\s*\(/,
+  /\brequirePlatformAdmin\s*\(/,
+  /\bcheckPlatformAdmin\s*\(/,
 ]
 
 function fail(title, details = []) {
@@ -72,7 +74,7 @@ export function inspectRouteContract(relPath, content) {
   }
 
   if (!PUBLIC_ROUTE_ALLOWLIST.has(relPath) && !hasRequiredAuth(content)) {
-    violations.push(`${relPath} missing requireUserAuth/requireProjectAuth/requireProjectAuthLight`)
+    violations.push(`${relPath} missing requireUserAuth/requireProjectAuth/requireProjectAuthLight/requirePlatformAdmin/checkPlatformAdmin`)
   }
 
   return violations

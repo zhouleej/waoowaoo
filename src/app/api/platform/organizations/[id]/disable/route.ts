@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { apiHandler } from '@/lib/api-errors'
 import { prisma } from '@/lib/prisma'
 import { requirePlatformAdmin, createAdminAuditLog } from '@/lib/platform-admin'
 
@@ -10,11 +11,11 @@ interface RouteParams {
  * POST /api/platform/organizations/[id]/disable
  * 禁用组织
  */
-export async function POST(req: NextRequest, { params }: RouteParams) {
+export const POST = apiHandler(async (req: NextRequest, { params }: RouteParams) => {
   const authResult = await requirePlatformAdmin()
   if (authResult instanceof NextResponse) return authResult
 
-  const { session, user } = authResult
+  const { user } = authResult
   const { id } = await params
 
   // 检查组织是否存在
@@ -59,4 +60,4 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     message: 'Organization disabled successfully',
     organization: updated,
   })
-}
+})

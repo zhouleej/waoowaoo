@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { apiHandler } from '@/lib/api-errors'
 import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/prisma'
 import { requirePlatformAdmin, createAdminAuditLog } from '@/lib/platform-admin'
@@ -9,7 +10,7 @@ import { requirePlatformAdmin, createAdminAuditLog } from '@/lib/platform-admin'
  * 查询参数：page, limit, search
  * 返回：用户列表
  */
-export async function GET(req: NextRequest) {
+export const GET = apiHandler(async (req: NextRequest) => {
   const authResult = await requirePlatformAdmin()
   if (authResult instanceof NextResponse) return authResult
 
@@ -120,13 +121,13 @@ export async function GET(req: NextRequest) {
       totalPages: Math.ceil(total / limit),
     },
   })
-}
+})
 
 /**
  * POST /api/platform/users
  * 创建用户
  */
-export async function POST(req: NextRequest) {
+export const POST = apiHandler(async (req: NextRequest) => {
   const authResult = await requirePlatformAdmin()
   if (authResult instanceof NextResponse) return authResult
   const { user: admin } = authResult
@@ -177,4 +178,4 @@ export async function POST(req: NextRequest) {
   })
 
   return NextResponse.json({ data: newUser }, { status: 201 })
-}
+})

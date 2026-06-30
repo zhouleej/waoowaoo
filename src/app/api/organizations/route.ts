@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { withPrismaRetry } from '@/lib/prisma-retry'
-import { requireUserAuth, isErrorResponse, unauthorized, forbidden, notFound, badRequest } from '@/lib/api-auth'
+import { requireUserAuth, isErrorResponse, badRequest } from '@/lib/api-auth'
 import { apiHandler } from '@/lib/api-errors'
 
 /**

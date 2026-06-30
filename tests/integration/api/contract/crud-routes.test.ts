@@ -273,6 +273,18 @@ describe('api contract - crud routes (behavior)', () => {
     expect(routes.length).toBeGreaterThan(0)
   })
 
+  it('organization and platform API routes are represented by the crud contract suite', () => {
+    const organizationRoutes = ROUTE_CATALOG.filter((entry) => entry.contractGroup === 'organization-routes')
+
+    expect(organizationRoutes.length).toBeGreaterThan(0)
+    expect(organizationRoutes.map((entry) => entry.routeFile)).toEqual(
+      expect.arrayContaining([
+        'src/app/api/organizations/route.ts',
+        'src/app/api/platform/organizations/route.ts',
+      ]),
+    )
+  })
+
   it('all crud route methods reject unauthenticated requests (no 2xx pass-through)', async () => {
     const methods: ReadonlyArray<RouteMethod> = ['GET', 'POST', 'PATCH', 'PUT', 'DELETE']
     let checkedMethodCount = 0

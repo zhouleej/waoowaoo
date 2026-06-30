@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { isErrorResponse, requireUserAuth } from '@/lib/api-auth'
+import { apiHandler } from '@/lib/api-errors'
 import { requireOrganizationRole } from '@/lib/saas/permissions'
 import { serializeInvoice, serializeOrder, serializeOrganization, serializePlan } from '@/lib/saas/serializers'
 
 type Ctx = { params: Promise<{ id: string }> }
 
-export async function GET(_req: NextRequest, { params }: Ctx) {
+export const GET = apiHandler(async (_req: NextRequest, { params }: Ctx) => {
   const auth = await requireUserAuth()
   if (isErrorResponse(auth)) return auth
   const { id } = await params
@@ -34,4 +35,4 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
       usages: organization.organizationUsages,
     },
   })
-}
+})

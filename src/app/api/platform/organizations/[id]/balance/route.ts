@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { apiHandler } from '@/lib/api-errors'
 import { prisma } from '@/lib/prisma'
 import { requirePlatformAdmin, createAdminAuditLog } from '@/lib/platform-admin'
 
@@ -11,7 +12,7 @@ interface RouteParams {
  * 平台管理员增加组织余额
  * 请求体：{ amount: number, reason?: string }
  */
-export async function POST(req: NextRequest, { params }: RouteParams) {
+export const POST = apiHandler(async (req: NextRequest, { params }: RouteParams) => {
   const authResult = await requirePlatformAdmin()
   if (authResult instanceof NextResponse) return authResult
 
@@ -82,4 +83,4 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       totalSpent: Number(balance.totalSpent),
     },
   })
-}
+})

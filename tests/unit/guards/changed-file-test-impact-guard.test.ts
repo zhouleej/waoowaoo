@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest'
-import { inspectChangedFiles } from '../../../scripts/guards/changed-file-test-impact-guard.mjs'
+import { execFileSync } from 'node:child_process'
+import { resolve } from 'node:path'
+
+function inspectChangedFiles(files: string[]): string[] {
+  const modulePath = resolve(process.cwd(), 'scripts/guards/changed-file-test-impact-guard.mjs')
+  const script = `
+    const { pathToFileURL } = await import('node:url')
+    const mod = await import(pathToFileURL(${JSON.stringify(modulePath)}).href)
+    const result = mod.inspectChangedFiles(${JSON.stringify(files)})
+    process.stdout.write(JSON.stringify(result))
+  `
+  return JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8' })) as string[]
+}
 
 describe('changed-file-test-impact-guard', () => {
   it('requires api changes to be paired with contract, system, or regression tests', () => {

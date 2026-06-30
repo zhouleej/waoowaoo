@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest'
-import { inspectTaskSubmitCompensation } from '../../../scripts/guards/task-submit-compensation-guard.mjs'
+import { execFileSync } from 'node:child_process'
+import { resolve } from 'node:path'
+
+function inspectTaskSubmitCompensation(relPath: string, content: string): string[] {
+  const modulePath = resolve(process.cwd(), 'scripts/guards/task-submit-compensation-guard.mjs')
+  const script = `
+    const { pathToFileURL } = await import('node:url')
+    const mod = await import(pathToFileURL(${JSON.stringify(modulePath)}).href)
+    const result = mod.inspectTaskSubmitCompensation(${JSON.stringify(relPath)}, ${JSON.stringify(content)})
+    process.stdout.write(JSON.stringify(result))
+  `
+  return JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8' })) as string[]
+}
 
 describe('task submit compensation guard', () => {
   it('passes routes that create data before submitTask and define rollback handling', () => {

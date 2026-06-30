@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server'
+import { apiHandler } from '@/lib/api-errors'
 import { prisma } from '@/lib/prisma'
 import { requirePlatformAdmin, createAdminAuditLog } from '@/lib/platform-admin'
 import { badRequest, notFound } from '@/lib/api-auth'
@@ -8,16 +9,16 @@ import { serializeInvoice } from '@/lib/saas/serializers'
 
 type Ctx = { params: Promise<{ id: string }> }
 
-export async function GET(_req: NextRequest, { params }: Ctx) {
+export const GET = apiHandler(async (_req: NextRequest, { params }: Ctx) => {
   const auth = await requirePlatformAdmin()
   if (auth instanceof NextResponse) return auth
   const { id } = await params
   const invoice = await prisma.billingInvoice.findUnique({ where: { id }, include: { organization: true, order: true } })
   if (!invoice) return notFound('BillingInvoice')
   return NextResponse.json({ data: serializeInvoice(invoice) })
-}
+})
 
-export async function PATCH(req: NextRequest, { params }: Ctx) {
+export const PATCH = apiHandler(async (req: NextRequest, { params }: Ctx) => {
   const auth = await requirePlatformAdmin()
   if (auth instanceof NextResponse) return auth
   const { user } = auth
@@ -43,4 +44,4 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
   } catch (error) {
     return badRequest(error instanceof Error ? error.message : '发票参数无效')
   }
-}
+})

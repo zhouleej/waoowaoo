@@ -1,12 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server'
+import { apiHandler } from '@/lib/api-errors'
 import { prisma } from '@/lib/prisma'
 import { requirePlatformAdmin, createAdminAuditLog } from '@/lib/platform-admin'
 import { badRequest, notFound } from '@/lib/api-auth'
 import { parsePagination, readNumber, readString } from '@/lib/saas/validation'
 import { serializeSubscription } from '@/lib/saas/serializers'
 
-export async function GET(req: NextRequest) {
+export const GET = apiHandler(async (req: NextRequest) => {
   const auth = await requirePlatformAdmin()
   if (auth instanceof NextResponse) return auth
   try {
@@ -25,9 +26,9 @@ export async function GET(req: NextRequest) {
   } catch (error) {
     return NextResponse.json({ data: [], pagination: { page: 1, limit: 10, total: 0, totalPages: 1 }, unavailable: true, error: error instanceof Error ? error.message : 'Subscriptions unavailable' })
   }
-}
+})
 
-export async function POST(req: NextRequest) {
+export const POST = apiHandler(async (req: NextRequest) => {
   const auth = await requirePlatformAdmin()
   if (auth instanceof NextResponse) return auth
   const { user } = auth
@@ -64,4 +65,4 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     return badRequest(error instanceof Error ? error.message : '订阅参数无效')
   }
-}
+})

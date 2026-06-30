@@ -1,12 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server'
+import { apiHandler } from '@/lib/api-errors'
 import { prisma } from '@/lib/prisma'
 import { requirePlatformAdmin, createAdminAuditLog } from '@/lib/platform-admin'
 import { badRequest, notFound } from '@/lib/api-auth'
 import { nextOrderNo, parsePagination, readNumber, readString } from '@/lib/saas/validation'
 import { serializeInvoice } from '@/lib/saas/serializers'
 
-export async function GET(req: NextRequest) {
+export const GET = apiHandler(async (req: NextRequest) => {
   const auth = await requirePlatformAdmin()
   if (auth instanceof NextResponse) return auth
   const { searchParams } = new URL(req.url)
@@ -21,9 +22,9 @@ export async function GET(req: NextRequest) {
     prisma.billingInvoice.count({ where }),
   ])
   return NextResponse.json({ data: data.map(serializeInvoice), pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } })
-}
+})
 
-export async function POST(req: NextRequest) {
+export const POST = apiHandler(async (req: NextRequest) => {
   const auth = await requirePlatformAdmin()
   if (auth instanceof NextResponse) return auth
   const { user } = auth
@@ -52,4 +53,4 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     return badRequest(error instanceof Error ? error.message : '发票参数无效')
   }
-}
+})

@@ -5,11 +5,6 @@ import { requireUserAuth, isErrorResponse, forbidden, notFound, badRequest, chec
 import { apiHandler } from '@/lib/api-errors'
 import { writeEnterpriseAudit } from '@/lib/saas/permissions'
 
-type RouteParams = {
-  id: string
-  userId: string
-}
-
 /**
  * PATCH /api/organizations/[id]/members/[userId]
  * 更新成员

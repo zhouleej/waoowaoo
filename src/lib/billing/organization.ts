@@ -5,11 +5,9 @@
 
 import { logInfo as _ulogInfo, logError as _ulogError } from '@/lib/logging/core'
 import { prisma } from '@/lib/prisma'
-import { withPrismaRetry } from '@/lib/prisma-retry'
 import { toMoneyNumber, roundMoney, type MoneyValue } from './money'
 
 const MONEY_SCALE = 6
-const MONEY_EPSILON = 1e-9
 
 function normalizeMoney(value: number): number {
   return roundMoney(value, MONEY_SCALE)
@@ -202,7 +200,7 @@ export async function freezeOrganizationBalance(
  * 确认扣款（从冻结金额转为实际消费）
  */
 export async function confirmOrganizationCharge(
-  freezeId: string,
+  _freezeId: string,
   amount: number,
 ): Promise<boolean> {
   const normalizedAmount = normalizeMoney(Number(amount))
@@ -214,7 +212,7 @@ export async function confirmOrganizationCharge(
     await prisma.$transaction(async (tx) => {
       // 获取最新的冻结金额记录
       const balance = await tx.organizationBalance.findUnique({
-        where: { organizationId: (await tx.organizationBalance.findUnique({ where: { id: freezeId } }))?.organizationId || '' },
+        where: { organizationId: (await tx.organizationBalance.findUnique({ where: { id: _freezeId } }))?.organizationId || '' },
       })
 
       // 直接扣除冻结金额并增加总消费
@@ -242,7 +240,7 @@ export async function confirmOrganizationCharge(
 /**
  * 回滚组织余额冻结
  */
-export async function rollbackOrganizationFreeze(freezeId: string): Promise<boolean> {
+export async function rollbackOrganizationFreeze(_freezeId: string): Promise<boolean> {
   try {
     // 对于简单场景，直接通过消费记录回滚
     // 这里简化处理，实际可能需要存储冻结记录

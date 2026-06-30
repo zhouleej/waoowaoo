@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { apiHandler } from '@/lib/api-errors'
 import { prisma } from '@/lib/prisma'
 import { requirePlatformAdmin, createAdminAuditLog } from '@/lib/platform-admin'
 
@@ -8,7 +9,7 @@ import { requirePlatformAdmin, createAdminAuditLog } from '@/lib/platform-admin'
  * 查询参数：page, limit, search, status
  * 返回：组织列表（包含余额、成员数量）
  */
-export async function GET(req: NextRequest) {
+export const GET = apiHandler(async (req: NextRequest) => {
   const authResult = await requirePlatformAdmin()
   if (authResult instanceof NextResponse) return authResult
 
@@ -91,13 +92,13 @@ export async function GET(req: NextRequest) {
       totalPages: Math.ceil(total / limit),
     },
   })
-}
+})
 
 /**
  * POST /api/platform/organizations
  * 创建组织
  */
-export async function POST(req: NextRequest) {
+export const POST = apiHandler(async (req: NextRequest) => {
   const authResult = await requirePlatformAdmin()
   if (authResult instanceof NextResponse) return authResult
   const { user } = authResult
@@ -155,4 +156,4 @@ export async function POST(req: NextRequest) {
   })
 
   return NextResponse.json({ data: organization }, { status: 201 })
-}
+})

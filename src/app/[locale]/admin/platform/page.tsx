@@ -1,10 +1,10 @@
 'use client'
-/* eslint-disable @typescript-eslint/no-explicit-any, @next/next/no-html-link-for-pages, no-restricted-syntax */
+/* eslint-disable @typescript-eslint/no-explicit-any, no-restricted-syntax */
 
 import { useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
-import { useRouter } from '@/i18n/navigation'
+import { Link, useRouter } from '@/i18n/navigation'
 import Navbar from '@/components/Navbar'
 import { apiFetch } from '@/lib/api-fetch'
 
@@ -18,7 +18,7 @@ export default function PlatformAdminPage() {
   useEffect(() => {
     if (status === 'loading') return
     if (!session) {
-      router.push('/auth/signin')
+      router.push({ pathname: '/auth/signin' })
     }
   }, [session, status, router])
 
@@ -97,7 +97,7 @@ export default function PlatformAdminPage() {
         {/* Quick Actions */}
         <h2 className="text-xl font-semibold text-[var(--glass-text-primary)] mb-4">{t('quickActions') || 'Quick Actions'}</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-          <a href="/admin/platform/organizations" className="glass-surface p-6 hover:brightness-110 transition-all group">
+          <Link href={{ pathname: '/admin/platform/organizations' }} className="glass-surface p-6 hover:brightness-110 transition-all group">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 rounded-lg bg-[var(--glass-tone-info-bg)] flex items-center justify-center">
                 <svg className="w-6 h-6 text-[var(--glass-tone-info-fg)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -109,9 +109,9 @@ export default function PlatformAdminPage() {
                 <div className="text-sm text-[var(--glass-text-secondary)]">{t('manageOrganizationsDesc') || 'View and manage all organizations'}</div>
               </div>
             </div>
-          </a>
+          </Link>
 
-          <a href="/admin/platform/users" className="glass-surface p-6 hover:brightness-110 transition-all group">
+          <Link href={{ pathname: '/admin/platform/users' }} className="glass-surface p-6 hover:brightness-110 transition-all group">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 rounded-lg bg-[var(--glass-tone-warning-bg)] flex items-center justify-center">
                 <svg className="w-6 h-6 text-[var(--glass-tone-warning-fg)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -123,9 +123,9 @@ export default function PlatformAdminPage() {
                 <div className="text-sm text-[var(--glass-text-secondary)]">{t('manageUsersDesc') || 'View and manage all users'}</div>
               </div>
             </div>
-          </a>
+          </Link>
 
-          <a href="/admin/platform/billing" className="glass-surface p-6 hover:brightness-110 transition-all group">
+          <Link href={{ pathname: '/admin/platform/billing' }} className="glass-surface p-6 hover:brightness-110 transition-all group">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 rounded-lg bg-[var(--glass-tone-success-bg)] flex items-center justify-center">
                 <svg className="w-6 h-6 text-[var(--glass-tone-success-fg)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -137,9 +137,9 @@ export default function PlatformAdminPage() {
                 <div className="text-sm text-[var(--glass-text-secondary)]">{t('billingCenterDesc')}</div>
               </div>
             </div>
-          </a>
+          </Link>
 
-          <a href="/admin/platform/stats" className="glass-surface p-6 hover:brightness-110 transition-all group">
+          <Link href={{ pathname: '/admin/platform/stats' }} className="glass-surface p-6 hover:brightness-110 transition-all group">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 rounded-lg bg-[var(--glass-tone-info-bg)] flex items-center justify-center">
                 <svg className="w-6 h-6 text-[var(--glass-tone-info-fg)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -151,9 +151,9 @@ export default function PlatformAdminPage() {
                 <div className="text-sm text-[var(--glass-text-secondary)]">{t('platformStatsDesc')}</div>
               </div>
             </div>
-          </a>
+          </Link>
 
-          <a href="/api/platform/config" className="glass-surface p-6 hover:brightness-110 transition-all group">
+          <Link href={{ pathname: '/admin/platform/config' }} className="glass-surface p-6 hover:brightness-110 transition-all group">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 rounded-lg bg-[var(--glass-tone-success-bg)] flex items-center justify-center">
                 <svg className="w-6 h-6 text-[var(--glass-tone-success-fg)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -166,9 +166,9 @@ export default function PlatformAdminPage() {
                 <div className="text-sm text-[var(--glass-text-secondary)]">{t('systemConfigDesc') || 'Configure system settings'}</div>
               </div>
             </div>
-          </a>
+          </Link>
 
-          <a href="/admin/platform/audit" className="glass-surface p-6 hover:brightness-110 transition-all group">
+          <Link href={{ pathname: '/admin/platform/audit' }} className="glass-surface p-6 hover:brightness-110 transition-all group">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 rounded-lg bg-[var(--glass-tone-warning-bg)] flex items-center justify-center">
                 <svg className="w-6 h-6 text-[var(--glass-tone-warning-fg)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -180,7 +180,7 @@ export default function PlatformAdminPage() {
                 <div className="text-sm text-[var(--glass-text-secondary)]">{t('auditLogDesc')}</div>
               </div>
             </div>
-          </a>
+          </Link>
         </div>
       </div>
     </div>

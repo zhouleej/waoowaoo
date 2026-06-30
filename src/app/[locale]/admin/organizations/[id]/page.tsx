@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import Image from 'next/image'
 import { useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
 import { useParams } from 'next/navigation'
@@ -23,7 +24,7 @@ export default function OrganizationDetailPage() {
   const t = useTranslations('organizations')
   const tc = useTranslations('common')
   const [org, setOrg] = useState<Organization | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'overview' | 'members' | 'billing'>('overview')
 
   // 成员管理状态
@@ -302,7 +303,7 @@ export default function OrganizationDetailPage() {
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
                             {m.user.image ? (
-                              <img src={m.user.image} alt="" className="w-8 h-8 rounded-full" />
+                              <Image src={m.user.image} alt="" width={32} height={32} className="w-8 h-8 rounded-full" />
                             ) : (
                               <div className="w-8 h-8 rounded-full bg-[var(--glass-bg-muted)] flex items-center justify-center">
                                 <AppIcon name="user" className="w-4 h-4 text-[var(--glass-text-tertiary)]" />

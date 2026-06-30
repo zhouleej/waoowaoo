@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server'
+import { apiHandler } from '@/lib/api-errors'
 import { prisma } from '@/lib/prisma'
 import { requirePlatformAdmin, createAdminAuditLog } from '@/lib/platform-admin'
 import { badRequest, notFound } from '@/lib/api-auth'
@@ -7,16 +8,16 @@ import { readNumber, readString } from '@/lib/saas/validation'
 
 type Ctx = { params: Promise<{ id: string }> }
 
-export async function GET(_req: NextRequest, { params }: Ctx) {
+export const GET = apiHandler(async (_req: NextRequest, { params }: Ctx) => {
   const auth = await requirePlatformAdmin()
   if (auth instanceof NextResponse) return auth
   const { id } = await params
   const sub = await prisma.organizationSubscription.findUnique({ where: { id }, include: { organization: true, plan: { include: { entitlements: true } }, orders: { include: { invoice: true }, orderBy: { createdAt: 'desc' } } } })
   if (!sub) return notFound('OrganizationSubscription')
   return NextResponse.json({ data: sub })
-}
+})
 
-export async function PATCH(req: NextRequest, { params }: Ctx) {
+export const PATCH = apiHandler(async (req: NextRequest, { params }: Ctx) => {
   const auth = await requirePlatformAdmin()
   if (auth instanceof NextResponse) return auth
   const { user } = auth
@@ -54,4 +55,4 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
   } catch (error) {
     return badRequest(error instanceof Error ? error.message : '订阅参数无效')
   }
-}
+})

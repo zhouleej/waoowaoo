@@ -1,10 +1,10 @@
 'use client'
-/* eslint-disable @typescript-eslint/no-explicit-any, @next/next/no-html-link-for-pages, no-restricted-syntax */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useEffect, useState, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
-import { useRouter } from '@/i18n/navigation'
+import { Link, useRouter } from '@/i18n/navigation'
 import Navbar from '@/components/Navbar'
 import { apiFetch } from '@/lib/api-fetch'
 import { AppIcon } from '@/components/ui/icons'
@@ -95,7 +95,7 @@ export default function PlatformUsersPage() {
 
   useEffect(() => {
     if (status === 'loading') return
-    if (!session) router.push('/auth/signin')
+    if (!session) router.push({ pathname: '/auth/signin' })
   }, [session, status, router])
 
   const fetchUsers = useCallback(async (page: number = 1, search: string = '') => {
@@ -393,7 +393,7 @@ export default function PlatformUsersPage() {
             <button onClick={openCreateModal} className="glass-btn-base glass-btn-primary px-4 py-2">
               {t('newUser')}
             </button>
-            <a href="/admin/platform" className="glass-btn-base px-4 py-2">{t('back') || 'Back'}</a>
+            <Link href={{ pathname: '/admin/platform' }} className="glass-btn-base px-4 py-2">{t('back') || 'Back'}</Link>
           </div>
         </div>
 

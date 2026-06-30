@@ -106,7 +106,7 @@ export default function PlatformBillingPage() {
 
   useEffect(() => {
     if (status === 'loading') return
-    if (!session) router.push('/auth/signin')
+    if (!session) router.push({ pathname: '/auth/signin' })
   }, [router, session, status])
 
   const loadOrganizations = useCallback(async () => {

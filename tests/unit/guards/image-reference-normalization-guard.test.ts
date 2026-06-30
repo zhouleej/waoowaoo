@@ -1,12 +1,25 @@
 import { describe, expect, it } from 'vitest'
-import {
-  NORMALIZATION_HELPER_ALLOWLIST,
-  inspectImageReferenceNormalization,
-} from '../../../scripts/guards/image-reference-normalization-guard.mjs'
+import { execFileSync } from 'node:child_process'
+import { resolve } from 'node:path'
+
+function evaluateGuard<T>(expression: string): T {
+  const modulePath = resolve(process.cwd(), 'scripts/guards/image-reference-normalization-guard.mjs')
+  const script = `
+    const { pathToFileURL } = await import('node:url')
+    const mod = await import(pathToFileURL(${JSON.stringify(modulePath)}).href)
+    const result = ${expression}
+    process.stdout.write(JSON.stringify(result))
+  `
+  return JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8' })) as T
+}
+
+function inspectImageReferenceNormalization(relPath: string, content: string): string[] {
+  return evaluateGuard<string[]>(`mod.inspectImageReferenceNormalization(${JSON.stringify(relPath)}, ${JSON.stringify(content)})`)
+}
 
 describe('image reference normalization guard', () => {
   it('allows shared helper exceptions explicitly', () => {
-    expect(NORMALIZATION_HELPER_ALLOWLIST.has('src/lib/workers/handlers/image-task-handler-shared.ts')).toBe(true)
+    expect(evaluateGuard<boolean>(`mod.NORMALIZATION_HELPER_ALLOWLIST.has('src/lib/workers/handlers/image-task-handler-shared.ts')`)).toBe(true)
     expect(
       inspectImageReferenceNormalization(
         'src/lib/workers/handlers/image-task-handler-shared.ts',

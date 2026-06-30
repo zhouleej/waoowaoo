@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { apiHandler } from '@/lib/api-errors'
 import { prisma } from '@/lib/prisma'
 import { requirePlatformAdmin, createAdminAuditLog } from '@/lib/platform-admin'
 
@@ -7,7 +8,7 @@ import { requirePlatformAdmin, createAdminAuditLog } from '@/lib/platform-admin'
  * 获取所有系统配置
  * 返回：配置项列表
  */
-export async function GET(req: NextRequest) {
+export const GET = apiHandler(async () => {
   const authResult = await requirePlatformAdmin()
   if (authResult instanceof NextResponse) return authResult
 
@@ -24,7 +25,7 @@ export async function GET(req: NextRequest) {
       updatedAt: config.updatedAt,
     })),
   })
-}
+})
 
 /**
  * PATCH /api/platform/config
@@ -32,7 +33,7 @@ export async function GET(req: NextRequest) {
  * 请求体：{ key: string, value: string }
  * 需要记录操作日志
  */
-export async function PATCH(req: NextRequest) {
+export const PATCH = apiHandler(async (req: NextRequest) => {
   const authResult = await requirePlatformAdmin()
   if (authResult instanceof NextResponse) return authResult
 
@@ -103,7 +104,7 @@ export async function PATCH(req: NextRequest) {
       updatedAt: config.updatedAt,
     },
   })
-}
+})
 
 /**
  * POST /api/platform/config
@@ -111,7 +112,7 @@ export async function PATCH(req: NextRequest) {
  * 请求体：{ key: string, value: string, description?: string }
  * 如果 key 已存在则返回错误
  */
-export async function POST(req: NextRequest) {
+export const POST = apiHandler(async (req: NextRequest) => {
   const authResult = await requirePlatformAdmin()
   if (authResult instanceof NextResponse) return authResult
 
@@ -177,4 +178,4 @@ export async function POST(req: NextRequest) {
       updatedAt: config.updatedAt,
     },
   })
-}
+})
