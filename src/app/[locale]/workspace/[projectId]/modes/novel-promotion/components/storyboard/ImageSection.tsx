@@ -101,8 +101,19 @@ export default function ImageSection({
     )
   }
 
-  const renderFailedState = () => (
+  const renderFailedState = (backdropImageUrl: string | null = null) => (
     <div className="flex h-full w-full flex-col items-center justify-center gap-1 bg-[var(--glass-danger-ring)] text-[var(--glass-tone-danger-fg)] p-2">
+      {backdropImageUrl && (
+        <MediaImageWithLoading
+          src={backdropImageUrl}
+          alt={t('image.clickToPreview')}
+          containerClassName="absolute inset-0 h-full w-full"
+          className="absolute inset-0 h-full w-full object-cover"
+          sizes="(max-width: 768px) 100vw, 33vw"
+        />
+      )}
+      {backdropImageUrl && <div className="absolute inset-0 bg-black/30 backdrop-blur-[1px]" />}
+      <div className="relative z-10 flex flex-col items-center justify-center gap-1 rounded-xl bg-[var(--glass-bg-surface-modal)]/90 p-2 shadow-lg backdrop-blur-md">
       <AppIcon name="alert" className="w-6 h-6 mb-1" />
       <span className="text-xs text-center font-medium">{t('image.failed')}</span>
       <span className="text-[10px] text-center mt-1 line-clamp-2 px-1">{failedError}</span>
@@ -112,6 +123,7 @@ export default function ImageSection({
       >
         {t('variant.close')}
       </button>
+      </div>
     </div>
   )
 
@@ -157,8 +169,6 @@ export default function ImageSection({
         ) : (
           renderLoadingState(imageUrl ? 'regenerate' : 'generate', imageUrl)
         )
-      ) : failedError ? (
-        renderFailedState()
       ) : imageUrl ? (
         <MediaImageWithLoading
           src={imageUrl}
@@ -169,6 +179,8 @@ export default function ImageSection({
           title={onPreviewImage ? t('image.clickToPreview') : undefined}
           sizes="(max-width: 768px) 100vw, 33vw"
         />
+      ) : failedError ? (
+        renderFailedState()
       ) : (
         renderEmptyState()
       )}

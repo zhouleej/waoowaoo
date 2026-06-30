@@ -64,6 +64,7 @@
     "check:prompt-i18n-regression": "node scripts/guards/prompt-semantic-regression.mjs",
     "check:prompt-ab-regression": "node scripts/guards/prompt-ab-regression.mjs",
     "check:prompt-json-canary": "node scripts/guards/prompt-json-canary-guard.mjs",
+    "check:saas-schema": "tsx --env-file=.env scripts/check-saas-schema.ts",
     "billing:cleanup-pending-freezes": "tsx scripts/billing-cleanup-pending-freezes.ts",
     "billing:reconcile-ledger": "tsx scripts/billing-reconcile-ledger.ts",
     "cleanup:remove-legacy-voice-data": "tsx scripts/cleanup-remove-legacy-voice-data.ts",

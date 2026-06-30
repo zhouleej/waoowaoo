@@ -535,6 +535,60 @@
     }
   },
   {
+    "apiType": "image",
+    "provider": "bailian",
+    "modelId": "wan2.6-t2i",
+    "pricing": {
+      "mode": "flat",
+      "flatAmount": 0.25
+    }
+  },
+  {
+    "apiType": "image",
+    "provider": "bailian",
+    "modelId": "wan2.5-t2i-preview",
+    "pricing": {
+      "mode": "flat",
+      "flatAmount": 0.25
+    }
+  },
+  {
+    "apiType": "image",
+    "provider": "bailian",
+    "modelId": "wan2.2-t2i-flash",
+    "pricing": {
+      "mode": "flat",
+      "flatAmount": 0.12
+    }
+  },
+  {
+    "apiType": "image",
+    "provider": "bailian",
+    "modelId": "wan2.2-t2i-plus",
+    "pricing": {
+      "mode": "flat",
+      "flatAmount": 0.2
+    }
+  },
+  {
+    "apiType": "image",
+    "provider": "bailian",
+    "modelId": "wanx2.1-t2i-turbo",
+    "pricing": {
+      "mode": "flat",
+      "flatAmount": 0.12
+    }
+  },
+  {
+    "apiType": "image",
+    "provider": "bailian",
+    "modelId": "wanx2.1-t2i-plus",
+    "pricing": {
+      "mode": "flat",
+      "flatAmount": 0.2
+    }
+  },
+  {
     "apiType": "video",
     "provider": "ark",
     "modelId": "doubao-seedance-2-0-260128",

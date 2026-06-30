@@ -717,6 +717,17 @@ interface BailianTaskQueryResultItem {
     image_url?: string
 }
 
+interface BailianTaskQueryChoiceContentItem {
+    type?: string
+    image?: string
+}
+
+interface BailianTaskQueryChoiceItem {
+    message?: {
+        content?: BailianTaskQueryChoiceContentItem[]
+    }
+}
+
 interface BailianTaskQueryResponse {
     code?: string
     message?: string
@@ -728,6 +739,7 @@ interface BailianTaskQueryResponse {
         video_url?: string
         image_url?: string
         results?: BailianTaskQueryResultItem[]
+        choices?: BailianTaskQueryChoiceItem[]
     }
 }
 
@@ -745,6 +757,15 @@ function readBailianTaskQueryMediaUrl(data: BailianTaskQueryResponse): {
     const imageUrl = typeof output?.image_url === 'string' ? output.image_url.trim() : ''
     if (imageUrl) {
         return { mediaUrl: imageUrl, imageUrl }
+    }
+
+    const firstChoice = Array.isArray(output?.choices) ? output.choices[0] : undefined
+    const firstChoiceContent = Array.isArray(firstChoice?.message?.content)
+        ? firstChoice.message.content.find((item) => typeof item?.image === 'string' && item.image.trim())
+        : undefined
+    const firstChoiceImage = typeof firstChoiceContent?.image === 'string' ? firstChoiceContent.image.trim() : ''
+    if (firstChoiceImage) {
+        return { mediaUrl: firstChoiceImage, imageUrl: firstChoiceImage }
     }
 
     const firstResult = Array.isArray(output?.results) ? output.results[0] : undefined

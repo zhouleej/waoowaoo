@@ -59,4 +59,19 @@ describe('api-config preset coming soon', () => {
       'wanx2.1-kf2v-plus',
     ]))
   })
+
+  it('registers Bailian Wan t2i preset models', () => {
+    const modelIds = PRESET_MODELS
+      .filter((entry) => entry.provider === 'bailian' && entry.type === 'image')
+      .map((entry) => entry.modelId)
+
+    expect(modelIds).toEqual(expect.arrayContaining([
+      'wan2.6-t2i',
+      'wan2.5-t2i-preview',
+      'wan2.2-t2i-flash',
+      'wan2.2-t2i-plus',
+      'wanx2.1-t2i-turbo',
+      'wanx2.1-t2i-plus',
+    ]))
+  })
 })

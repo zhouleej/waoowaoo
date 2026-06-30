@@ -132,6 +132,12 @@ export const PRESET_MODELS: PresetModel[] = [
     { modelId: 'imagen-4.0-generate-001', name: 'Imagen 4', type: 'image', provider: 'google' },
     { modelId: 'imagen-4.0-ultra-generate-001', name: 'Imagen 4 Ultra', type: 'image', provider: 'google' },
     { modelId: 'imagen-4.0-fast-generate-001', name: 'Imagen 4 Fast', type: 'image', provider: 'google' },
+    { modelId: 'wan2.6-t2i', name: 'Wan2.6 T2I', type: 'image', provider: 'bailian' },
+    { modelId: 'wan2.5-t2i-preview', name: 'Wan2.5 T2I Preview', type: 'image', provider: 'bailian' },
+    { modelId: 'wan2.2-t2i-flash', name: 'Wan2.2 T2I Flash', type: 'image', provider: 'bailian' },
+    { modelId: 'wan2.2-t2i-plus', name: 'Wan2.2 T2I Plus', type: 'image', provider: 'bailian' },
+    { modelId: 'wanx2.1-t2i-turbo', name: 'WanX2.1 T2I Turbo', type: 'image', provider: 'bailian' },
+    { modelId: 'wanx2.1-t2i-plus', name: 'WanX2.1 T2I Plus', type: 'image', provider: 'bailian' },
     // 视频模型
     { modelId: 'doubao-seedance-1-0-pro-fast-251015', name: 'Seedance 1.0 Pro Fast', type: 'video', provider: 'ark' },
     { modelId: 'doubao-seedance-1-0-lite-i2v-250428', name: 'Seedance 1.0 Lite', type: 'video', provider: 'ark' },
