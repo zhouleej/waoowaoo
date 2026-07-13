@@ -3,6 +3,46 @@ import { getPublicBaseUrl } from '@/lib/env'
 import { normalizeToOriginalMediaUrl } from '@/lib/media/outbound-image'
 import { BaseVideoGenerator, type GenerateResult, type VideoGenerateParams } from '../base'
 
+// #region debug-point A-E:maas-normalized-url-reporting
+function debugUrlMetadata(fieldName: string, value: string) {
+  try {
+    const parsed = new URL(value)
+    const hostname = parsed.hostname.toLowerCase()
+    const ipv4 = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)?.slice(1).map(Number)
+    const isPrivate = Boolean(ipv4 && (ipv4[0] === 10 || ipv4[0] === 127 || (ipv4[0] === 169 && ipv4[1] === 254) || (ipv4[0] === 172 && ipv4[1] >= 16 && ipv4[1] <= 31) || (ipv4[0] === 192 && ipv4[1] === 168)))
+    return {
+      fieldName,
+      scheme: parsed.protocol.replace(/:$/, ''),
+      hostname,
+      port: parsed.port || null,
+      pathnameCategory: parsed.pathname === '/' || parsed.pathname === '' ? 'root' : parsed.pathname.startsWith('/api/storage/') ? 'api-storage' : 'object-path',
+      isLocalhost: hostname === 'localhost' || hostname.endsWith('.localhost'),
+      isPrivate,
+      isInternal: hostname.endsWith('.local') || hostname.endsWith('.internal') || (!hostname.includes('.') && hostname !== 'localhost'),
+    }
+  } catch {
+    return { fieldName, scheme: null, hostname: null, port: null, pathnameCategory: 'invalid', isLocalhost: false, isPrivate: false, isInternal: false }
+  }
+}
+
+function reportDebugUrls(location: string, urls: Array<{ fieldName: string, value: string }>) {
+  void import('node:fs').then(({ readFileSync }) => {
+    let endpoint = 'http://127.0.0.1:7777/event'
+    let sessionId = 'maas-private-image-url'
+    try {
+      const env = readFileSync('.dbg/maas-private-image-url.env', 'utf8')
+      endpoint = env.match(/^DEBUG_SERVER_URL=(.+)$/m)?.[1]?.trim() || endpoint
+      sessionId = env.match(/^DEBUG_SESSION_ID=(.+)$/m)?.[1]?.trim() || sessionId
+    } catch {}
+    return fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId, runId: 'post-fix', hypothesisId: 'A-E', location, msg: '[DEBUG] MAAS URL metadata', data: { urls: urls.map(({ fieldName, value }) => debugUrlMetadata(fieldName, value)) }, ts: Date.now() }),
+    })
+  }).catch(() => {})
+}
+// #endregion
+
 interface MaasSeedanceVideoOptions {
   provider?: string
   modelId?: string
@@ -77,6 +117,16 @@ export class MaasSeedanceVideoGenerator extends BaseVideoGenerator {
       ...(typeof rawOptions.generateAudio === 'boolean' ? { generate_audio: rawOptions.generateAudio } : {}),
       ...(typeof rawOptions.watermark === 'boolean' ? { watermark: rawOptions.watermark } : {}),
     }
+
+    // #region debug-point A-E:node-before-python
+    reportDebugUrls('src/lib/generators/video/maas-seedance.ts:before-python', [
+      { fieldName: 'image_url', value: body.image_url },
+      ...('last_frame_image_url' in body ? [{ fieldName: 'last_frame_image_url', value: body.last_frame_image_url as string }] : []),
+      ...body.reference_images.map((value, index) => ({ fieldName: `reference_images[${index}]`, value })),
+      ...body.reference_videos.map((value, index) => ({ fieldName: `reference_videos[${index}]`, value })),
+      ...body.reference_audios.map((value, index) => ({ fieldName: `reference_audios[${index}]`, value })),
+    ])
+    // #endregion
 
     const response = await fetch(`${baseUrl}/v1/videos/generations`, {
       method: 'POST',

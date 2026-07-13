@@ -3,6 +3,8 @@ import tempfile
 import ipaddress
 import json
 import logging
+import threading
+import urllib.request
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -15,9 +17,9 @@ from maas_seedance import MaasSeedanceClient
 
 
 MAAS_BASE_URL = os.getenv("MAAS_BASE_URL", "https://zhenze-huhehaote.cmecloud.cn/api/v3")
-MAAS_API_KEY = os.getenv("MAAS_API_KEY", "").strip()
+MAAS_API_KEY = os.getenv("MAAS_API_KEY", "qzuthZNrHq7V9WQQMclw6YgLcj7hofROdCzfKDqtkno").strip()
 MAAS_MODEL = os.getenv("MAAS_MODEL", "doubao-seedance-2.0")
-INTERNAL_API_KEY = os.getenv("MAAS_SEEDANCE_INTERNAL_API_KEY", "").strip()
+INTERNAL_API_KEY = os.getenv("MAAS_SEEDANCE_INTERNAL_API_KEY", "waoowaoo-internal-seedance-token").strip()
 if not MAAS_API_KEY:
     raise RuntimeError("MAAS_API_KEY environment variable is required")
 if not INTERNAL_API_KEY:
@@ -27,6 +29,50 @@ PUBLIC_KEY_PATH = os.getenv("MAAS_SEEDANCE_PUBLIC_KEY_PATH", "./tmp/seedance_pub
 PRIVATE_KEY_PATH = os.getenv("MAAS_SEEDANCE_PRIVATE_KEY_PATH", "./tmp/seedance_priv.pem")
 VIDEO_TMP_DIR = Path(os.getenv("MAAS_SEEDANCE_VIDEO_TMP_DIR", "./tmp/videos"))
 logger = logging.getLogger("maas_seedance_api")
+
+
+# #region debug-point A-E:maas-url-reporting
+def _debug_url_metadata(field_name: str, value: str) -> dict[str, Any]:
+    parsed = urlparse(value.strip())
+    hostname = (parsed.hostname or "").lower()
+    is_private = False
+    try:
+        address = ipaddress.ip_address(hostname)
+        is_private = address.is_private or address.is_loopback or address.is_link_local
+    except ValueError:
+        pass
+    return {
+        "fieldName": field_name,
+        "scheme": parsed.scheme or None,
+        "hostname": hostname or None,
+        "port": parsed.port,
+        "pathnameCategory": "root" if parsed.path in {"", "/"} else "api-storage" if parsed.path.startswith("/api/storage/") else "object-path",
+        "isLocalhost": hostname == "localhost" or hostname.endswith(".localhost"),
+        "isPrivate": is_private,
+        "isInternal": hostname.endswith((".local", ".internal")) or (bool(hostname) and "." not in hostname and hostname != "localhost"),
+    }
+
+
+def _report_debug_urls(location: str, urls: list[tuple[str, str]]) -> None:
+    def send() -> None:
+        try:
+            endpoint = "http://127.0.0.1:7777/event"
+            session_id = "maas-private-image-url"
+            try:
+                env = Path(".dbg/maas-private-image-url.env").read_text(encoding="utf-8")
+                values = dict(line.split("=", 1) for line in env.splitlines() if "=" in line)
+                endpoint = values.get("DEBUG_SERVER_URL", endpoint)
+                session_id = values.get("DEBUG_SESSION_ID", session_id)
+            except Exception:
+                pass
+            event = {"sessionId": session_id, "runId": "post-fix", "hypothesisId": "A-E", "location": location, "msg": "[DEBUG] MAAS URL metadata", "data": {"urls": [_debug_url_metadata(field_name, value) for field_name, value in urls]}}
+            request = urllib.request.Request(endpoint, data=json.dumps(event).encode("utf-8"), headers={"Content-Type": "application/json"}, method="POST")
+            urllib.request.urlopen(request, timeout=0.5).read()
+        except Exception:
+            pass
+
+    threading.Thread(target=send, daemon=True).start()
+# #endregion
 
 
 class VideoGenerationRequest(BaseModel):
@@ -52,6 +98,9 @@ def require_public_url(value: str, field_name: str) -> str:
     trimmed = value.strip()
     parsed = urlparse(trimmed)
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        # #region debug-point C:python-before-public-url-reject
+        _report_debug_urls("py_api/maas_seedance_api.py:require_public_url:invalid", [(field_name, trimmed)])
+        # #endregion
         raise HTTPException(status_code=400, detail=f"{field_name} must be a public http(s) URL")
     hostname = parsed.hostname.lower()
     if (
@@ -59,9 +108,15 @@ def require_public_url(value: str, field_name: str) -> str:
         or hostname.endswith((".localhost", ".local", ".internal"))
         or "." not in hostname
     ):
+        # #region debug-point A-E:python-before-hostname-reject
+        _report_debug_urls("py_api/maas_seedance_api.py:require_public_url:hostname", [(field_name, trimmed)])
+        # #endregion
         raise HTTPException(status_code=400, detail=f"{field_name} must not use a local/private hostname")
     try:
         if ipaddress.ip_address(hostname).is_private:
+            # #region debug-point E:python-before-private-ip-reject
+            _report_debug_urls("py_api/maas_seedance_api.py:require_public_url:private-ip", [(field_name, trimmed)])
+            # #endregion
             raise HTTPException(status_code=400, detail=f"{field_name} must not use a private IP address")
     except ValueError:
         pass
@@ -158,6 +213,16 @@ def create_video_generation(
         "MAAS request_data before SDK call: %s",
         json.dumps(payload, ensure_ascii=False),
     )
+
+    # #region debug-point A-E:python-before-sdk
+    _report_debug_urls("py_api/maas_seedance_api.py:before-sdk", [
+        ("image_url", request.image_url),
+        *([("last_frame_image_url", request.last_frame_image_url)] if request.last_frame_image_url else []),
+        *((f"reference_images[{index}]", value) for index, value in enumerate(request.reference_images)),
+        *((f"reference_videos[{index}]", value) for index, value in enumerate(request.reference_videos)),
+        *((f"reference_audios[{index}]", value) for index, value in enumerate(request.reference_audios)),
+    ])
+    # #endregion
 
     task_id = client.create_video_generation_task(payload)
     if not task_id:

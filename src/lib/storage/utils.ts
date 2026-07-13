@@ -25,6 +25,42 @@ export function requireEnv(name: string): string {
   return value.trim()
 }
 
+export function validateMinioEndpoint(value: string, name: 'MINIO_ENDPOINT' | 'MINIO_PUBLIC_ENDPOINT'): string {
+  let parsed: URL
+  try {
+    parsed = new URL(value)
+  } catch {
+    throw new StorageConfigError(`${name} must be an absolute http(s) URL`)
+  }
+  if ((parsed.protocol !== 'http:' && parsed.protocol !== 'https:') || !parsed.hostname) {
+    throw new StorageConfigError(`${name} must be an absolute http(s) URL`)
+  }
+  if (parsed.username || parsed.password || parsed.search || parsed.hash) {
+    throw new StorageConfigError(`${name} must not contain credentials, query parameters, or fragments`)
+  }
+  if (parsed.pathname !== '/' && parsed.pathname !== '') {
+    throw new StorageConfigError(`${name} path prefixes are not supported by the AWS S3 SDK; use a root endpoint`)
+  }
+  if (parsed.port === '9001') {
+    throw new StorageConfigError(`${name} uses port 9001, which is the default MinIO Console port; configure the confirmed public S3 API endpoint (default port 9000) instead`)
+  }
+  return parsed.toString().replace(/\/$/, '')
+}
+
+export function validateMinioBucket(value: string): string {
+  if (value.length < 3 || value.length > 63 || !/^[a-z0-9][a-z0-9.-]*[a-z0-9]$/.test(value) || value.includes('..')) {
+    throw new StorageConfigError('MINIO_BUCKET must be a valid S3 bucket name (3-63 lowercase letters, numbers, dots, or hyphens)')
+  }
+  return value
+}
+
+export function validateMinioCredential(value: string, name: 'MINIO_ACCESS_KEY' | 'MINIO_SECRET_KEY'): string {
+  if (/\s|[\u0000-\u001f\u007f]/.test(value)) {
+    throw new StorageConfigError(`${name} must not contain whitespace or control characters`)
+  }
+  return value
+}
+
 export function isHttpUrl(value: string): boolean {
   return value.startsWith('http://') || value.startsWith('https://')
 }

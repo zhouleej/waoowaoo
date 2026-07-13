@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   OutboundImageNormalizeError,
   normalizeReferenceImagesForGeneration,
@@ -9,7 +9,12 @@ import {
 import { resolveStorageKeyFromMediaValue } from '@/lib/media/service'
 
 vi.mock('@/lib/storage', () => ({
-  getSignedUrl: vi.fn((key: string) => `/signed/${key}`),
+  extractStorageKey: vi.fn((value: string) => {
+    const parsed = new URL(value)
+    if (!parsed.pathname.startsWith('/waoowaoo/')) return null
+    return parsed.pathname.slice('/waoowaoo/'.length) || null
+  }),
+  getSignedObjectUrl: vi.fn(async (key: string) => `https://objects.example.com/waoowaoo/${key}?signature=test`),
   toFetchableUrl: vi.fn((value: string) => (
     value.startsWith('/') ? `http://localhost:3000${value}` : value
   )),
@@ -40,6 +45,12 @@ describe('outbound-image normalization', () => {
     } as unknown as Response)
   })
 
+  afterEach(() => {
+    delete process.env.MINIO_ENDPOINT
+    delete process.env.MINIO_PUBLIC_ENDPOINT
+    delete process.env.MINIO_BUCKET
+  })
+
   it('keeps data url unchanged', async () => {
     const dataUrl = 'data:image/png;base64,AAAA'
     expect(await normalizeToOriginalMediaUrl(dataUrl)).toBe(dataUrl)
@@ -56,7 +67,7 @@ describe('outbound-image normalization', () => {
   it('unwraps next/image and resolves /m route to signed source', async () => {
     const input = '/_next/image?url=%2Fm%2Fpub-1&w=640&q=75'
     const normalized = await normalizeToOriginalMediaUrl(input)
-    expect(normalized).toBe('http://localhost:3000/signed/images/from-media.png')
+    expect(normalized).toBe('https://objects.example.com/waoowaoo/images/from-media.png?signature=test')
   })
 
   it('fails explicitly when /m route cannot be resolved to storage key', async () => {
@@ -68,12 +79,47 @@ describe('outbound-image normalization', () => {
 
   it('signs storage key inputs', async () => {
     const normalized = await normalizeToOriginalMediaUrl('images/direct.png')
-    expect(normalized).toBe('http://localhost:3000/signed/images/direct.png')
+    expect(normalized).toBe('https://objects.example.com/waoowaoo/images/direct.png?signature=test')
   })
 
-  it('normalizes api relative path to absolute fetchable url', async () => {
+  it('re-signs api/files paths instead of exposing the application URL', async () => {
     const normalized = await normalizeToOriginalMediaUrl('/api/files/images%2Fa.png')
-    expect(normalized).toBe('http://localhost:3000/api/files/images%2Fa.png')
+    expect(normalized).toBe('https://objects.example.com/waoowaoo/images/a.png?signature=test')
+  })
+
+  it('re-signs the observed localhost bucket/object path through public MinIO signing', async () => {
+    process.env.MINIO_BUCKET = 'wakuwaku'
+    process.env.MINIO_PUBLIC_ENDPOINT = 'http://223.84.164.134:9000'
+    const normalized = await normalizeToOriginalMediaUrl(
+      'http://localhost:3000/wakuwaku/images/panel-source.png?X-Amz-Signature=local',
+      { absoluteBaseUrl: 'http://localhost:3000' },
+    )
+    expect(normalized).toBe('https://objects.example.com/waoowaoo/images/panel-source.png?signature=test')
+  })
+
+  it('re-signs localhost api/files, media, and signing routes', async () => {
+    process.env.MINIO_BUCKET = 'wakuwaku'
+    await expect(normalizeToOriginalMediaUrl(
+      'http://localhost:3000/api/files/images%2Fa.png',
+    )).resolves.toBe('https://objects.example.com/waoowaoo/images/a.png?signature=test')
+    await expect(normalizeToOriginalMediaUrl(
+      'http://localhost:3000/api/storage/sign?key=images%2Fb.png&expires=3600',
+    )).resolves.toBe('https://objects.example.com/waoowaoo/images/b.png?signature=test')
+    await expect(normalizeToOriginalMediaUrl(
+      'http://localhost:3000/m/pub-1',
+    )).resolves.toBe('https://objects.example.com/waoowaoo/images/from-media.png?signature=test')
+  })
+
+  it('keeps public object URLs unchanged', async () => {
+    const input = 'https://objects.example.com/waoowaoo/images/a.png?signature=existing'
+    expect(await normalizeToOriginalMediaUrl(input)).toBe(input)
+  })
+
+  it('fails instead of leaking an unrecoverable private URL', async () => {
+    await expect(normalizeToOriginalMediaUrl('http://10.0.0.8:8080/not-storage')).rejects.toMatchObject({
+      code: 'OUTBOUND_IMAGE_UNSUPPORTED_INPUT',
+      stage: 'normalize_original',
+    })
   })
 
   it('fails explicitly on unsupported root-relative input', async () => {
