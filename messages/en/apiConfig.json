@@ -110,6 +110,7 @@
   "apiType": "API Type",
   "apiTypeGeminiCompatible": "Gemini Compatible",
   "apiTypeOpenAICompatible": "OpenAI Compatible",
+  "apiTypeMaasSeedance": "China Mobile Maas Seedance",
   "apiTypeGeminiHint": "Uses Google SDK",
   "otherProviders": "Other Settings",
   "audioCategory": "Audio",

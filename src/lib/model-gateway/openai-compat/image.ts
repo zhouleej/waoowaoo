@@ -40,8 +40,9 @@ function assertAllowedOptions(options: Record<string, unknown>) {
   }
 }
 
-function normalizeResponseFormat(value: unknown): OpenAIImageResponseFormat {
+function normalizeResponseFormat(value: unknown, modelId: string): OpenAIImageResponseFormat | undefined {
   const normalized = readStringOption(value, 'responseFormat')
+  if (!normalized && modelId.trim().toLowerCase() === 'gpt-image-2') return undefined
   if (!normalized) return 'b64_json'
   if (normalized === 'url' || normalized === 'b64_json') return normalized
   throw new Error(`OPENAI_COMPAT_IMAGE_OPTION_UNSUPPORTED: responseFormat=${normalized}`)
@@ -164,7 +165,7 @@ export async function generateImageViaOpenAICompat(request: OpenAICompatImageReq
   const client = createOpenAICompatClient(config)
 
   const normalizedModelId = resolveModelId(modelId, options)
-  const responseFormat = normalizeResponseFormat(options.responseFormat)
+  const responseFormat = normalizeResponseFormat(options.responseFormat, normalizedModelId)
   const outputFormat = normalizeOutputFormat(options.outputFormat)
   const quality = normalizeGenerateQuality(options.quality)
   const rawSize = resolveRawSize(options)
@@ -175,7 +176,7 @@ export async function generateImageViaOpenAICompat(request: OpenAICompatImageReq
       model: normalizedModelId,
       prompt,
       image: await Promise.all(referenceImages.map((image, index) => toUploadFile(image, index))),
-      response_format: responseFormat,
+      ...(responseFormat ? { response_format: responseFormat } : {}),
       ...(outputFormat ? { output_format: outputFormat } : {}),
       ...(quality ? { quality } : {}),
       ...(size ? { size } : {}),
@@ -205,7 +206,7 @@ export async function generateImageViaOpenAICompat(request: OpenAICompatImageReq
   const response = await client.images.generate({
     model: normalizedModelId,
     prompt,
-    response_format: responseFormat,
+    ...(responseFormat ? { response_format: responseFormat } : {}),
     ...(outputFormat ? { output_format: outputFormat } : {}),
     ...(quality ? { quality } : {}),
     ...(size ? { size } : {}),

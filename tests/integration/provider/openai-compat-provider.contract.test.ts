@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { generateVideoViaOpenAICompatTemplate } from '@/lib/model-gateway/openai-compat/template-video'
+import { MaasSeedanceVideoGenerator } from '@/lib/generators/video/maas-seedance'
 import { pollAsyncTask } from '@/lib/async-poll'
 import { startScenarioServer } from '../../helpers/fakes/scenario-server'
 
@@ -157,6 +158,63 @@ describe('provider contract - openai compatible media template', () => {
       downloadHeaders: {
         Authorization: 'Bearer sk-local',
       },
+    })
+  })
+
+  it('submits MAAS Seedance provider payload with normalized options and auth', async () => {
+    getProviderConfigMock.mockResolvedValue({
+      id: 'maas-seedance',
+      apiKey: 'maas-local-key',
+      baseUrl: server!.baseUrl,
+    })
+    server!.defineScenario({
+      method: 'POST',
+      path: '/v1/videos/generations',
+      mode: 'success',
+      submitResponse: {
+        status: 200,
+        body: { id: 'maas_task_1', status: 'processing' },
+      },
+    })
+
+    const generator = new MaasSeedanceVideoGenerator()
+    const result = await generator.generate({
+      userId: 'user-local',
+      imageUrl: 'https://media.example.com/first.png',
+      prompt: '  animate the product  ',
+      options: {
+        provider: 'maas-seedance',
+        modelId: 'doubao-seedance-2.0',
+        duration: 5,
+        aspectRatio: '16:9',
+        generateAudio: true,
+        watermark: false,
+        lastFrameImageUrl: 'https://media.example.com/last.png',
+        referenceImages: ['https://media.example.com/reference.png'],
+      },
+    })
+
+    expect(result).toEqual({
+      success: true,
+      async: true,
+      requestId: 'maas_task_1',
+      externalId: 'MAAS:VIDEO:maas-seedance:maas_task_1',
+    })
+    const requests = server!.getRequests('POST', '/v1/videos/generations')
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.headers.authorization).toBe('Bearer maas-local-key')
+    expect(JSON.parse(requests[0]?.bodyText || '{}')).toEqual({
+      model: 'doubao-seedance-2.0',
+      prompt: 'animate the product',
+      image_url: 'https://media.example.com/first.png',
+      last_frame_image_url: 'https://media.example.com/last.png',
+      reference_images: ['https://media.example.com/reference.png'],
+      reference_videos: [],
+      reference_audios: [],
+      duration: 5,
+      ratio: '16:9',
+      generate_audio: true,
+      watermark: false,
     })
   })
 

@@ -106,6 +106,58 @@ describe('OpenAICompatibleImageGenerator', () => {
     expect(Array.isArray((call[0] as { image?: unknown }).image)).toBe(true)
   })
 
+  it('uses gpt-image-2 defaults and parses base64 output', async () => {
+    openAIState.generate.mockResolvedValueOnce({
+      data: [{ b64_json: 'Z3B0LWltYWdlLTI=' }],
+    })
+
+    const generator = new OpenAICompatibleImageGenerator('gpt-image-2', 'openai-compatible:oa-1')
+    const result = await generator.generate({
+      userId: 'user-1',
+      prompt: 'draw a product photo',
+      options: {
+        size: '1536x1024',
+        quality: 'high',
+        outputFormat: 'webp',
+      },
+    })
+
+    expect(result.success).toBe(true)
+    expect(result.imageUrl).toBe('data:image/webp;base64,Z3B0LWltYWdlLTI=')
+    expect(openAIState.generate).toHaveBeenCalledWith({
+      model: 'gpt-image-2',
+      prompt: 'draw a product photo',
+      output_format: 'webp',
+      quality: 'high',
+      size: '1536x1024',
+    })
+  })
+
+  it('uses gpt-image-2 images.edit for reference images', async () => {
+    openAIState.edit.mockResolvedValueOnce({
+      data: [{ b64_json: 'ZWRpdC0y' }],
+    })
+
+    const generator = new OpenAICompatibleImageGenerator('gpt-image-2', 'openai-compatible:oa-1')
+    const result = await generator.generate({
+      userId: 'user-1',
+      prompt: 'replace the background',
+      referenceImages: ['data:image/png;base64,QQ=='],
+      options: { quality: 'medium' },
+    })
+
+    expect(result.success).toBe(true)
+    expect(result.imageUrl).toBe('data:image/png;base64,ZWRpdC0y')
+    const call = openAIState.edit.mock.calls[0]
+    expect(call).toBeTruthy()
+    expect(call?.[0]).toMatchObject({
+      model: 'gpt-image-2',
+      prompt: 'replace the background',
+      quality: 'medium',
+    })
+    expect(call?.[0]).not.toHaveProperty('response_format')
+  })
+
   it('fails explicitly on unsupported option values', async () => {
     const generator = new OpenAICompatibleImageGenerator('gpt-image-1', 'openai-compatible:oa-1')
     const result = await generator.generate({

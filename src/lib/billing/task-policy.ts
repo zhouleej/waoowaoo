@@ -10,6 +10,7 @@ import { BillingOperationError } from './errors'
 import { BUILTIN_PRICING_VERSION } from '@/lib/model-pricing/version'
 import { TASK_TYPE, type TaskType } from '@/lib/task/types'
 import type { TaskBillingInfo } from './types'
+import { resolveVideoInputPricingSelections } from './video-input-selections'
 
 type AnyPayload = Record<string, unknown> | null | undefined
 
@@ -153,10 +154,10 @@ function buildVideoTaskInfo(taskType: TaskType, payload: AnyPayload): TaskBillin
   const firstLastFramePayload = toRecord(payload?.firstLastFrame)
   const generationMode = Object.keys(firstLastFramePayload).length > 0 ? 'firstlastframe' : 'normal'
   const model = pickFirstString([
+    firstLastFramePayload.flModel,
     payload?.videoModel,
     payload?.modelId,
     payload?.model,
-    firstLastFramePayload.flModel,
   ])
   if (!model) return null
   const generationOptions = toRecord(payload?.generationOptions)
@@ -173,7 +174,7 @@ function buildVideoTaskInfo(taskType: TaskType, payload: AnyPayload): TaskBillin
     ...(aspectRatio ? { aspectRatio } : {}),
     generationMode,
     ...(typeof generateAudio === 'boolean' ? { generateAudio } : {}),
-    containsVideoInput: false,
+    ...resolveVideoInputPricingSelections(payload),
   }
   let maxFrozenCost = 0
   try {

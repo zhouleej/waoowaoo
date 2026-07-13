@@ -30,6 +30,8 @@ const authState = vi.hoisted<AuthState>(() => ({
 }))
 
 const submitTaskMock = vi.hoisted(() => vi.fn<(...args: unknown[]) => Promise<SubmitResult>>())
+const resolveBuiltinPricingMock = vi.hoisted(() => vi.fn(() => ({ status: 'resolved' })))
+const buildDefaultTaskBillingInfoMock = vi.hoisted(() => vi.fn(() => ({ mode: 'default' })))
 
 const configServiceMock = vi.hoisted(() => ({
   getUserModelConfig: vi.fn(async () => ({
@@ -255,7 +257,7 @@ vi.mock('@/lib/task/resolve-locale', () => ({
 vi.mock('@/lib/config-service', () => configServiceMock)
 vi.mock('@/lib/task/has-output', () => hasOutputMock)
 vi.mock('@/lib/billing', () => ({
-  buildDefaultTaskBillingInfo: vi.fn(() => ({ mode: 'default' })),
+  buildDefaultTaskBillingInfo: buildDefaultTaskBillingInfoMock,
 }))
 vi.mock('@/lib/providers/bailian/voice-design', () => ({
   validateVoicePrompt: vi.fn(() => ({ valid: true })),
@@ -274,7 +276,7 @@ vi.mock('@/lib/model-capabilities/lookup', () => ({
   resolveBuiltinCapabilitiesByModelKey: vi.fn(() => ({ video: { firstlastframe: true } })),
 }))
 vi.mock('@/lib/model-pricing/lookup', () => ({
-  resolveBuiltinPricing: vi.fn(() => ({ status: 'ok' })),
+  resolveBuiltinPricing: resolveBuiltinPricingMock,
 }))
 vi.mock('@/lib/api-config', () => ({
   resolveModelSelection: vi.fn(async () => ({
@@ -575,6 +577,57 @@ describe('api contract - direct submit routes (behavior)', () => {
       taskId: `task-${++seq}`,
       async: true,
     }))
+  })
+
+  it('generate-video uses identical payload-derived video input selections for MAAS preflight and billing', async () => {
+    const routeFile = 'src/app/api/novel-promotion/[projectId]/generate-video/route.ts'
+    const baseBody = {
+      videoModel: 'maas-seedance:tenant-1::doubao-seedance-2.0',
+      storyboardId: 'storyboard-1',
+      panelIndex: 0,
+      generationOptions: {
+        duration: 4,
+        generateAudio: true,
+        referenceImages: ['https://example.com/reference.png'],
+      },
+    }
+
+    const imageResponse = await invokePostRoute({
+      routeFile,
+      body: baseBody,
+      params: { projectId: 'project-1' },
+      expectedTaskType: TASK_TYPE.VIDEO_PANEL,
+      expectedTargetType: 'NovelPromotionPanel',
+      expectedProjectId: 'project-1',
+    })
+    expect(imageResponse.status).toBe(200)
+    expect(resolveBuiltinPricingMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      model: baseBody.videoModel,
+      selections: expect.objectContaining({ containsVideoInput: false }),
+    }))
+    expect(buildDefaultTaskBillingInfoMock).toHaveBeenLastCalledWith(TASK_TYPE.VIDEO_PANEL, baseBody)
+
+    const videoBody = {
+      ...baseBody,
+      generationOptions: {
+        ...baseBody.generationOptions,
+        referenceVideos: ['https://example.com/reference.mp4'],
+      },
+    }
+    const videoResponse = await invokePostRoute({
+      routeFile,
+      body: videoBody,
+      params: { projectId: 'project-1' },
+      expectedTaskType: TASK_TYPE.VIDEO_PANEL,
+      expectedTargetType: 'NovelPromotionPanel',
+      expectedProjectId: 'project-1',
+    })
+    expect(videoResponse.status).toBe(200)
+    expect(resolveBuiltinPricingMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      model: videoBody.videoModel,
+      selections: expect.objectContaining({ containsVideoInput: true }),
+    }))
+    expect(buildDefaultTaskBillingInfoMock).toHaveBeenLastCalledWith(TASK_TYPE.VIDEO_PANEL, videoBody)
   })
 
   it('keeps expected coverage size', () => {

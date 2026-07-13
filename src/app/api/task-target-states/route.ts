@@ -50,7 +50,7 @@ export const POST = apiHandler(async (request: NextRequest) => {
   }
 
   let userId: string
-  if (projectId === 'global-asset-hub') {
+  if (projectId === 'global-asset-hub' || projectId === 'home-ai-write') {
     const authResult = await requireUserAuth()
     if (isErrorResponse(authResult)) return authResult
     userId = authResult.session.user.id

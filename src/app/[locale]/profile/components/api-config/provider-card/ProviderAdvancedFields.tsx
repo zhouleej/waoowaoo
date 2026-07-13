@@ -65,6 +65,7 @@ const MODEL_TYPES: readonly ProviderCardModelType[] = ['llm', 'image', 'video', 
 export function getAddableModelTypesForProvider(providerId: string): ProviderCardModelType[] {
   const providerKey = getProviderKey(providerId)
   if (providerKey === 'openai-compatible') return ['llm', 'image', 'video']
+  if (providerKey === 'maas-seedance') return ['video']
   return ['llm', 'image', 'video', 'audio']
 }
 
@@ -77,7 +78,7 @@ export function shouldShowOpenAICompatVideoHint(
 
 function shouldShowDefaultTabs(providerId: string): boolean {
   const providerKey = getProviderKey(providerId)
-  return providerKey === 'openai-compatible' || providerKey === 'gemini-compatible'
+  return providerKey === 'openai-compatible' || providerKey === 'gemini-compatible' || providerKey === 'maas-seedance'
 }
 
 export function getVisibleModelTypesForProvider(
@@ -160,7 +161,11 @@ export function ProviderAdvancedFields({
     !!currentType
     && addableModelTypes.has(currentType)
     && state.showAddForm !== currentType
-  const defaultAddType: ProviderCardModelType = providerKey === 'openrouter' ? 'llm' : 'image'
+  const defaultAddType: ProviderCardModelType = providerKey === 'openrouter'
+    ? 'llm'
+    : providerKey === 'maas-seedance'
+      ? 'video'
+      : 'image'
   const useTabbedLayout = state.hasModels || shouldShowDefaultTabs(provider.id)
   const shouldShowVideoHint = shouldShowOpenAICompatVideoHint(provider.id, currentType)
 

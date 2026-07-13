@@ -6,6 +6,7 @@ import { submitTask } from '@/lib/task/submitter'
 import { resolveRequiredTaskLocale } from '@/lib/task/resolve-locale'
 import { TASK_TYPE } from '@/lib/task/types'
 import { buildDefaultTaskBillingInfo } from '@/lib/billing'
+import { resolveVideoInputPricingSelections } from '@/lib/billing/video-input-selections'
 import { BillingOperationError } from '@/lib/billing/errors'
 import { hasPanelVideoOutput } from '@/lib/task/has-output'
 import { withTaskUiPayload } from '@/lib/task/ui-payload'
@@ -39,16 +40,6 @@ function toVideoRuntimeSelections(value: unknown): Record<string, CapabilityValu
 function resolveVideoGenerationMode(payload: unknown): 'normal' | 'firstlastframe' {
   if (!isRecord(payload)) return 'normal'
   return isRecord(payload.firstLastFrame) ? 'firstlastframe' : 'normal'
-}
-
-function isSeedance2Model(modelKey: string): boolean {
-  const parsed = parseModelKeyStrict(modelKey)
-  if (!parsed) return false
-  return parsed.provider === 'ark'
-    && (
-      parsed.modelId === 'doubao-seedance-2-0-260128'
-      || parsed.modelId === 'doubao-seedance-2-0-fast-260128'
-    )
 }
 
 function resolveVideoModelKeyFromPayload(payload: Record<string, unknown>): string | null {
@@ -142,7 +133,7 @@ async function validateVideoCapabilityCombination(input: {
     model: modelKey,
     selections: {
       ...resolvedOptions,
-      ...(isSeedance2Model(modelKey) ? { containsVideoInput: false } : {}),
+      ...resolveVideoInputPricingSelections(payload),
     },
   })
   if (resolution.status === 'missing_capability_match') {

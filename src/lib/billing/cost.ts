@@ -279,6 +279,7 @@ type Seedance2AspectRatio = '16:9' | '4:3' | '1:1' | '3:4' | '9:16' | '21:9'
 const SEEDANCE_2_TOKEN_PRICED_MODEL_IDS = new Set([
   'doubao-seedance-2-0-260128',
   'doubao-seedance-2-0-fast-260128',
+  'doubao-seedance-2.0',
 ])
 
 const SEEDANCE_2_OUTPUT_DIMENSIONS: Record<
@@ -562,7 +563,10 @@ export function calcVideo(
   delete capabilitySelections.inputVideoSeconds
   if (
     typeof selections.resolution !== 'string'
-    && videoCapabilitySupportsField(model, 'resolution')
+    && (
+      videoCapabilitySupportsField(model, 'resolution')
+      || isSeedance2TokenPricedModel(model)
+    )
   ) {
     selections.resolution = resolution
   }
