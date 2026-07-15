@@ -7,6 +7,13 @@ import ApiConfigTab from './components/ApiConfigTab'
 import { AppIcon } from '@/components/ui/icons'
 import { useRouter } from '@/i18n/navigation'
 
+interface BalanceData {
+  currency: string
+  balance: number
+  frozenAmount: number
+  totalSpent: number
+}
+
 export default function ProfilePage() {
   const { data: session, status } = useSession()
   const router = useRouter()
@@ -15,11 +22,31 @@ export default function ProfilePage() {
 
   // 主要分区：扣费记录 / API配置
   const [activeSection, setActiveSection] = useState<'billing' | 'apiConfig'>('apiConfig')
+  const [balanceData, setBalanceData] = useState<BalanceData | null>(null)
+  const [balanceLoading, setBalanceLoading] = useState(true)
 
   useEffect(() => {
     if (status === 'loading') return
     if (!session) { router.push({ pathname: '/auth/signin' }); return }
   }, [router, session, status])
+
+  useEffect(() => {
+    if (!session) return
+
+    const loadBalance = async () => {
+      try {
+        const response = await fetch('/api/user/balance')
+        if (!response.ok) return
+
+        const data = await response.json() as BalanceData
+        setBalanceData(data)
+      } finally {
+        setBalanceLoading(false)
+      }
+    }
+
+    void loadBalance()
+  }, [session])
 
   if (status === 'loading' || !session) {
     return (
@@ -30,6 +57,12 @@ export default function ProfilePage() {
   }
 
   const noBillingText = t('openSourceNoBilling')
+  const formattedBalance = balanceData
+    ? new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency: balanceData.currency,
+    }).format(balanceData.balance)
+    : null
 
   return (
     <div className="glass-page min-h-screen">
@@ -52,7 +85,9 @@ export default function ProfilePage() {
                 {/* 余额卡片 */}
                 <div className="glass-surface-soft rounded-2xl border border-[var(--glass-stroke-base)] p-4">
                   <div className="text-xs font-medium text-[var(--glass-text-secondary)]">{t('availableBalance')}</div>
-                  <div className="mt-2 text-base font-semibold text-[var(--glass-text-primary)]">{noBillingText}</div>
+                  <div className="mt-2 text-base font-semibold text-[var(--glass-text-primary)]">
+                    {balanceLoading ? tc('loading') : formattedBalance ?? '—'}
+                  </div>
                 </div>
               </div>
 
