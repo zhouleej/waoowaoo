@@ -15,7 +15,7 @@ const prismaMock = vi.hoisted(() => ({
 }))
 
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock }))
-vi.mock('@/lib/billing', () => ({ rollbackTaskBilling: vi.fn() }))
+vi.mock('@/lib/billing', () => ({ rollbackTaskBilling: vi.fn(), settleTaskBilling: vi.fn() }))
 
 describe('task service tenant context', () => {
   beforeEach(() => {
@@ -70,6 +70,24 @@ describe('task service tenant context', () => {
       take: 25,
     }))
     expect(prismaMock.task.findMany.mock.calls[0][0].where.userId).toBeUndefined()
+  })
+
+  it('recovers a stale settling task through idempotent billing settlement and completion', async () => {
+    const billing = await import('@/lib/billing')
+    const { recoverStaleSettlingTasks } = await import('@/lib/task/service')
+    const billingInfo = { billable: true, freezeId: 'freeze-1', modeSnapshot: 'ENFORCE', status: 'frozen' }
+    prismaMock.task.findMany
+      .mockResolvedValueOnce([{ id: 'task-settling', userId: 'user-1', projectId: 'project-1', billingInfo, result: { ok: true } }])
+      .mockResolvedValueOnce([])
+    prismaMock.task.updateMany.mockResolvedValue({ count: 1 })
+    prismaMock.task.update.mockResolvedValue({})
+    vi.mocked(billing.settleTaskBilling).mockResolvedValue({ ...billingInfo, status: 'settled' } as never)
+
+    await expect(Promise.all([
+      recoverStaleSettlingTasks({ settlingThresholdMs: 300_000 }),
+      recoverStaleSettlingTasks({ settlingThresholdMs: 300_000 }),
+    ])).resolves.toEqual([['task-settling'], []])
+    expect(billing.settleTaskBilling).toHaveBeenCalledTimes(1)
   })
 
   it('filters personal task queries by userId and null organizationId', async () => {

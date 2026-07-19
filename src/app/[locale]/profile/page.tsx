@@ -4,6 +4,7 @@ import { useSession, signOut } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
 import Navbar from '@/components/Navbar'
 import ApiConfigTab from './components/ApiConfigTab'
+import BillingRecordsTab from './components/BillingRecordsTab'
 import { AppIcon } from '@/components/ui/icons'
 import { useRouter } from '@/i18n/navigation'
 
@@ -56,23 +57,23 @@ export default function ProfilePage() {
     )
   }
 
-  const noBillingText = t('openSourceNoBilling')
-  const formattedBalance = balanceData
+  const formatMoney = (value: number) => balanceData
     ? new Intl.NumberFormat(undefined, {
       style: 'currency',
       currency: balanceData.currency,
-    }).format(balanceData.balance)
+    }).format(value)
     : null
+  const formattedBalance = balanceData ? formatMoney(balanceData.balance) : null
 
   return (
     <div className="glass-page min-h-screen">
       <Navbar />
 
-      <main className="max-w-[1400px] mx-auto px-6 py-8">
-        <div className="flex gap-6 h-[calc(100vh-140px)]">
+      <main className="mx-auto max-w-[1400px] px-4 py-6 sm:px-6 sm:py-8">
+        <div className="flex min-h-[calc(100vh-140px)] flex-col gap-4 lg:h-[calc(100vh-140px)] lg:flex-row lg:gap-6">
 
           {/* 左侧侧边栏 */}
-          <div className="w-64 flex-shrink-0">
+          <div className="w-full flex-shrink-0 lg:w-64">
             <div className="glass-surface-elevated h-full flex flex-col p-5">
 
               {/* 用户信息 */}
@@ -88,6 +89,18 @@ export default function ProfilePage() {
                   <div className="mt-2 text-base font-semibold text-[var(--glass-text-primary)]">
                     {balanceLoading ? tc('loading') : formattedBalance ?? '—'}
                   </div>
+                  {!balanceLoading && balanceData && (
+                    <dl className="mt-3 grid grid-cols-2 gap-2 border-t border-[var(--glass-stroke-base)] pt-3 text-xs">
+                      <div className="min-w-0">
+                        <dt className="text-[var(--glass-text-tertiary)]">{t('frozen')}</dt>
+                        <dd className="mt-1 truncate text-[var(--glass-text-secondary)]" title={formatMoney(balanceData.frozenAmount) ?? undefined}>{formatMoney(balanceData.frozenAmount)}</dd>
+                      </div>
+                      <div className="min-w-0">
+                        <dt className="text-[var(--glass-text-tertiary)]">{t('totalSpent')}</dt>
+                        <dd className="mt-1 truncate text-[var(--glass-text-secondary)]" title={formatMoney(balanceData.totalSpent) ?? undefined}>{formatMoney(balanceData.totalSpent)}</dd>
+                      </div>
+                    </dl>
+                  )}
                 </div>
               </div>
 
@@ -133,10 +146,7 @@ export default function ProfilePage() {
               {activeSection === 'apiConfig' ? (
                 <ApiConfigTab />
               ) : (
-                <div className="flex h-full flex-col items-center justify-center px-6 text-center">
-                  <AppIcon name="receipt" className="mb-4 h-12 w-12 text-[var(--glass-text-tertiary)]" />
-                  <p className="text-base font-semibold text-[var(--glass-text-primary)]">{noBillingText}</p>
-                </div>
+                <BillingRecordsTab />
               )}
             </div>
           </div>

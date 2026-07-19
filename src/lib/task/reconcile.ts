@@ -22,7 +22,7 @@ import {
 
 // ────────────────────── 常量 ──────────────────────
 
-const ACTIVE_STATUSES = [TASK_STATUS.QUEUED, TASK_STATUS.PROCESSING]
+const ACTIVE_STATUSES = [TASK_STATUS.QUEUED, TASK_STATUS.PROCESSING, TASK_STATUS.SETTLING]
 
 /** watchdog 巡检间隔 */
 const WATCHDOG_INTERVAL_MS = 60_000
@@ -160,6 +160,7 @@ export async function reconcileActiveTasks(): Promise<string[]> {
         },
         select: {
             id: true,
+            status: true,
             userId: true,
             projectId: true,
             episodeId: true,
@@ -177,6 +178,8 @@ export async function reconcileActiveTasks(): Promise<string[]> {
 
     const reconciled: string[] = []
     for (const task of activeTasks) {
+        // Settling is a DB-owned recovery state; watchdog recovery handles it even if BullMQ is terminal/missing.
+        if (task.status === TASK_STATUS.SETTLING) continue
         const jobState = await getJobState(task.id)
         if (jobState === 'alive') continue
         if (
@@ -228,7 +231,10 @@ export function startTaskWatchdog() {
     watchdogTimer = setInterval(async () => {
         try {
             // 1. 清理心跳超时的 processing 任务（已有逻辑，此前未被调用）
-            const { sweepStaleTasks } = await import('./service')
+            const { sweepStaleTasks, recoverStaleSettlingTasks } = await import('./service')
+            const recoveredSettling = await recoverStaleSettlingTasks({
+                settlingThresholdMs: PROCESSING_TIMEOUT_MS,
+            })
             const sweptProcessing = await sweepStaleTasks({
                 processingThresholdMs: PROCESSING_TIMEOUT_MS,
             })
@@ -258,11 +264,11 @@ export function startTaskWatchdog() {
             const { reconcileActiveRunsFromTasks } = await import('@/lib/run-runtime/reconcile')
             const reconciledRuns = await reconcileActiveRunsFromTasks()
 
-            const total = sweptProcessing.length + reconciled.length + reconciledRuns.length
+            const total = recoveredSettling.length + sweptProcessing.length + reconciled.length + reconciledRuns.length
             if (total > 0) {
                 logger.info({
                     action: 'watchdog.cycle',
-                    message: `Watchdog: ${sweptProcessing.length} heartbeat-timeout, ${reconciled.length} orphan-reconciled, ${reconciledRuns.length} run-reconciled`,
+                    message: `Watchdog: ${recoveredSettling.length} settling-recovered, ${sweptProcessing.length} heartbeat-timeout, ${reconciled.length} orphan-reconciled, ${reconciledRuns.length} run-reconciled`,
                 })
             }
         } catch (error) {

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AppIcon } from '@/components/ui/icons'
 import { SegmentedControl } from '@/components/ui/SegmentedControl'
-import { getProviderKey, isPresetComingSoonModel, type CustomModel } from '../types'
+import { getProviderKey, isPresetComingSoonModel, type CustomModel, type ModelHealthResult } from '../types'
 import type { UseProviderCardStateResult } from './hooks/useProviderCardState'
 import type {
   ProviderCardModelType,
@@ -16,6 +16,11 @@ interface ProviderAdvancedFieldsProps {
   onToggleModel: ProviderCardProps['onToggleModel']
   onDeleteModel: ProviderCardProps['onDeleteModel']
   onUpdateModel: ProviderCardProps['onUpdateModel']
+  healthStatuses?: ProviderCardProps['healthStatuses']
+  checkingModelKeys?: ProviderCardProps['checkingModelKeys']
+  checkingProvider?: boolean
+  onCheckModelHealth?: ProviderCardProps['onCheckModelHealth']
+  onCheckProviderHealth?: ProviderCardProps['onCheckProviderHealth']
   t: ProviderCardTranslator
   state: UseProviderCardStateResult
 }
@@ -131,6 +136,11 @@ export function ProviderAdvancedFields({
   onToggleModel,
   onDeleteModel,
   onUpdateModel,
+  healthStatuses,
+  checkingModelKeys,
+  checkingProvider,
+  onCheckModelHealth,
+  onCheckProviderHealth,
   t,
   state,
 }: ProviderAdvancedFieldsProps) {
@@ -171,6 +181,19 @@ export function ProviderAdvancedFields({
 
   return useTabbedLayout ? (
     <div className="space-y-2.5 p-3">
+      {onCheckProviderHealth && (
+        <div className="flex items-center justify-end">
+          <button
+            type="button"
+            onClick={() => void onCheckProviderHealth(provider.id)}
+            disabled={!provider.hasApiKey || state.hasModels === false || checkingProvider}
+            className="glass-btn-base glass-btn-soft px-2.5 py-1 text-[12px] font-medium disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {checkingProvider && <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />}
+            {checkingProvider ? t('modelHealth.checkingAll') : t('modelHealth.checkAll')}
+          </button>
+        </div>
+      )}
       <SegmentedControl
         options={visibleTypes.map((type) => ({
           value: type,
@@ -280,6 +303,9 @@ export function ProviderAdvancedFields({
                 onDeleteModel={onDeleteModel}
                 onUpdateModel={onUpdateModel}
                 hasApiKey={!!provider.hasApiKey}
+                health={healthStatuses?.[model.modelKey]}
+                checking={checkingModelKeys?.has(model.modelKey) === true}
+                onCheckModelHealth={onCheckModelHealth}
               />
             ))}
           </div>
@@ -355,6 +381,9 @@ interface ModelRowProps {
   onDeleteModel: ProviderCardProps['onDeleteModel']
   onUpdateModel: ProviderCardProps['onUpdateModel']
   hasApiKey: boolean
+  health?: ModelHealthResult
+  checking: boolean
+  onCheckModelHealth?: ProviderCardProps['onCheckModelHealth']
 }
 
 function ModelRow({
@@ -365,6 +394,9 @@ function ModelRow({
   onDeleteModel,
   onUpdateModel,
   hasApiKey,
+  health,
+  checking,
+  onCheckModelHealth,
 }: ModelRowProps) {
   const priceTexts = getModelPriceTexts(model, t)
   const priceText = priceTexts.join(' / ')
@@ -372,6 +404,14 @@ function ModelRow({
   const isComingSoonModel = isPresetComingSoonModel(model.provider, model.modelId)
   const toggleDisabled = isComingSoonModel || !hasApiKey
   const rowDisabledClass = model.enabled ? '' : 'opacity-50'
+  const healthStatus = health?.status ?? 'unknown'
+  const healthTone = healthStatus === 'healthy'
+    ? 'bg-[var(--glass-tone-success-bg)] text-[var(--glass-tone-success-fg)]'
+    : healthStatus === 'degraded'
+      ? 'bg-[var(--glass-tone-warning-bg)] text-[var(--glass-tone-warning-fg)]'
+      : healthStatus === 'unhealthy'
+        ? 'bg-[var(--glass-tone-danger-bg)] text-[var(--glass-tone-danger-fg)]'
+        : 'bg-[var(--glass-tone-neutral-bg)] text-[var(--glass-tone-neutral-fg)]'
 
   return (
     <div className={`group flex items-center justify-between gap-2 rounded-xl bg-[var(--glass-bg-surface)] px-3 py-2 transition-colors hover:bg-[var(--glass-bg-surface-strong)] ${rowDisabledClass}`}>
@@ -435,11 +475,31 @@ function ModelRow({
               {hasPriceText && (
                 <span className="shrink-0 text-[11px] text-[var(--glass-text-tertiary)]">{priceText}</span>
               )}
+              <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] leading-none ${healthTone}`} title={health?.errorCode ? t(`modelHealth.errors.${health.errorCode}`) : undefined}>
+                {t(`modelHealth.status.${healthStatus}`)}
+              </span>
             </div>
             <span className="break-all text-[11px] text-[var(--glass-text-tertiary)]">{model.modelId}</span>
+            {health?.checkedAt && (
+              <span className="text-[10px] text-[var(--glass-text-tertiary)]">
+                {t('modelHealth.lastChecked', { time: new Date(health.checkedAt).toLocaleString(), latency: health.latencyMs ?? '-' })}
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-1.5">
+            {onCheckModelHealth && (
+              <button
+                type="button"
+                onClick={() => void onCheckModelHealth(model.provider, model.modelKey)}
+                disabled={!hasApiKey || !model.enabled || checking}
+                className="glass-btn-base glass-btn-soft px-2 py-1 text-[11px] disabled:cursor-not-allowed disabled:opacity-50"
+                title={t('modelHealth.check')}
+              >
+                {checking && <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />}
+                {checking ? t('modelHealth.checking') : t('modelHealth.check')}
+              </button>
+            )}
             {!state.isPresetModel(model.modelKey) && onUpdateModel && (
               <button
                 onClick={() => state.handleEditModel(model)}

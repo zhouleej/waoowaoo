@@ -234,21 +234,29 @@ export const DELETE = apiHandler<{ id: string }>(async (_req, { params }) => {
   // 检查用户是否存在
   const user = await prisma.user.findUnique({
     where: { id },
-    select: { id: true, name: true, email: true, isPlatformAdmin: true },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      isPlatformAdmin: true,
+      _count: { select: { ownedOrganizations: true } },
+    },
   })
 
   if (!user) {
     return NextResponse.json({ error: 'User not found' }, { status: 404 })
   }
 
-  // 使用事务删除用户及其关联数据
+  if (user._count.ownedOrganizations > 0) {
+    return NextResponse.json({ error: 'User owns organizations; transfer organization ownership before deletion' }, { status: 409 })
+  }
+
+  // 使用事务删除用户及其个人数据
   await prisma.$transaction(async (tx) => {
     // 删除组织成员关系
     await tx.organizationMember.deleteMany({ where: { userId: id } })
-    // 删除用户的项目（如果有的话）
-    await tx.project.deleteMany({ where: { userId: id } })
-    // 删除用户的任务
-    await tx.task.deleteMany({ where: { userId: id } })
+    // 仅删除个人项目；组织项目由可空创建者关系保留
+    await tx.project.deleteMany({ where: { userId: id, organizationId: null } })
     // 删除用户的余额记录
     await tx.userBalance.deleteMany({ where: { userId: id } })
     // 删除用户的 NextAuth 账号

@@ -39,6 +39,7 @@ vi.mock('@/lib/task/service', () => ({
   rollbackTaskBillingForTask: vi.fn(async () => ({ attempted: false, rolledBack: false, billingInfo: null })),
   touchTaskHeartbeat: vi.fn(async () => undefined),
   tryMarkTaskCompleted: vi.fn(async () => true),
+  tryMarkTaskSettling: vi.fn(async () => true),
   tryMarkTaskFailed: vi.fn(async () => true),
   tryMarkTaskProcessing: vi.fn(async () => true),
   tryUpdateTaskProgress: tryUpdateTaskProgressMock,

@@ -61,6 +61,7 @@ interface UseProvidersReturn {
     toggleModel: (modelKey: string, providerId?: string) => void
     updateModel: (modelKey: string, updates: Partial<CustomModel>, providerId?: string) => void
     addModel: (model: Omit<CustomModel, 'enabled'>) => void
+    addModels: (models: Array<Omit<CustomModel, 'enabled'>>) => Promise<boolean>
     deleteModel: (modelKey: string, providerId?: string) => void
     updateDefaultModel: (field: string, modelKey: string, capabilityFieldsToDefault?: Array<{ field: string; options: CapabilityValue[] }>) => void
     batchUpdateDefaultModels: (fields: string[], modelKey: string, capabilityFieldsToDefault?: Array<{ field: string; options: CapabilityValue[] }>) => void
@@ -727,6 +728,26 @@ export function useProviders(): UseProvidersReturn {
         })
     }, [performSave])
 
+    const addModels = useCallback(async (newModels: Array<Omit<CustomModel, 'enabled'>>): Promise<boolean> => {
+        if (newModels.length === 0) return true
+        const existingKeys = new Set(latestModelsRef.current.map((model) => model.modelKey))
+        const additions = newModels.filter((model) => !existingKeys.has(model.modelKey))
+        if (additions.length === 0) return true
+        const next = [
+            ...latestModelsRef.current,
+            ...additions.map((model) => ({
+                ...model,
+                modelKey: model.modelKey || encodeModelKey(model.provider, model.modelId),
+                price: 0,
+                priceLabel: '--',
+                enabled: true,
+            })),
+        ]
+        latestModelsRef.current = next
+        setModels(next)
+        return performSave(undefined, false)
+    }, [performSave])
+
     const deleteModel = useCallback((modelKey: string, providerId?: string) => {
         if (PRESET_MODELS.find((model) => {
             const presetModelKey = encodeModelKey(model.provider, model.modelId)
@@ -784,6 +805,7 @@ export function useProviders(): UseProvidersReturn {
         toggleModel,
         updateModel,
         addModel,
+        addModels,
         deleteModel,
         updateDefaultModel,
         batchUpdateDefaultModels,

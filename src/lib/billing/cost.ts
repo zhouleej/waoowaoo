@@ -705,6 +705,7 @@ export function calcVideoByTokens(
   model: string,
   totalTokens: number,
   metadata?: Record<string, unknown>,
+  customPricing?: ModelCustomPricing | null,
 ): number {
   if (!isSeedance2TokenPricedModel(model)) {
     throw new BillingOperationError(
@@ -715,6 +716,9 @@ export function calcVideoByTokens(
         model,
       },
     )
+  }
+  if (typeof customPricing?.video?.basePrice === 'number') {
+    return (Math.max(0, Number(totalTokens) || 0) / 1_000_000) * customPricing.video.basePrice * getMarkup('video')
   }
   return calcSeedance2VideoCostFromTokens(model, totalTokens, metadata)
 }

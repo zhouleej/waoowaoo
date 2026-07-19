@@ -154,6 +154,7 @@ export const DELETE = apiHandler(async (_req, ctx) => {
       where: { id: organizationId },
       include: {
         members: true,
+        projects: { select: { id: true }, take: 1 },
       },
     })
   )
@@ -162,13 +163,16 @@ export const DELETE = apiHandler(async (_req, ctx) => {
     return notFound('Organization')
   }
 
-  // 检查用户是否为 owner
-  const membership = (organization as { members: Array<{ userId: string; role: string }> }).members.find((m) => m.userId === session.user.id)
+  const membership = organization.members.find((member) => member.userId === session.user.id)
   if (!membership || membership.role !== 'owner') {
     return forbidden('只有组织所有者可以删除组织')
   }
 
-  // 删除组织（级联删除会删除成员和余额）
+  if (organization.projects.length > 0) {
+    return forbidden('组织仍存在项目，禁止硬删除；请先迁移或删除组织项目')
+  }
+
+  // 删除组织（仅允许无项目组织）
   await withPrismaRetry(() =>
     prisma.organization.delete({
       where: { id: organizationId },

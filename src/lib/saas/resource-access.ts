@@ -15,7 +15,7 @@ type ProjectAuthLightContext = {
   session: AuthSession
   project: {
     id: string
-    userId: string
+    userId: string | null
     organizationId?: string | null
     name: string
     [key: string]: unknown

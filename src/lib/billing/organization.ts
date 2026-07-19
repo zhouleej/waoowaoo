@@ -294,6 +294,9 @@ export async function freezeOrganizationBalance(
     taskId?: string
     idempotencyKey?: string
     planCreditAmount?: number
+    memberQuota?: number
+    monthlyPlanCredit?: number
+    estimatedCost?: number
     description?: string
     metadata?: Record<string, unknown>
   },
@@ -331,6 +334,46 @@ export async function freezeOrganizationBalance(
           return existing.id
         }
         if (existing?.id) return null
+      }
+
+      if (typeof tx.$queryRaw === 'function') {
+        await tx.$queryRaw`SELECT id FROM organizations WHERE id = ${organizationId} FOR UPDATE`
+      }
+
+      const monthStart = new Date()
+      monthStart.setDate(1)
+      monthStart.setHours(0, 0, 0, 0)
+      const estimatedCost = normalizeMoney(Number(options?.estimatedCost || normalizedAmount + normalizedPlanCredit))
+      if (options?.memberQuota && options.userId) {
+        const memberUsage = await tx.organizationUsage.aggregate({
+          where: {
+            organizationId,
+            userId: options.userId,
+            createdAt: { gte: monthStart },
+            OR: [
+              { type: 'task' },
+              { type: 'freeze', metadata: { path: '$.status', equals: 'pending' } },
+            ],
+          },
+          _sum: { planCreditAmount: true, balanceAmount: true },
+        })
+        const used = normalizeMoney(toMoneyNumber(memberUsage._sum.planCreditAmount) + toMoneyNumber(memberUsage._sum.balanceAmount))
+        if (used + estimatedCost > options.memberQuota) return null
+      }
+      if (options?.monthlyPlanCredit !== undefined) {
+        const planUsage = await tx.organizationUsage.aggregate({
+          where: {
+            organizationId,
+            createdAt: { gte: monthStart },
+            OR: [
+              { type: 'task' },
+              { type: 'freeze', metadata: { path: '$.status', equals: 'pending' } },
+            ],
+          },
+          _sum: { planCreditAmount: true },
+        })
+        const used = normalizeMoney(toMoneyNumber(planUsage._sum.planCreditAmount))
+        if (used + normalizedPlanCredit > options.monthlyPlanCredit) return null
       }
 
       // 确保余额记录存在
@@ -431,7 +474,9 @@ export async function increaseOrganizationPendingFreezeAmount(
       const freeze = await tx.organizationUsage.findUnique({
         where: { id: freezeId },
       })
-      if (!freeze || !isPendingFreezeUsage(freeze)) return false
+      if (!freeze) return false
+      if (freeze.type === 'charge' && readRecord(freeze.metadata).status === 'confirmed') return true
+      if (!isPendingFreezeUsage(freeze)) return false
 
       const updated = await tx.organizationBalance.updateMany({
         where: {
@@ -493,7 +538,9 @@ export async function confirmOrganizationCharge(
       const freeze = await tx.organizationUsage.findUnique({
         where: { id: freezeId },
       })
-      if (!freeze || !isPendingFreezeUsage(freeze)) return false
+      if (!freeze) return false
+      if (freeze.type === 'charge' && readRecord(freeze.metadata).status === 'confirmed') return true
+      if (!isPendingFreezeUsage(freeze)) return false
 
       const frozenAmount = normalizeMoney(toMoneyNumber(freeze.amount))
       const chargedAmount = Math.min(normalizedAmount, frozenAmount)
@@ -571,7 +618,9 @@ export async function confirmOrganizationChargeWithRecord(
       const freeze = await tx.organizationUsage.findUnique({
         where: { id: freezeId },
       })
-      if (!freeze || !isPendingFreezeUsage(freeze)) return false
+      if (!freeze) return false
+      if (freeze.type === 'charge' && readRecord(freeze.metadata).status === 'confirmed') return true
+      if (!isPendingFreezeUsage(freeze)) return false
 
       const frozenAmount = normalizeMoney(toMoneyNumber(freeze.amount))
       const chargedAmount = Math.min(normalizedAmount, frozenAmount)

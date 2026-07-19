@@ -1,7 +1,7 @@
 'use client'
 
 import type { CSSProperties, ReactNode } from 'react'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   DndContext,
   KeyboardSensor,
@@ -19,7 +19,11 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import type { CustomModel, Provider } from '../api-config'
+import type { ModelHealthResult } from '../api-config/types'
 import { ProviderCard } from '../api-config'
+import { apiFetch } from '@/lib/api-fetch'
+import { readApiErrorMessage } from '@/lib/api/read-error-message'
+import { useToast } from '@/contexts/ToastContext'
 import { AppIcon } from '@/components/ui/icons'
 
 interface DefaultModels {
@@ -47,6 +51,7 @@ interface ApiConfigProviderListProps {
   onUpdateModel: (modelKey: string, updates: Partial<CustomModel>, providerId: string) => void
   onDeleteProvider: (providerId: string) => void
   onAddModel: (model: Omit<CustomModel, 'enabled'>) => void
+  onAddModels: (models: Array<Omit<CustomModel, 'enabled'>>) => Promise<boolean>
   onFlushConfig: () => Promise<void>
   onToggleProviderHidden: (providerId: string, hidden: boolean) => void
   labels: {
@@ -77,11 +82,60 @@ export function ApiConfigProviderList({
   onUpdateModel,
   onDeleteProvider,
   onAddModel,
+  onAddModels,
   onFlushConfig,
   onToggleProviderHidden,
   labels,
 }: ApiConfigProviderListProps) {
+  const { showToast } = useToast()
   const [showHiddenProviders, setShowHiddenProviders] = useState(false)
+  const [healthStatuses, setHealthStatuses] = useState<Record<string, ModelHealthResult>>({})
+  const [checkingModelKeys, setCheckingModelKeys] = useState<Set<string>>(new Set())
+  const [checkingProviders, setCheckingProviders] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    let active = true
+    void apiFetch('/api/user/api-config/model-health').then(async (response) => {
+      if (!response.ok || !active) return
+      const payload = await response.json() as { statuses?: ModelHealthResult[] }
+      if (!active) return
+      setHealthStatuses(Object.fromEntries((payload.statuses ?? []).map((item) => [item.modelKey, item])))
+    }).catch(() => undefined)
+    return () => { active = false }
+  }, [])
+
+  const checkModelHealth = useCallback(async (providerId: string, modelKey: string) => {
+    setCheckingModelKeys((current) => new Set(current).add(modelKey))
+    try {
+      const response = await apiFetch('/api/user/api-config/model-health/check', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ providerId, modelKey }),
+      })
+      if (!response.ok) throw new Error(await readApiErrorMessage(response, 'Model health check failed'))
+      const health = await response.json() as ModelHealthResult
+      setHealthStatuses((current) => ({ ...current, [health.modelKey]: health }))
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Model health check failed', 'error')
+    } finally {
+      setCheckingModelKeys((current) => { const next = new Set(current); next.delete(modelKey); return next })
+    }
+  }, [showToast])
+
+  const checkProviderHealth = useCallback(async (providerId: string) => {
+    setCheckingProviders((current) => new Set(current).add(providerId))
+    try {
+      const response = await apiFetch('/api/user/api-config/model-health/check-provider', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ providerId }),
+      })
+      if (!response.ok) throw new Error(await readApiErrorMessage(response, 'Provider health check failed'))
+      const payload = await response.json() as { results?: ModelHealthResult[] }
+      setHealthStatuses((current) => ({ ...current, ...Object.fromEntries((payload.results ?? []).map((item) => [item.modelKey, item])) }))
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Provider health check failed', 'error')
+    } finally {
+      setCheckingProviders((current) => { const next = new Set(current); next.delete(providerId); return next })
+    }
+  }, [showToast])
+
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -161,10 +215,16 @@ export function ApiConfigProviderList({
                       onUpdateModel={(modelKey, updates) => onUpdateModel(modelKey, updates, provider.id)}
                       onDeleteProvider={onDeleteProvider}
                       onAddModel={onAddModel}
+                      onAddModels={onAddModels}
                       onFlushConfig={onFlushConfig}
                       onToggleProviderHidden={onToggleProviderHidden}
                       hideProviderLabel={labels.hideProvider}
                       showProviderLabel={labels.showProvider}
+                      healthStatuses={healthStatuses}
+                      checkingModelKeys={checkingModelKeys}
+                      checkingProvider={checkingProviders.has(provider.id)}
+                      onCheckModelHealth={checkModelHealth}
+                      onCheckProviderHealth={checkProviderHealth}
                     />
                   )}
                 </SortableProviderCardItem>
@@ -210,10 +270,16 @@ export function ApiConfigProviderList({
                     onUpdateModel={(modelKey, updates) => onUpdateModel(modelKey, updates, provider.id)}
                     onDeleteProvider={onDeleteProvider}
                     onAddModel={onAddModel}
+                    onAddModels={onAddModels}
                     onFlushConfig={onFlushConfig}
                     onToggleProviderHidden={onToggleProviderHidden}
                     hideProviderLabel={labels.hideProvider}
                     showProviderLabel={labels.showProvider}
+                    healthStatuses={healthStatuses}
+                    checkingModelKeys={checkingModelKeys}
+                    checkingProvider={checkingProviders.has(provider.id)}
+                    onCheckModelHealth={checkModelHealth}
+                    onCheckProviderHealth={checkProviderHealth}
                   />
                 ))}
               </div>

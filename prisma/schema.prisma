@@ -354,14 +354,14 @@ model Project {
   id                 String                 @id @default(uuid())
   name               String
   description        String?                @db.Text
-  userId             String
+  userId             String?
   organizationId     String?
   createdAt          DateTime               @default(now())
   updatedAt          DateTime               @default(now()) @updatedAt
   lastAccessedAt     DateTime?
   novelPromotionData NovelPromotionProject?
-  user               User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  organization       Organization?          @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  user               User?                  @relation(fields: [userId], references: [id], onDelete: SetNull)
+  organization       Organization?          @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   usageCosts         UsageCost[]
 
   @@index([userId])
@@ -420,6 +420,7 @@ model User {
   usageCosts    UsageCost[]
   balance       UserBalance?
   preferences   UserPreference?
+  modelHealthStatuses ModelHealthStatus[]
 
   // 资产中心
   globalAssetFolders GlobalAssetFolder[]
@@ -779,6 +780,31 @@ model UserPreference {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("user_preferences")
+}
+
+model ModelHealthStatus {
+  id          String   @id @default(uuid())
+  userId      String
+  providerId   String   @db.VarChar(191)
+  modelKey     String   @db.VarChar(512)
+  modelKeyHash String   @db.Char(64)
+  modelId      String   @db.VarChar(255)
+  modelType   String   @db.VarChar(32)
+  status      String   @db.VarChar(32)
+  checkLevel  String   @db.VarChar(32)
+  checkedAt   DateTime
+  latencyMs   Int?
+  errorCode   String?  @db.VarChar(64)
+  message     String?  @db.VarChar(500)
+  protocol    String?  @db.VarChar(32)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, providerId, modelKeyHash], map: "model_health_status_user_provider_model_hash")
+  @@index([userId, providerId])
+  @@map("model_health_statuses")
 }
 
 model VerificationToken {

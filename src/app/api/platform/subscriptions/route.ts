@@ -7,27 +7,23 @@ import { badRequest, notFound } from '@/lib/api-auth'
 import { parsePagination, readNumber, readString } from '@/lib/saas/validation'
 import { serializeSubscription } from '@/lib/saas/serializers'
 import { parseSubscriptionStatus } from '@/lib/saas/billing-status'
-import { syncOrganizationSubscriptionState } from '@/lib/saas/billing-state'
+import { subscriptionPeriodFor, syncOrganizationSubscriptionState } from '@/lib/saas/billing-state'
 
 export const GET = apiHandler(async (req) => {
   const auth = await requirePlatformAdmin()
   if (auth instanceof NextResponse) return auth
-  try {
-    const { searchParams } = new URL(req.url)
-    const { page, limit, skip } = parsePagination(searchParams)
-    const where: any = {}
-    const organizationId = searchParams.get('organizationId')?.trim()
-    const status = searchParams.get('status')?.trim()
-    if (organizationId) where.organizationId = organizationId
-    if (status) where.status = status
-    const [data, total] = await Promise.all([
-      prisma.organizationSubscription.findMany({ where, skip, take: limit, orderBy: { createdAt: 'desc' }, include: { organization: true, plan: true, orders: { take: 5, orderBy: { createdAt: 'desc' } } } }),
-      prisma.organizationSubscription.count({ where }),
-    ])
-    return NextResponse.json({ data: data.map(serializeSubscription), pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } })
-  } catch (error) {
-    return NextResponse.json({ data: [], pagination: { page: 1, limit: 10, total: 0, totalPages: 1 }, unavailable: true, error: error instanceof Error ? error.message : 'Subscriptions unavailable' })
-  }
+  const { searchParams } = new URL(req.url)
+  const { page, limit, skip } = parsePagination(searchParams)
+  const where: any = {}
+  const organizationId = searchParams.get('organizationId')?.trim()
+  const status = searchParams.get('status')?.trim()
+  if (organizationId) where.organizationId = organizationId
+  if (status) where.status = status
+  const [data, total] = await Promise.all([
+    prisma.organizationSubscription.findMany({ where, skip, take: limit, orderBy: { createdAt: 'desc' }, include: { organization: true, plan: true, orders: { take: 5, orderBy: { createdAt: 'desc' } } } }),
+    prisma.organizationSubscription.count({ where }),
+  ])
+  return NextResponse.json({ data: data.map(serializeSubscription), pagination: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) } })
 })
 
 export const POST = apiHandler(async (req) => {
@@ -47,14 +43,20 @@ export const POST = apiHandler(async (req) => {
     if (!plan) return notFound('PricingPlan')
     if (plan.status !== 'active') return badRequest('套餐不可订阅')
     const status = parseSubscriptionStatus(readString(body.status ?? 'active', '订阅状态', { max: 32 }) || 'active')
+    const period = subscriptionPeriodFor({
+      currentPeriodStart: body.currentPeriodStart,
+      currentPeriodEnd: body.currentPeriodEnd,
+      billingCycle: plan.billingCycle,
+      status,
+    })
     const sub = await prisma.$transaction(async (tx) => {
       await tx.organizationSubscription.updateMany({ where: { organizationId, status: { in: ['trialing', 'active', 'past_due'] } }, data: { status: 'canceled', canceledAt: new Date(), autoRenew: false } })
       const created = await tx.organizationSubscription.create({
         data: {
           organizationId, planId,
           status,
-          currentPeriodStart: body.currentPeriodStart ? new Date(body.currentPeriodStart) : new Date(),
-          currentPeriodEnd: body.currentPeriodEnd ? new Date(body.currentPeriodEnd) : null,
+          currentPeriodStart: period.start,
+          currentPeriodEnd: period.end,
           autoRenew: Boolean(body.autoRenew),
           seats: readNumber(body.seats ?? 1, '席位数', { min: 1, integer: true }) || 1,
           metadata: body.metadata && typeof body.metadata === 'object' ? body.metadata : undefined,

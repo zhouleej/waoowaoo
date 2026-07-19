@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { requireUserAuth, isErrorResponse } from '@/lib/api-auth'
+import { requirePlatformAdmin } from '@/lib/platform-admin'
 import { apiHandler } from '@/lib/api-errors'
 import { readAllLogs } from '@/lib/logging/file-writer'
 
@@ -7,8 +7,8 @@ export const dynamic = 'force-dynamic'
 
 // GET - 下载所有日志
 export const GET = apiHandler(async () => {
-    const authResult = await requireUserAuth()
-    if (isErrorResponse(authResult)) return authResult
+    const authResult = await requirePlatformAdmin()
+    if (authResult instanceof NextResponse) return authResult
 
     const logs = await readAllLogs()
     if (!logs) {

@@ -109,6 +109,7 @@ export function ApiConfigTabContainer() {
     toggleModel,
     deleteModel,
     addModel,
+    addModels,
     updateModel,
     updateDefaultModel,
     batchUpdateDefaultModels,
@@ -290,6 +291,7 @@ export function ApiConfigTabContainer() {
             onUpdateModel={updateModel}
             onDeleteProvider={deleteProvider}
             onAddModel={addModel}
+            onAddModels={addModels}
             onFlushConfig={flushConfig}
             onToggleProviderHidden={updateProviderHidden}
             labels={{

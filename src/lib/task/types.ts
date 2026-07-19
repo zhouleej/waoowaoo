@@ -3,6 +3,7 @@ import type { Locale } from '@/i18n/routing'
 export const TASK_STATUS = {
   QUEUED: 'queued',
   PROCESSING: 'processing',
+  SETTLING: 'settling',
   COMPLETED: 'completed',
   FAILED: 'failed',
   CANCELED: 'canceled',

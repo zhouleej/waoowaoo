@@ -104,7 +104,7 @@ export interface ProjectAuthContextWithIncludes<T extends ProjectAuthIncludes = 
     session: AuthSession
     project: {
         id: string
-        userId: string
+        userId: string | null
         organizationId?: string | null
         name: string
         [key: string]: unknown
@@ -319,7 +319,7 @@ async function checkGlobalLock(userId: string): Promise<NextResponse | null> {
 
 type ProjectAccessRow = {
     id: string
-    userId: string
+    userId: string | null
     organizationId?: string | null
 }
 
@@ -382,7 +382,7 @@ export async function requireUserAuth(): Promise<{ session: AuthSession } | Next
  */
 export async function requireProjectAuthLight(
     projectId: string
-): Promise<{ session: AuthSession; project: { id: string; userId: string; organizationId?: string | null; name: string; [key: string]: unknown } } | NextResponse> {
+): Promise<{ session: AuthSession; project: { id: string; userId: string | null; organizationId?: string | null; name: string; [key: string]: unknown } } | NextResponse> {
     const session = await getAuthSession()
     if (!session?.user?.id) {
         return unauthorized()

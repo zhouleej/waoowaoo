@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import type { CustomModel, Provider } from '../types'
+import type { CustomModel, ModelHealthResult, Provider } from '../types'
 
 export interface ProviderCardDefaultModels {
   analysisModel?: string
@@ -27,9 +27,15 @@ export interface ProviderCardProps {
   onDeleteProvider?: (providerId: string) => void
   onToggleProviderHidden?: (providerId: string, hidden: boolean) => void
   onAddModel: (model: Omit<CustomModel, 'enabled'>) => void
+  onAddModels?: (models: Array<Omit<CustomModel, 'enabled'>>) => Promise<boolean>
   onFlushConfig?: () => Promise<void>
   hideProviderLabel?: string
   showProviderLabel?: string
+  healthStatuses?: Record<string, ModelHealthResult>
+  checkingModelKeys?: ReadonlySet<string>
+  checkingProvider?: boolean
+  onCheckModelHealth?: (providerId: string, modelKey: string) => Promise<void>
+  onCheckProviderHealth?: (providerId: string) => Promise<void>
 }
 
 export interface ModelFormState {

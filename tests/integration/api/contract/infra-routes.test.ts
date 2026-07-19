@@ -31,6 +31,18 @@ vi.mock('@/lib/api-auth', () => {
   }
 })
 
+vi.mock('@/lib/platform-admin', async () => {
+  const { NextResponse } = await import('next/server')
+  return {
+    requirePlatformAdmin: async () => {
+      if (!authState.authenticated) {
+        return NextResponse.json({ error: { code: 'UNAUTHORIZED' } }, { status: 401 })
+      }
+      return { userId: 'user-1' }
+    },
+  }
+})
+
 vi.mock('@/lib/logging/file-writer', () => loggingMock)
 vi.mock('@/lib/storage', () => storageMock)
 

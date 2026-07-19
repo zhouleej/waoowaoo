@@ -84,6 +84,7 @@ describe('billing/worker lifecycle integration', () => {
 
     const task = await prisma.task.findUnique({ where: { id: fixture.taskId } })
     expect(task?.status).toBe('completed')
+    expect(task?.result).toEqual({ actualDurationSeconds: 2 })
     const billing = task?.billingInfo as TaskBillingInfo
     expect(billing?.billable).toBe(true)
     expect((billing as Extract<TaskBillingInfo, { billable: true }>).status).toBe('settled')

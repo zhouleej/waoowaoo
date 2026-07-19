@@ -40,12 +40,25 @@ export const POST = apiHandler(async (req) => {
     const type = parseBillingOrderType(readString(body.type ?? 'subscription', '订单类型', { max: 32 }) || 'subscription')
     const paidAt = body.paidAt ? new Date(body.paidAt) : undefined
     const externalOrderId = readString(body.externalOrderId, '外部订单号', { max: 128 })
+    const subscriptionId = readString(body.subscriptionId, '订阅ID')
+    const planId = readString(body.planId, '套餐ID')
+    if (subscriptionId) {
+      const subscription = await prisma.organizationSubscription.findUnique({ where: { id: subscriptionId } })
+      if (!subscription || subscription.organizationId !== organizationId) throw new Error('订阅与企业不一致')
+      if (planId && subscription.planId !== planId) throw new Error('订阅与套餐不一致')
+    }
+    if (planId) {
+      const plan = await prisma.pricingPlan.findUnique({ where: { id: planId } })
+      if (!plan || plan.status !== 'active') throw new Error('套餐不存在或不可用')
+    }
+    if (type !== 'recharge' && !planId && !subscriptionId) throw new Error('订阅类订单必须关联套餐或订阅')
+    if (type === 'recharge' && (planId || subscriptionId)) throw new Error('充值订单不得关联套餐或订阅')
     const created = await prisma.billingOrder.create({
       data: {
         orderNo: readString(body.orderNo, '订单号', { max: 64 }) || nextOrderNo('SO'),
         organizationId,
-        subscriptionId: readString(body.subscriptionId, '订阅ID'),
-        planId: readString(body.planId, '套餐ID'),
+        subscriptionId,
+        planId,
         type,
         status: status === 'paid' ? 'pending' : status,
         amount: readNumber(body.amount, '金额', { required: true, min: 0 })!,

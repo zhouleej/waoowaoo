@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { BILLING_CURRENCY } from '@/lib/billing/currency'
 import { requireUserAuth, isErrorResponse } from '@/lib/api-auth'
-import { apiHandler } from '@/lib/api-errors'
+import { apiHandler, ApiError } from '@/lib/api-errors'
+import { parseTransactionDate, parseTransactionQueryBounds } from '@/lib/billing/transaction-query'
 import type { Prisma } from '@prisma/client'
 import { toMoneyNumber } from '@/lib/billing/money'
 
@@ -35,11 +36,13 @@ export const GET = apiHandler(async (request: NextRequest) => {
     const { session } = authResult
 
     const { searchParams } = new URL(request.url)
-    const page = parseInt(searchParams.get('page') || '1')
-    const pageSize = parseInt(searchParams.get('pageSize') || '20')
+    const { page, pageSize } = parseTransactionQueryBounds(searchParams.get('page'), searchParams.get('pageSize'))
     const type = searchParams.get('type') // recharge | consume | all
-    const startDate = searchParams.get('startDate')
-    const endDate = searchParams.get('endDate')
+    const startDate = parseTransactionDate(searchParams.get('startDate'))
+    const endDate = parseTransactionDate(searchParams.get('endDate'), true)
+    if (startDate === null || endDate === null) {
+        throw new ApiError('INVALID_PARAMS', { field: startDate === null ? 'startDate' : 'endDate' })
+    }
 
     const where: Prisma.BalanceTransactionWhereInput = { userId: session.user.id }
     if (type && type !== 'all') {
@@ -50,13 +53,11 @@ export const GET = apiHandler(async (request: NextRequest) => {
     if (startDate || endDate) {
         where.createdAt = {}
         if (startDate) {
-            where.createdAt.gte = new Date(startDate)
+            where.createdAt.gte = startDate
         }
         if (endDate) {
             // 包含结束日期的整天
-            const endDateTime = new Date(endDate)
-            endDateTime.setHours(23, 59, 59, 999)
-            where.createdAt.lte = endDateTime
+            where.createdAt.lte = endDate
         }
     }
 

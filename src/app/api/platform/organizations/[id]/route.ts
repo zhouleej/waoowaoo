@@ -63,7 +63,7 @@ export const DELETE = apiHandler<{ id: string }>(async (_req, { params }) => {
   const org = await prisma.organization.findUnique({
     where: { id },
     include: {
-      _count: { select: { members: true } },
+      _count: { select: { members: true, projects: true } },
     },
   })
 
@@ -71,7 +71,11 @@ export const DELETE = apiHandler<{ id: string }>(async (_req, { params }) => {
     return NextResponse.json({ error: 'Organization not found' }, { status: 404 })
   }
 
-  // 使用事务删除组织及其关联数据
+  if (org._count.projects > 0) {
+    return NextResponse.json({ error: 'Organization still has projects; migrate or delete them before hard deletion' }, { status: 409 })
+  }
+
+  // 使用事务删除无项目组织及其关联数据
   await prisma.$transaction(async (tx) => {
     // 删除成员关系
     await tx.organizationMember.deleteMany({ where: { organizationId: id } })

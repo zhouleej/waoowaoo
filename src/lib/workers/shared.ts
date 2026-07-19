@@ -7,6 +7,7 @@ import {
   rollbackTaskBillingForTask,
   touchTaskHeartbeat,
   tryMarkTaskCompleted,
+  tryMarkTaskSettling,
   tryMarkTaskFailed,
   tryMarkTaskProcessing,
   tryUpdateTaskProgress,
@@ -412,6 +413,11 @@ export async function withTaskLifecycle(job: Job<TaskJobData>, handler: (job: Jo
     })
 
     const { result, textUsage } = await withTextUsageCollection(async () => await handler(job))
+    const claimedForSettlement = await tryMarkTaskSettling(taskId, result || null)
+    if (!claimedForSettlement) {
+      logger.info({ action: 'worker.skip.settlement', message: 'task was cancelled or already claimed before settlement' })
+      return
+    }
     if (billingInfo?.billable) {
       billingInfo = (await settleTaskBilling({
         id: taskId,
