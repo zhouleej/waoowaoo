@@ -1,13 +1,11 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { withPrismaRetry } from '@/lib/prisma-retry'
-import { requireUserAuth, isErrorResponse, forbidden, notFound, badRequest } from '@/lib/api-auth'
+import { requireUserAuth, isErrorResponse, forbidden, notFound } from '@/lib/api-auth'
 import { apiHandler } from '@/lib/api-errors'
 import { BILLING_CURRENCY } from '@/lib/billing/currency'
 import {
   getOrganizationBalance,
-  addOrganizationBalance,
-  checkOrganizationRole,
 } from '@/lib/billing/organization'
 
 /**
@@ -71,61 +69,12 @@ export const GET = apiHandler(async (_req, ctx) => {
  * 请求体: { amount: number, paymentMethod?: string }
  * 权限: owner 或 admin
  */
-export const POST = apiHandler(async (req, ctx) => {
-  const params = await ctx.params
-  const organizationId = params.id as string
-
-  // 验证用户认证
+export const POST = apiHandler(async () => {
   const authResult = await requireUserAuth()
   if (isErrorResponse(authResult)) return authResult
-  const { session } = authResult
-
-  // 解析请求体
-  const body = await req.json()
-  const { amount, paymentMethod, idempotencyKey } = body
-
-  // 验证参数
-  if (typeof amount !== 'number' || amount <= 0) {
-    return badRequest('充值金额必须为正数')
-  }
-
-  // 检查组织是否存在
-  const organization = await withPrismaRetry(() =>
-    prisma.organization.findUnique({
-      where: { id: organizationId },
-      select: { id: true, name: true, ownerId: true },
-    })
-  )
-
-  if (!organization) {
-    return notFound('Organization')
-  }
-
-  // 检查权限：仅 owner 或 admin 可充值
-  const hasPermission = await checkOrganizationRole(organizationId, session.user.id, ['owner', 'admin'])
-  if (!hasPermission) {
-    return forbidden('只有组织所有者或管理员可以进行充值')
-  }
-
-  // 执行充值
-  const updatedBalance = await addOrganizationBalance(
-    organizationId,
-    amount,
-    {
-      reason: `组织余额充值 - ${paymentMethod || 'unknown payment method'}`,
-      operatorId: session.user.id,
-      idempotencyKey,
-    }
-  )
 
   return NextResponse.json({
-    success: true,
-    currency: BILLING_CURRENCY,
-    organizationId: organization.id,
-    organizationName: organization.name,
-    balance: updatedBalance.balance,
-    frozenAmount: updatedBalance.frozenAmount,
-    totalSpent: updatedBalance.totalSpent,
-    message: '充值成功',
-  })
+    error: '组织余额仅可通过已支付充值订单入账，请先创建并完成支付订单',
+    code: 'PAYMENT_ORDER_REQUIRED',
+  }, { status: 403 })
 })

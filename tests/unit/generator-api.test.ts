@@ -93,11 +93,11 @@ describe('generator-api gateway routing', () => {
     })
   })
 
-  it('routes openai-compatible image requests to openai-compat gateway', async () => {
+  it('keeps custom non-standard image models on their configured template path', async () => {
     resolveModelSelectionMock.mockResolvedValueOnce({
       provider: 'openai-compatible:oa-1',
-      modelId: 'gpt-image-1',
-      modelKey: 'openai-compatible:oa-1::gpt-image-1',
+      modelId: 'custom-image-v1',
+      modelKey: 'openai-compatible:oa-1::custom-image-v1',
       mediaType: 'image',
       compatMediaTemplate: {
         version: 1,
@@ -109,13 +109,55 @@ describe('generator-api gateway routing', () => {
     })
     resolveModelGatewayRouteMock.mockReturnValueOnce('openai-compat')
 
-    const result = await generateImage('user-1', 'openai-compatible:oa-1::gpt-image-1', 'draw cat', {
+    const result = await generateImage('user-1', 'openai-compatible:oa-1::custom-image-v1', 'draw cat', {
       size: '1024x1024',
     })
 
     expect(generateImageViaOpenAICompatTemplateMock).toHaveBeenCalledTimes(1)
     expect(createImageGeneratorMock).not.toHaveBeenCalled()
     expect(result).toEqual({ success: true, imageUrl: 'compat-template-image' })
+  })
+
+  it.each([
+    ['gpt-image-2', 'gpt-image-2'],
+    [' GPT-IMAGE-2 ', ' GPT-IMAGE-2 '],
+    ['openai/gpt-image-2', 'openai/gpt-image-2'],
+    ['gpt-image-1', 'gpt-image-1'],
+    ['gpt-image-2-preview', 'gpt-image-2-preview'],
+  ])('routes standard GPT Image model %s through the Images API even when a template exists', async (_caseName, modelId) => {
+    resolveModelSelectionMock.mockResolvedValueOnce({
+      provider: 'openai-compatible:oa-1',
+      modelId,
+      modelKey: `openai-compatible:oa-1::${modelId}`,
+      mediaType: 'image',
+      compatMediaTemplate: {
+        version: 1,
+        mediaType: 'image',
+        mode: 'sync',
+        create: { method: 'POST', path: '/images/generations' },
+        response: { outputUrlPath: '$.data[0].url' },
+      },
+    })
+    resolveModelGatewayRouteMock.mockReturnValueOnce('openai-compat')
+
+    const result = await generateImage('user-1', `openai-compatible:oa-1::${modelId}`, 'draw cat', {
+      aspectRatio: '3:2',
+      quality: 'high',
+      outputFormat: 'webp',
+      referenceImages: ['data:image/png;base64,QQ=='],
+    })
+
+    expect(generateImageViaOpenAICompatTemplateMock).not.toHaveBeenCalled()
+    expect(generateImageViaOpenAICompatMock).toHaveBeenCalledWith(expect.objectContaining({
+      modelId,
+      referenceImages: ['data:image/png;base64,QQ=='],
+      options: expect.objectContaining({
+        size: '1536x1024',
+        quality: 'high',
+        outputFormat: 'webp',
+      }),
+    }))
+    expect(result).toEqual({ success: true, imageUrl: 'compat-image' })
   })
 
   it('routes official image requests to provider generator', async () => {

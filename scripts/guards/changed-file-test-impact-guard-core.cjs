@@ -11,7 +11,7 @@ const RULES = [
   {
     name: 'worker',
     source: /^src\/lib\/workers\//,
-    tests: [/^tests\/unit\/worker\//, /^tests\/system\//, /^tests\/regression\//],
+    tests: [/^tests\/unit\/worker\//, /^tests\/integration\/billing\/worker-lifecycle\.integration\.test\.ts$/, /^tests\/system\//, /^tests\/regression\//],
     message: 'changing src/lib/workers/** requires a matching worker, system, or regression test change',
   },
   {

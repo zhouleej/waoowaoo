@@ -1,11 +1,13 @@
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { withPrismaRetry } from '@/lib/prisma-retry'
-import { rollbackTaskBilling } from '@/lib/billing'
+import { rollbackTaskBilling, settleTaskBilling } from '@/lib/billing'
 import { locales } from '@/i18n/routing'
 import { TASK_STATUS, type CreateTaskInput, type TaskBillingInfo, type TaskStatus } from './types'
 
-const ACTIVE_STATUSES: TaskStatus[] = [TASK_STATUS.QUEUED, TASK_STATUS.PROCESSING]
+const ACTIVE_STATUSES: TaskStatus[] = [TASK_STATUS.QUEUED, TASK_STATUS.PROCESSING, TASK_STATUS.SETTLING]
+const PROCESSING_STATUSES: TaskStatus[] = [TASK_STATUS.QUEUED, TASK_STATUS.PROCESSING]
+const SETTLING_LEASE_MS = 5 * 60_000
 const taskModel = prisma.task
 
 /**
@@ -27,7 +29,7 @@ function isPrismaKnownError(error: unknown): error is { code?: string } {
 }
 
 function isActiveStatus(status: string) {
-  return status === TASK_STATUS.QUEUED || status === TASK_STATUS.PROCESSING
+  return ACTIVE_STATUSES.includes(status as TaskStatus)
 }
 
 function toObject(value: unknown): Record<string, unknown> {
@@ -408,7 +410,10 @@ export async function isTaskActive(taskId: string) {
 
 export async function tryMarkTaskProcessing(taskId: string, externalId?: string | null) {
   const result = await taskModel.updateMany({
-    where: activeTaskWhere(taskId),
+    where: {
+      id: taskId,
+      status: { in: [...PROCESSING_STATUSES] },
+    },
     data: {
       status: TASK_STATUS.PROCESSING,
       startedAt: new Date(),
@@ -457,9 +462,38 @@ export async function tryUpdateTaskProgress(taskId: string, progress: number, pa
   return result.count > 0
 }
 
+export async function tryMarkTaskSettling(taskId: string, resultPayload?: Record<string, unknown> | null) {
+  const now = new Date()
+  const staleBefore = new Date(now.getTime() - SETTLING_LEASE_MS)
+  const result = await taskModel.updateMany({
+    where: {
+      id: taskId,
+      OR: [
+        { status: { in: [...PROCESSING_STATUSES] } },
+        {
+          status: TASK_STATUS.SETTLING,
+          OR: [
+            { heartbeatAt: { lt: staleBefore } },
+            { heartbeatAt: null, updatedAt: { lt: staleBefore } },
+          ],
+        },
+      ],
+    },
+    data: {
+      status: TASK_STATUS.SETTLING,
+      heartbeatAt: now,
+      ...(resultPayload !== undefined ? { result: toNullableJson(resultPayload) } : {}),
+    },
+  })
+  return result.count > 0
+}
+
 export async function tryMarkTaskCompleted(taskId: string, resultPayload?: Record<string, unknown> | null) {
   const result = await taskModel.updateMany({
-    where: activeTaskWhere(taskId),
+    where: {
+      id: taskId,
+      status: TASK_STATUS.SETTLING,
+    },
     data: {
       status: TASK_STATUS.COMPLETED,
       progress: 100,
@@ -473,7 +507,10 @@ export async function tryMarkTaskCompleted(taskId: string, resultPayload?: Recor
 
 export async function tryMarkTaskFailed(taskId: string, errorCode: string, errorMessage: string) {
   const result = await taskModel.updateMany({
-    where: activeTaskWhere(taskId),
+    where: {
+      id: taskId,
+      status: { in: [...ACTIVE_STATUSES, TASK_STATUS.SETTLING] },
+    },
     data: {
       status: TASK_STATUS.FAILED,
       errorCode: errorCode.slice(0, 80),
@@ -535,8 +572,8 @@ export async function cancelTask(taskId: string, reason = 'Task cancelled by use
     }
   }
 
-  const active = isActiveStatus(snapshot.status)
-  const rollbackResult = active
+  const cancellable = PROCESSING_STATUSES.includes(snapshot.status as TaskStatus)
+  const rollbackResult = cancellable
     ? await rollbackTaskBillingForTask({
       taskId: taskId,
       billingInfo: snapshot.billingInfo,
@@ -554,6 +591,60 @@ export async function cancelTask(taskId: string, reason = 'Task cancelled by use
     task,
     cancelled,
   }
+}
+
+export async function recoverStaleSettlingTasks(params: {
+  settlingThresholdMs: number
+  limit?: number
+}) {
+  const staleBefore = new Date(Date.now() - Math.max(SETTLING_LEASE_MS, params.settlingThresholdMs))
+  const staleTasks = await taskModel.findMany({
+    where: {
+      status: TASK_STATUS.SETTLING,
+      OR: [
+        { heartbeatAt: { lt: staleBefore } },
+        { heartbeatAt: null, updatedAt: { lt: staleBefore } },
+      ],
+    },
+    orderBy: { updatedAt: 'asc' },
+    take: Math.max(1, params.limit || 200),
+    select: {
+      id: true,
+      userId: true,
+      projectId: true,
+      billingInfo: true,
+      result: true,
+    },
+  })
+
+  const recovered: string[] = []
+  for (const task of staleTasks) {
+    if (!await tryMarkTaskSettling(task.id)) continue
+    try {
+      const billingInfo = parseTaskBillingInfo(task.billingInfo)
+      if (billingInfo?.billable && billingInfo.status !== 'settled') {
+        const settled = await settleTaskBilling({
+          id: task.id,
+          projectId: task.projectId,
+          userId: task.userId,
+          billingInfo,
+        }, {
+          result: toObject(task.result),
+        }) as TaskBillingInfo
+        await updateTaskBillingInfo(task.id, settled)
+      }
+      if (await tryMarkTaskCompleted(task.id, toObject(task.result))) recovered.push(task.id)
+    } catch (error) {
+      const rollback = await rollbackTaskBillingForTask({ taskId: task.id })
+      const failure = resolveCompensationFailure(
+        rollback,
+        'SETTLEMENT_RECOVERY_FAILED',
+        error instanceof Error ? error.message : 'Settlement recovery failed',
+      )
+      await tryMarkTaskFailed(task.id, failure.errorCode, failure.errorMessage)
+    }
+  }
+  return recovered
 }
 
 export async function sweepStaleTasks(params: {

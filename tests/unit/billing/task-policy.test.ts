@@ -61,6 +61,7 @@ describe('billing/task-policy', () => {
 
   it('builds video billing info from firstLastFrame.flModel', () => {
     const info = expectBillableInfo(buildDefaultTaskBillingInfo(TASK_TYPE.VIDEO_PANEL, {
+      videoModel: 'ark::doubao-seedance-1-5-pro-251215',
       firstLastFrame: {
         flModel: 'doubao-seedance-1-0-pro-250528',
       },
@@ -69,6 +70,68 @@ describe('billing/task-policy', () => {
     expect(info.apiType).toBe('video')
     expect(info.model).toBe('doubao-seedance-1-0-pro-250528')
     expect(info.quantity).toBe(1)
+  })
+
+  it('derives video input pricing from real reference videos only', () => {
+    const cases = [
+      {
+        name: 'normal image-to-video',
+        payload: { imageUrl: 'https://example.com/source.png' },
+        expected: false,
+      },
+      {
+        name: 'first/last frame images',
+        payload: {
+          firstLastFrame: {
+            flModel: 'ark::doubao-seedance-2-0-260128',
+            lastFrameImageUrl: 'https://example.com/last.png',
+          },
+          generationOptions: {
+            referenceImages: ['https://example.com/reference.png'],
+          },
+        },
+        expected: false,
+      },
+      {
+        name: 'real reference video',
+        payload: {
+          generationOptions: {
+            referenceVideos: ['https://example.com/reference.mp4'],
+          },
+        },
+        expected: true,
+      },
+    ] as const
+
+    for (const testCase of cases) {
+      const payloadGenerationOptions = 'generationOptions' in testCase.payload
+        ? testCase.payload.generationOptions
+        : {}
+      const info = expectBillableInfo(buildDefaultTaskBillingInfo(TASK_TYPE.VIDEO_PANEL, {
+        videoModel: 'maas-seedance:tenant-1::doubao-seedance-2.0',
+        ...testCase.payload,
+        generationOptions: {
+          duration: 4,
+          generateAudio: true,
+          ...payloadGenerationOptions,
+        },
+      }))
+      expect(info.metadata, testCase.name).toMatchObject({
+        containsVideoInput: testCase.expected,
+      })
+    }
+  })
+
+  it('keeps Ark Seedance 2 image-to-video billing behavior', () => {
+    const info = expectBillableInfo(buildDefaultTaskBillingInfo(TASK_TYPE.VIDEO_PANEL, {
+      videoModel: 'ark::doubao-seedance-2-0-260128',
+      generationOptions: {
+        resolution: '720p',
+        duration: 4,
+        generateAudio: true,
+      },
+    }))
+    expect(info.metadata).toMatchObject({ containsVideoInput: false })
   })
 
   it('uses explicit lip sync model from payload', () => {

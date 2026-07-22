@@ -76,7 +76,11 @@ services:
       REDIS_TLS: ""
       # 存储：默认 MinIO（S3 兼容）
       STORAGE_TYPE: minio
+      # 后端读写使用容器内 S3 API；9001 通常是 Console，不能配置为 S3 endpoint
       MINIO_ENDPOINT: "http://minio:9000"
+      # 公网 S3 API 根地址，用于直接生成 host 匹配的预签名 URL；留空时兼容沿用 MINIO_ENDPOINT
+      # 生产示例：在宿主机环境设置 MINIO_PUBLIC_ENDPOINT=https://s3.example.com
+      MINIO_PUBLIC_ENDPOINT: "${MINIO_PUBLIC_ENDPOINT:-}"
       MINIO_REGION: "us-east-1"
       MINIO_BUCKET: "waoowaoo"
       MINIO_ACCESS_KEY: "minioadmin"

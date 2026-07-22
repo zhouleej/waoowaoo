@@ -347,6 +347,7 @@ function resolveTaskActual(
     result?: Record<string, unknown> | void
     textUsage?: TextUsageEntry[]
   },
+  customPricing?: ModelCustomPricing | null,
 ): ResolvedActual {
   const textResolved = resolveTextCostFromUsage(options?.textUsage || [])
   if (info.apiType === 'text' && textResolved) {
@@ -368,7 +369,7 @@ function resolveTaskActual(
     : null
   if (info.apiType === 'video' && actualVideoTokens !== null && actualVideoTokens >= 0) {
     return {
-      actualCost: calcVideoByTokens(info.model, actualVideoTokens, info.metadata),
+      actualCost: calcVideoByTokens(info.model, actualVideoTokens, info.metadata, customPricing),
       actualQuantity: actualVideoTokens,
       metadata: {
         actualVideoTokens,
@@ -392,6 +393,7 @@ function resolveTaskActual(
         quantity: actualQuantity,
         unit: info.unit,
         metadata: info.metadata,
+        customPricing,
       }),
       actualQuantity,
     }
@@ -405,6 +407,7 @@ function resolveTaskActual(
       unit: info.unit,
       metadata: info.metadata,
       quotedCost: info.maxFrozenCost,
+      customPricing,
     }),
     actualQuantity: info.quantity,
   }
@@ -921,6 +924,9 @@ export async function prepareTaskBilling(task: {
       taskId: task.id,
       idempotencyKey: info.billingKey || task.id,
       planCreditAmount: organizationPolicy.planCreditApplied,
+      memberQuota: organizationPolicy.memberQuota,
+      monthlyPlanCredit: organizationPolicy.monthlyPlanCredit,
+      estimatedCost: quotedCost,
       description: `任务余额冻结：${info.action}`,
       metadata: {
         taskType: info.taskType,
@@ -1043,7 +1049,7 @@ export async function settleTaskBilling(task: {
 
   let actual: ResolvedActual
   try {
-    actual = resolveTaskActual(info, quotedCost, options)
+    actual = resolveTaskActual(info, quotedCost, options, customPricing)
   } catch (error) {
     if (mode === 'SHADOW' && error instanceof BillingOperationError && error.code === 'BILLING_UNKNOWN_MODEL') {
       return {

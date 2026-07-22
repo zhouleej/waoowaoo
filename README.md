@@ -18,12 +18,13 @@
   <a href="README_en.md">English</a> · <a href="https://www.waoowaoo.com/">加入内测候补</a> · <a href="https://github.com/saturndec/waoowaoo/issues">反馈问题</a>
 </p>
 
-> [!IMPORTANT]
+> \[!IMPORTANT]
 > ⚠️ **测试版声明**：本项目目前处于测试初期阶段，由于暂时只有我一个人开发，存在部分 bug 和不完善之处。我们正在快速迭代更新中，**欢迎进群反馈问题和需求，及时关注项目更新！目前更新会非常频繁，后续会增加大量新功能以及优化效果，我们的目标是成为行业最强AI工具！**
 
 <img src="https://github.com/user-attachments/assets/d190bf41-488d-47df-a5df-06346ef0f2f5" width="30%">
 
----
+***
+
 ## ✨ 功能特性
 
 - 🎬 **AI 剧本分析** — 自动解析小说，提取角色、场景、剧情
@@ -32,7 +33,7 @@
 - 🎙️ **AI 配音** — 多角色语音合成
 - 🌐 **多语言支持** — 中文 / 英文界面，右上角一键切换
 
----
+***
 
 ## 🚀 快速开始
 
@@ -70,6 +71,7 @@ docker compose up -d
 ```
 
 更新版本：
+
 ```bash
 git pull
 docker compose down && docker compose up -d --build
@@ -99,23 +101,25 @@ npx prisma db push
 npm run dev
 ```
 
-> [!WARNING]
+> \[!WARNING]
 > 跳过 `npx prisma db push` 会导致所有数据库表不存在，启动后报错 `The table 'tasks' does not exist`。请务必先运行此命令再启动开发服务器。
 
----
+***
 
-访问 [http://localhost:13000](http://localhost:13000)（方式一、二）或 [http://localhost:3000](http://localhost:3000)（方式三）开始使用！
+访问 <http://localhost:13000>（方式一、二）或 <http://localhost:3000>（方式三）开始使用！
 
 > 首次启动会自动完成数据库初始化，无需任何额外配置。
 
-> [!TIP]
+> \[!TIP]
 > **如果遇到网页卡顿**：HTTP 模式下浏览器可能限制并发连接。可安装 [Caddy](https://caddyserver.com/docs/install) 启用 HTTPS：
+>
 > ```bash
 > caddy run --config Caddyfile
 > ```
-> 然后访问 [https://localhost:1443](https://localhost:1443)
+>
+> 然后访问 <https://localhost:1443>
 
----
+***
 
 ## 🔧 API 配置
 
@@ -123,7 +127,7 @@ npm run dev
 
 > 💡 **注意**：目前仅推荐使用各服务商官方 API，第三方兼容格式（OpenAI Compatible）尚不完善，后续版本会持续优化。
 
----
+***
 
 ## 📦 技术栈
 
@@ -133,7 +137,7 @@ npm run dev
 - **样式**: Tailwind CSS v4
 - **认证**: NextAuth.js
 
----
+***
 
 ## 📦 页面功能预览
 
@@ -142,7 +146,7 @@ npm run dev
 ![466e13c8fd1fc799d8f588c367ebfa24e1e99bf7](https://github.com/user-attachments/assets/09bbff39-e535-4c67-80a9-69421c3b05ee)
 ![c067c197c20b0f1de456357c49cdf0b0973c9b31](https://github.com/user-attachments/assets/688e3147-6e95-43b0-b9e7-dd9af40db8a0)
 
----
+***
 
 ## 🤝 参与方式
 
@@ -152,10 +156,22 @@ npm run dev
 - 💡 提交 [Issue](https://github.com/saturndec/waoowaoo/issues) 提出功能建议
 - 🔧 提交 Pull Request 供参考 — 我们会认真审阅每一个 PR 的思路，但最终由团队自行实现修复，不会直接合并外部 PR
 
----
+***
 
 **Made with ❤️ by waoowaoo team**
 
+<br />
+
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=saturndec/waoowaoo&type=date&legend=top-left)](https://www.star-history.com/#saturndec/waoowaoo&type=date&legend=top-left)
+[![Star History Chart](https://api.star-history.com/svg?repos=saturndec/waoowaoo\&type=date\&legend=top-left)](https://www.star-history.com/#saturndec/waoowaoo\&type=date\&legend=top-left)
+
+<br />
+
+<br />
+
+\#TODO \
+1、限制不能生成字幕\
+2、增加/完善场景等图片上传的附件逻辑，使得场景和演出角色对应（@功能）
+
+3、监狱牢房的柱子判断问题（9宫格帧图片识别问题）

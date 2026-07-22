@@ -72,17 +72,34 @@ describe('generator-api requires compat media template for openai-compatible med
   it('throws for image model without compatMediaTemplate', async () => {
     resolveModelSelectionMock.mockResolvedValueOnce({
       provider: 'openai-compatible:oa-1',
-      modelId: 'gpt-image-1',
-      modelKey: 'openai-compatible:oa-1::gpt-image-1',
+      modelId: 'custom-image-v1',
+      modelKey: 'openai-compatible:oa-1::custom-image-v1',
       mediaType: 'image',
       compatMediaTemplate: undefined,
     })
 
     await expect(
-      generateImage('user-1', 'openai-compatible:oa-1::gpt-image-1', 'draw cat'),
+      generateImage('user-1', 'openai-compatible:oa-1::custom-image-v1', 'draw cat'),
     ).rejects.toThrow('MODEL_COMPAT_MEDIA_TEMPLATE_REQUIRED')
 
     expect(generateImageViaOpenAICompatMock).not.toHaveBeenCalled()
+    expect(generateImageViaOpenAICompatTemplateMock).not.toHaveBeenCalled()
+  })
+
+  it('allows gpt-image-2 without compatMediaTemplate through the standard Images API', async () => {
+    resolveModelSelectionMock.mockResolvedValueOnce({
+      provider: 'openai-compatible:oa-1',
+      modelId: 'gpt-image-2',
+      modelKey: 'openai-compatible:oa-1::gpt-image-2',
+      mediaType: 'image',
+      compatMediaTemplate: undefined,
+    })
+
+    await expect(
+      generateImage('user-1', 'openai-compatible:oa-1::gpt-image-2', 'draw cat'),
+    ).resolves.toEqual({ success: true, imageUrl: 'image' })
+
+    expect(generateImageViaOpenAICompatMock).toHaveBeenCalledTimes(1)
     expect(generateImageViaOpenAICompatTemplateMock).not.toHaveBeenCalled()
   })
 

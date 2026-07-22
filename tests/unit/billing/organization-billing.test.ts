@@ -278,6 +278,30 @@ describe('Organization Billing Core Functions', () => {
       }))
     })
 
+    it('counts a task once by aggregating settled task usage plus pending freezes only', async () => {
+      mockPrisma.organizationUsage.aggregate.mockResolvedValue({
+        _sum: { planCreditAmount: 20, balanceAmount: 30 },
+      })
+      mockPrisma.organizationBalance.findUnique.mockResolvedValue({
+        id: 'org-bal-1', organizationId: 'org-1', balance: 1000, frozenAmount: 0, totalSpent: 0,
+      })
+      mockPrisma.organizationUsage.create.mockResolvedValue({ id: 'freeze-new' })
+
+      await freezeOrganizationBalance('org-1', 10, {
+        userId: 'user-1', taskId: 'task-new', idempotencyKey: 'task-new',
+        planCreditAmount: 5, memberQuota: 100, monthlyPlanCredit: 100, estimatedCost: 15,
+      })
+
+      expect(mockPrisma.organizationUsage.aggregate).toHaveBeenCalledTimes(2)
+      for (const [query] of mockPrisma.organizationUsage.aggregate.mock.calls) {
+        expect(query.where.OR).toEqual([
+          { type: 'task' },
+          { type: 'freeze', metadata: { path: '$.status', equals: 'pending' } },
+        ])
+        expect(query.where).not.toHaveProperty('type.in')
+      }
+    })
+
     it('should expand a pending organization freeze when overage is needed', async () => {
       const usage = {
         id: 'org-freeze-1',

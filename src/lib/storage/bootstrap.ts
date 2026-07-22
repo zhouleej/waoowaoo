@@ -1,7 +1,7 @@
 import { CreateBucketCommand, HeadBucketCommand, S3Client } from '@aws-sdk/client-s3'
 import { createStorageProvider } from '@/lib/storage/factory'
 import type { StorageFactoryOptions } from '@/lib/storage/types'
-import { requireEnv } from '@/lib/storage/utils'
+import { requireEnv, validateMinioBucket, validateMinioCredential, validateMinioEndpoint } from '@/lib/storage/utils'
 
 const DEFAULT_MINIO_REGION = 'us-east-1'
 
@@ -33,10 +33,10 @@ function isMissingBucketError(error: unknown): boolean {
 }
 
 export async function ensureMinioBucket(): Promise<Exclude<StorageBootstrapResult, 'skipped'>> {
-  const endpoint = requireEnv('MINIO_ENDPOINT')
-  const accessKeyId = requireEnv('MINIO_ACCESS_KEY')
-  const secretAccessKey = requireEnv('MINIO_SECRET_KEY')
-  const bucket = requireEnv('MINIO_BUCKET')
+  const endpoint = validateMinioEndpoint(requireEnv('MINIO_ENDPOINT'), 'MINIO_ENDPOINT')
+  const accessKeyId = validateMinioCredential(requireEnv('MINIO_ACCESS_KEY'), 'MINIO_ACCESS_KEY')
+  const secretAccessKey = validateMinioCredential(requireEnv('MINIO_SECRET_KEY'), 'MINIO_SECRET_KEY')
+  const bucket = validateMinioBucket(requireEnv('MINIO_BUCKET'))
   const region = (process.env.MINIO_REGION || DEFAULT_MINIO_REGION).trim() || DEFAULT_MINIO_REGION
   const forcePathStyle = process.env.MINIO_FORCE_PATH_STYLE !== 'false'
 

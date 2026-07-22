@@ -2,7 +2,7 @@ import path from 'node:path'
 import { createScopedLogger } from '@/lib/logging/core'
 import { resolveStorageKeyFromMediaValue } from '@/lib/media/service'
 
-type StorageHelpers = Pick<typeof import('@/lib/storage'), 'getSignedUrl' | 'toFetchableUrl'>
+type StorageHelpers = Pick<typeof import('@/lib/storage'), 'getSignedObjectUrl' | 'toFetchableUrl'>
 
 type InputIssueReason =
   | 'next_image_unwrapped'
@@ -88,7 +88,7 @@ let storageHelpersPromise: Promise<StorageHelpers> | null = null
 async function getStorageHelpers(): Promise<StorageHelpers> {
   if (!storageHelpersPromise) {
     storageHelpersPromise = import('@/lib/storage').then((mod) => ({
-      getSignedUrl: mod.getSignedUrl,
+      getSignedObjectUrl: mod.getSignedObjectUrl,
       toFetchableUrl: mod.toFetchableUrl,
     }))
   }
@@ -114,6 +114,51 @@ function isDataUrl(value: string): boolean {
 
 function isHttpUrl(value: string): boolean {
   return value.startsWith('http://') || value.startsWith('https://')
+}
+
+function isPrivateHostname(hostname: string): boolean {
+  const normalized = hostname.toLowerCase().replace(/^\[|\]$/g, '')
+  return normalized === 'localhost'
+    || normalized === '::1'
+    || normalized.endsWith('.local')
+    || normalized.endsWith('.internal')
+    || (!normalized.includes('.') && !normalized.includes(':'))
+    || /^127\./.test(normalized)
+    || /^10\./.test(normalized)
+    || /^192\.168\./.test(normalized)
+    || /^169\.254\./.test(normalized)
+    || /^172\.(1[6-9]|2\d|3[01])\./.test(normalized)
+}
+
+function decodeStorageKeyPath(pathname: string): string {
+  return decodeRepeatedly(pathname).replace(/^\/+/, '')
+}
+
+async function recoverStorageKeyFromHttpUrl(input: string): Promise<string | null> {
+  const parsed = new URL(input)
+  if (!isPrivateHostname(parsed.hostname)) {
+    return null
+  }
+  if (parsed.pathname.startsWith('/api/files/')) {
+    return decodeStorageKeyPath(parsed.pathname.slice('/api/files/'.length)) || null
+  }
+  if (parsed.pathname === '/api/storage/sign') {
+    return parsed.searchParams.get('key')?.trim() || null
+  }
+
+  const pathname = decodeStorageKeyPath(parsed.pathname)
+  if (isStorageKey(pathname)) {
+    return pathname
+  }
+
+  const bucket = process.env.MINIO_BUCKET?.trim()
+  if (bucket && pathname.startsWith(`${bucket}/`)) {
+    return pathname.slice(bucket.length + 1) || null
+  }
+  if (bucket && parsed.hostname.toLowerCase().startsWith(`${bucket.toLowerCase()}.`)) {
+    return pathname || null
+  }
+  return null
 }
 
 function isAbsoluteOrRootPath(value: string): boolean {
@@ -278,12 +323,23 @@ function guessContentType(input: string, contentTypeHeader: string | null, buffe
   return MIME_BY_EXT[ext] || DEFAULT_CONTENT_TYPE
 }
 
-async function signStorageKey(storageKey: string): Promise<string> {
-  const { getSignedUrl, toFetchableUrl } = await getStorageHelpers()
-  return toFetchableUrl(getSignedUrl(storageKey, SIGNED_URL_TTL_SECONDS))
+export type OutboundMediaUrlOptions = {
+  absoluteBaseUrl?: string
 }
 
-async function toFetchableAbsoluteUrl(value: string): Promise<string> {
+async function signStorageKey(storageKey: string, options: OutboundMediaUrlOptions = {}): Promise<string> {
+  const { getSignedObjectUrl, toFetchableUrl } = await getStorageHelpers()
+  const signedUrl = await getSignedObjectUrl(storageKey, SIGNED_URL_TTL_SECONDS)
+  if (options.absoluteBaseUrl && signedUrl.startsWith('/')) {
+    return `${options.absoluteBaseUrl.replace(/\/+$/, '')}${signedUrl}`
+  }
+  return toFetchableUrl(signedUrl)
+}
+
+async function toFetchableAbsoluteUrl(value: string, options: OutboundMediaUrlOptions = {}): Promise<string> {
+  if (options.absoluteBaseUrl && value.startsWith('/')) {
+    return `${options.absoluteBaseUrl.replace(/\/+$/, '')}${value}`
+  }
   const { toFetchableUrl } = await getStorageHelpers()
   return toFetchableUrl(value)
 }
@@ -308,7 +364,7 @@ function unwrapNextImageInternal(input: string): string {
   return current
 }
 
-async function normalizeMediaRouteUrl(input: string): Promise<string | null> {
+async function normalizeMediaRouteUrl(input: string, options: OutboundMediaUrlOptions = {}): Promise<string | null> {
   const parsed = toUrlMaybe(input)
   if (!parsed || !parsed.pathname.startsWith('/m/')) {
     return null
@@ -325,14 +381,17 @@ async function normalizeMediaRouteUrl(input: string): Promise<string | null> {
     })
   }
 
-  return await signStorageKey(storageKey)
+  return await signStorageKey(storageKey, options)
 }
 
 export function unwrapNextImageDisplayUrl(input: string): string {
   return unwrapNextImageInternal(input)
 }
 
-export async function normalizeToOriginalMediaUrl(input: string): Promise<string> {
+export async function normalizeToOriginalMediaUrl(
+  input: string,
+  options: OutboundMediaUrlOptions = {},
+): Promise<string> {
   const normalizedInput = normalizeInput(input)
   if (isDataUrl(normalizedInput)) {
     return normalizedInput
@@ -340,26 +399,34 @@ export async function normalizeToOriginalMediaUrl(input: string): Promise<string
 
   const unwrappedInput = unwrapNextImageInternal(normalizedInput)
   if (unwrappedInput !== normalizedInput) {
-    return await normalizeToOriginalMediaUrl(unwrappedInput)
+    return await normalizeToOriginalMediaUrl(unwrappedInput, options)
   }
 
   if (isStorageKey(unwrappedInput)) {
-    return await signStorageKey(unwrappedInput)
+    return await signStorageKey(unwrappedInput, options)
   }
 
-  const mediaRouteUrl = await normalizeMediaRouteUrl(unwrappedInput)
+  const mediaRouteUrl = await normalizeMediaRouteUrl(unwrappedInput, options)
   if (mediaRouteUrl) {
     return mediaRouteUrl
   }
 
   if (unwrappedInput.startsWith('/')) {
+    if (unwrappedInput.startsWith('/api/files/')) {
+      const storageKey = decodeRepeatedly(unwrappedInput.slice('/api/files/'.length)).replace(/^\/+/, '')
+      if (storageKey) return await signStorageKey(storageKey, options)
+    }
+    if (unwrappedInput.startsWith('/api/storage/sign')) {
+      const parsed = toUrlMaybe(unwrappedInput)
+      const storageKey = parsed?.searchParams.get('key')?.trim()
+      if (storageKey) return await signStorageKey(storageKey, options)
+    }
     if (unwrappedInput.startsWith('/api/')) {
-      const apiPath = unwrappedInput
-      return await toFetchableAbsoluteUrl(apiPath)
+      return await toFetchableAbsoluteUrl(unwrappedInput, options)
     }
     const rootStorageKey = unwrappedInput.slice(1)
     if (isStorageKey(rootStorageKey)) {
-      return await signStorageKey(rootStorageKey)
+      return await signStorageKey(rootStorageKey, options)
     }
     throw new OutboundImageNormalizeError({
       code: 'OUTBOUND_IMAGE_UNSUPPORTED_INPUT',
@@ -370,12 +437,22 @@ export async function normalizeToOriginalMediaUrl(input: string): Promise<string
   }
 
   if (isHttpUrl(unwrappedInput)) {
-    return unwrappedInput
+    const parsed = new URL(unwrappedInput)
+    if (!isPrivateHostname(parsed.hostname)) return unwrappedInput
+
+    const storageKey = await recoverStorageKeyFromHttpUrl(unwrappedInput)
+    if (storageKey) return await signStorageKey(storageKey, options)
+    throw new OutboundImageNormalizeError({
+      code: 'OUTBOUND_IMAGE_UNSUPPORTED_INPUT',
+      stage: 'normalize_original',
+      input: unwrappedInput,
+      message: 'private or internal storage URL cannot be converted to a public signed URL',
+    })
   }
 
   const storageKey = await resolveStorageKeyFromMediaValue(unwrappedInput)
   if (storageKey) {
-    return await signStorageKey(storageKey)
+    return await signStorageKey(storageKey, options)
   }
 
   throw new OutboundImageNormalizeError({

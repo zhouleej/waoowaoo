@@ -44,6 +44,15 @@ const concurrencyGateMock = vi.hoisted(() => ({
   }) => await input.run()),
 }))
 
+const modelContractMock = vi.hoisted(() => ({
+  parseModelKeyStrict: vi.fn(() => ({ provider: 'fal' })),
+}))
+
+const outboundImageMock = vi.hoisted(() => ({
+  normalizeToBase64ForGeneration: vi.fn(async (input: string) => input),
+  normalizeToOriginalMediaUrl: vi.fn(async (input: string) => input.startsWith('http') ? input : `https://public.example/${input}`),
+}))
+
 const prismaMock = vi.hoisted(() => ({
   novelPromotionPanel: {
     findUnique: vi.fn(),
@@ -84,17 +93,14 @@ vi.mock('@/lib/workers/shared', () => ({
 }))
 vi.mock('@/lib/workers/utils', () => utilsMock)
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock }))
-vi.mock('@/lib/media/outbound-image', () => ({
-  normalizeToBase64ForGeneration: vi.fn(async (input: string) => input),
-}))
+vi.mock('@/lib/media/outbound-image', () => outboundImageMock)
 vi.mock('@/lib/model-capabilities/lookup', () => ({
   resolveBuiltinCapabilitiesByModelKey: vi.fn(() => ({ video: { firstlastframe: true } })),
 }))
-vi.mock('@/lib/model-config-contract', () => ({
-  parseModelKeyStrict: vi.fn(() => ({ provider: 'fal' })),
-}))
+vi.mock('@/lib/model-config-contract', () => modelContractMock)
 vi.mock('@/lib/api-config', () => ({
   getProviderConfig: vi.fn(async () => ({ apiKey: 'api-key' })),
+  getProviderKey: vi.fn((provider?: string) => provider || ''),
 }))
 vi.mock('@/lib/config-service', () => configServiceMock)
 vi.mock('@/lib/workers/user-concurrency-gate', () => concurrencyGateMock)
@@ -140,6 +146,7 @@ describe('worker video processor behavior', () => {
 
     prismaMock.novelPromotionPanel.findUnique.mockResolvedValue(buildPanel())
     prismaMock.novelPromotionPanel.findFirst.mockResolvedValue(buildPanel())
+    modelContractMock.parseModelKeyStrict.mockReturnValue({ provider: 'fal' })
     prismaMock.novelPromotionVoiceLine.findUnique.mockResolvedValue({
       id: 'line-1',
       audioUrl: 'cos/line-1.mp3',
@@ -193,6 +200,37 @@ describe('worker video processor behavior', () => {
       {
         Authorization: 'Bearer oa-key',
       },
+    )
+  })
+
+  it('VIDEO_PANEL: MAAS 首尾帧复用 outbound media 归一化并传入公网 URL', async () => {
+    const processor = workerState.processor
+    expect(processor).toBeTruthy()
+    modelContractMock.parseModelKeyStrict.mockReturnValue({ provider: 'maas-seedance' })
+    prismaMock.novelPromotionPanel.findUnique.mockResolvedValueOnce(buildPanel({ imageUrl: '/api/files/images/first.png' }))
+    prismaMock.novelPromotionPanel.findFirst.mockResolvedValueOnce(buildPanel({ imageUrl: 'images/last.png' }))
+
+    await processor!(buildJob({
+      type: TASK_TYPE.VIDEO_PANEL,
+      payload: {
+        videoModel: 'maas-seedance::doubao-seedance-2.0',
+        firstLastFrame: {
+          lastFrameStoryboardId: 'storyboard-2',
+          lastFramePanelIndex: 0,
+          flModel: 'maas-seedance::doubao-seedance-2.0',
+        },
+      },
+    }))
+
+    expect(outboundImageMock.normalizeToOriginalMediaUrl).toHaveBeenCalledTimes(2)
+    expect(utilsMock.resolveVideoSourceFromGeneration).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        imageUrl: 'https://signed.example//api/files/images/first.png',
+        options: expect.objectContaining({
+          lastFrameImageUrl: 'https://signed.example/images/last.png',
+        }),
+      }),
     )
   })
 

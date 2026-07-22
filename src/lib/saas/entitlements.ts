@@ -39,6 +39,20 @@ function booleanFromJson(value: unknown, fallback: boolean) {
   return fallback
 }
 
+function resolveOveragePolicy(entitlements: Array<{ key: string; value: unknown }>) {
+  const configured = entitlements.find((item) => item.key === 'overagePolicy')?.value
+  const value = typeof configured === 'string'
+    ? configured
+    : configured && typeof configured === 'object' && !Array.isArray(configured)
+      ? (configured as Record<string, unknown>).value
+      : undefined
+  if (value === 'balance' || value === 'block') return value
+
+  // 迁移期兼容旧字段；缺失或非法值一律安全关闭。
+  const legacy = entitlements.find((item) => item.key === 'allowOverage')?.value
+  return booleanFromJson(legacy, false) ? 'balance' : 'block'
+}
+
 function entitlementError(code: EntitlementErrorCode, message: string, details?: Record<string, unknown>) {
   return Object.assign(new Error(message), {
     code,
@@ -129,7 +143,25 @@ export async function assertOrganizationCanConsume(
       subscriptionStatus: subscription?.status || null,
     })
   }
-  if (subscription.currentPeriodEnd && subscription.currentPeriodEnd.getTime() < Date.now()) {
+  if (!subscription.currentPeriodEnd) {
+    throw entitlementError('FORBIDDEN', '企业订阅缺少有效账期', {
+      organizationId: organization.id,
+      subscriptionStatus: subscription.status,
+    })
+  }
+  if (subscription.currentPeriodEnd.getTime() <= Date.now()) {
+    await prisma.$transaction(async (tx) => {
+      const expired = await tx.organizationSubscription.updateMany({
+        where: { id: organization.currentSubscriptionId!, status: { in: ['trialing', 'active'] }, currentPeriodEnd: { lte: new Date() } },
+        data: { status: 'expired' },
+      })
+      if (expired.count > 0) {
+        await tx.organization.updateMany({
+          where: { id: organization.id, currentSubscriptionId: organization.currentSubscriptionId },
+          data: { currentSubscriptionId: null, currentPlanId: null, businessStatus: 'churned' },
+        })
+      }
+    })
     throw entitlementError('FORBIDDEN', '企业订阅已过期', {
       organizationId: organization.id,
       subscriptionStatus: subscription.status,
@@ -149,7 +181,6 @@ export async function assertOrganizationCanConsume(
     })
   }
   const memberQuota = Number(membership.quota || 0)
-  const memberUsed = Number(membership.quotaUsed || 0)
   const monthStart = new Date()
   monthStart.setDate(1)
   monthStart.setHours(0, 0, 0, 0)
@@ -158,34 +189,44 @@ export async function assertOrganizationCanConsume(
       where: {
         organizationId: organization.id,
         userId,
-        type: 'freeze',
         createdAt: { gte: monthStart },
+        OR: [
+          { type: 'task' },
+          { type: 'freeze', metadata: { path: '$.status', equals: 'pending' } },
+        ],
       },
       _sum: { planCreditAmount: true, balanceAmount: true },
     })
     : null
-  const memberReserved = reservedByMember
+  const memberUsed = reservedByMember
     ? Number(reservedByMember._sum.planCreditAmount || 0) + Number(reservedByMember._sum.balanceAmount || 0)
     : 0
-  if (memberQuota > 0 && memberUsed + memberReserved + estimatedCost > memberQuota) {
+  if (memberQuota > 0 && memberUsed + estimatedCost > memberQuota) {
     throw entitlementError('QUOTA_EXCEEDED', '成员配额不足', {
       organizationId: organization.id,
       required: estimatedCost,
-      available: Math.max(0, memberQuota - memberUsed - memberReserved),
+      available: Math.max(0, memberQuota - memberUsed),
     })
   }
   const planCredit = numberFromJson(plan?.entitlements.find((item) => item.key === 'monthlyCredits')?.value)
   const used = await prisma.organizationUsage.aggregate({
-    where: { organizationId: organization.id, type: { in: ['task', 'freeze'] }, createdAt: { gte: monthStart } },
+    where: {
+      organizationId: organization.id,
+      createdAt: { gte: monthStart },
+      OR: [
+        { type: 'task' },
+        { type: 'freeze', metadata: { path: '$.status', equals: 'pending' } },
+      ],
+    },
     _sum: { planCreditAmount: true },
   })
   const planCreditUsed = Number(used._sum.planCreditAmount || 0)
   const planRemaining = Math.max(0, planCredit - planCreditUsed)
   const balanceNeed = Math.max(0, estimatedCost - planRemaining)
   const balance = await prisma.organizationBalance.findUnique({ where: { organizationId: organization.id } })
-  const available = balance ? Number(balance.balance) - Number(balance.frozenAmount) : 0
-  const allowOverage = booleanFromJson(plan?.entitlements.find((item) => item.key === 'allowOverage')?.value, true)
-  if (balanceNeed > 0 && !allowOverage) throw entitlementError('QUOTA_EXCEEDED', '套餐权益不足且不允许超额', {
+  const available = balance ? Number(balance.balance) : 0
+  const overagePolicy = resolveOveragePolicy(plan.entitlements)
+  if (balanceNeed > 0 && overagePolicy !== 'balance') throw entitlementError('QUOTA_EXCEEDED', '套餐权益不足且不允许超额', {
     organizationId: organization.id,
     required: estimatedCost,
     available: planRemaining,
@@ -195,5 +236,13 @@ export async function assertOrganizationCanConsume(
     required: balanceNeed,
     available,
   })
-  return { organizationId: organization.id, planCreditApplied: Math.min(estimatedCost, planRemaining), balanceChargeApplied: balanceNeed }
+  const result = {
+    organizationId: organization.id,
+    planCreditApplied: Math.min(estimatedCost, planRemaining),
+    balanceChargeApplied: balanceNeed,
+  }
+  return Object.defineProperties(result, {
+    memberQuota: { value: memberQuota, enumerable: false },
+    monthlyPlanCredit: { value: planCredit, enumerable: false },
+  }) as typeof result & { memberQuota: number; monthlyPlanCredit: number }
 }

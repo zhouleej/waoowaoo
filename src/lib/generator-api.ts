@@ -40,6 +40,25 @@ function aspectRatioToOpenAISize(aspectRatio: string | undefined): string | unde
     return mapping[ratio] || undefined
 }
 
+function isStandardOpenAIGptImageModel(modelId: string): boolean {
+    const normalized = modelId.trim().toLowerCase()
+    const unqualifiedModelId = normalized.slice(normalized.lastIndexOf('/') + 1)
+    return /^gpt-image-\d+(?:\.\d+)?(?:-(?:mini|preview|latest|\d{4}-\d{2}-\d{2}))*$/.test(unqualifiedModelId)
+}
+
+function normalizeOpenAICompatImageOptions(options: Record<string, unknown>): Record<string, unknown> {
+    const normalized = { ...options }
+    delete normalized.keepOriginalAspectRatio
+    if (typeof normalized.aspectRatio === 'string') {
+        const mappedSize = aspectRatioToOpenAISize(normalized.aspectRatio)
+        if (mappedSize && !normalized.size) {
+            normalized.size = mappedSize
+        }
+        delete normalized.aspectRatio
+    }
+    return normalized
+}
+
 /**
  * 生成图片（简化版）
  * 
@@ -56,6 +75,8 @@ export async function generateImage(
         referenceImages?: string[]
         aspectRatio?: string
         resolution?: string
+        quality?: 'standard' | 'hd' | 'low' | 'medium' | 'high' | 'auto'
+        responseFormat?: 'url' | 'b64_json'
         outputFormat?: string
         keepOriginalAspectRatio?: boolean  // 🔥 编辑时保持原图比例
         size?: string  // 🔥 直接指定像素尺寸如 "5016x3344"（优先于 aspectRatio）
@@ -104,11 +125,13 @@ export async function generateImage(
     // 调用生成（提取 referenceImages 单独传递，其余选项合并进 options）
     const { referenceImages, ...generatorOptions } = options || {}
     if (gatewayRoute === 'openai-compat') {
+        const openaiCompatOptions = normalizeOpenAICompatImageOptions(generatorOptions)
         const compatTemplate = selection.compatMediaTemplate
-        if (providerKey === 'openai-compatible' && !compatTemplate) {
+        const useStandardImageApi = isStandardOpenAIGptImageModel(selection.modelId)
+        if (providerKey === 'openai-compatible' && !compatTemplate && !useStandardImageApi) {
             throw new Error(`MODEL_COMPAT_MEDIA_TEMPLATE_REQUIRED: ${selection.modelKey}`)
         }
-        if (compatTemplate) {
+        if (compatTemplate && !useStandardImageApi) {
             return await generateImageViaOpenAICompatTemplate({
                 userId,
                 providerId: selection.provider,
@@ -117,7 +140,7 @@ export async function generateImage(
                 prompt,
                 referenceImages,
                 options: {
-                    ...generatorOptions,
+                    ...openaiCompatOptions,
                     provider: selection.provider,
                     modelId: selection.modelId,
                     modelKey: selection.modelKey,
@@ -125,17 +148,6 @@ export async function generateImage(
                 profile: 'openai-compatible',
                 template: compatTemplate,
             })
-        }
-
-        // OpenAI 兼容模式：将 aspectRatio 转换为 size
-        let openaiCompatOptions = { ...generatorOptions }
-        if (openaiCompatOptions.aspectRatio) {
-            const mappedSize = aspectRatioToOpenAISize(openaiCompatOptions.aspectRatio)
-            if (mappedSize && !openaiCompatOptions.size) {
-                openaiCompatOptions = { ...openaiCompatOptions, size: mappedSize }
-            }
-            // 移除不支持的 aspectRatio
-            delete openaiCompatOptions.aspectRatio
         }
 
         return await generateImageViaOpenAICompat({

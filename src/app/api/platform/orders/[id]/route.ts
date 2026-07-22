@@ -6,7 +6,7 @@ import { apiHandler } from '@/lib/api-errors'
 import { badRequest, notFound } from '@/lib/api-auth'
 import { readString } from '@/lib/saas/validation'
 import { serializeOrder } from '@/lib/saas/serializers'
-import { applyPaidBillingOrder } from '@/lib/saas/billing-state'
+import { applyPaidBillingOrder, refundPaidBillingOrder } from '@/lib/saas/billing-state'
 import { assertBillingOrderTransition, parseBillingOrderStatus } from '@/lib/saas/billing-status'
 
 export const GET = apiHandler<{ id: string }>(async (_req, { params }) => {
@@ -36,7 +36,9 @@ export const PATCH = apiHandler<{ id: string }>(async (req, { params }) => {
     const metadata = body.metadata !== undefined && typeof body.metadata === 'object' ? body.metadata : undefined
     const order = status === 'paid'
       ? await applyPaidBillingOrder(id, { externalOrderId, metadata })
-      : await prisma.billingOrder.update({
+      : status === 'refunded'
+        ? await refundPaidBillingOrder(id)
+        : await prisma.billingOrder.update({
         where: { id },
         data: {
           ...(status ? { status } : {}),

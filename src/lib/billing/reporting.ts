@@ -71,9 +71,14 @@ export function buildBillingMeta(params: {
     if (sel.generationMode) meta.generationMode = sel.generationMode
   }
 
-  // 文本计费的 token 信息
-  if (params.metadata?.inputTokens) meta.inputTokens = params.metadata.inputTokens
-  if (params.metadata?.outputTokens) meta.outputTokens = params.metadata.outputTokens
+  // 文本计费的 token 信息。实际结算字段优先，兼容同步和旧版字段。
+  const inputTokens = params.metadata?.actualInputTokens ?? params.metadata?.inputTokens
+  const outputTokens = params.metadata?.actualOutputTokens ?? params.metadata?.outputTokens
+  if (inputTokens !== undefined) meta.inputTokens = inputTokens
+  if (outputTokens !== undefined) meta.outputTokens = outputTokens
+  if (params.metadata?.usageByModel && typeof params.metadata.usageByModel === 'object') {
+    meta.usageByModel = params.metadata.usageByModel
+  }
 
   // 实际使用的模型列表（复合模型场景）
   if (Array.isArray(params.metadata?.actualModels) && (params.metadata.actualModels as unknown[]).length > 0) {

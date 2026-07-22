@@ -41,6 +41,20 @@ export interface CustomModelPricing {
     video?: MediaCustomPricing
 }
 
+export interface ModelHealthResult {
+    status: 'unknown' | 'healthy' | 'degraded' | 'unhealthy'
+    checkLevel: 'existence' | 'inference'
+    checkedAt: string
+    latencyMs?: number
+    errorCode?: string
+    message?: string
+    providerId: string
+    modelKey: string
+    modelId: string
+    modelType: UnifiedModelType
+    protocol?: 'responses' | 'chat-completions'
+}
+
 // 模型接口
 export interface CustomModel {
     modelId: string       // 唯一标识符（如 anthropic/claude-sonnet-4.5）

@@ -15,18 +15,20 @@ type ProjectAuthLightContext = {
   session: AuthSession
   project: {
     id: string
-    userId: string
+    userId: string | null
     organizationId?: string | null
     name: string
     [key: string]: unknown
   }
 }
 
+const USER_SCOPED_VIRTUAL_PROJECT_IDS = new Set(['home-ai-write'])
+
 export async function requireProjectScopedResourceAccess(
   session: AuthSession,
   resource: ProjectScopedResource,
 ): Promise<ProjectAuthLightContext | null | NextResponse> {
-  if (!resource.projectId) {
+  if (!resource.projectId || USER_SCOPED_VIRTUAL_PROJECT_IDS.has(resource.projectId)) {
     if (resource.userId !== session.user.id) {
       throw new ApiError('NOT_FOUND')
     }

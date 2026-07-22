@@ -14,7 +14,9 @@ import {
   toSignedUrlIfCos,
   uploadVideoSourceToCos,
 } from './utils'
-import { normalizeToBase64ForGeneration } from '@/lib/media/outbound-image'
+import { normalizeToBase64ForGeneration, normalizeToOriginalMediaUrl } from '@/lib/media/outbound-image'
+import { getPublicBaseUrl } from '@/lib/env'
+import { getProviderKey } from '@/lib/api-config'
 import { resolveBuiltinCapabilitiesByModelKey } from '@/lib/model-capabilities/lookup'
 import { parseModelKeyStrict } from '@/lib/model-config-contract'
 import { getProviderConfig } from '@/lib/api-config'
@@ -101,13 +103,10 @@ async function generateVideoForPanel(
     throw new Error(`Panel ${panel.id} has no video prompt`)
   }
 
-  const sourceImageUrl = toSignedUrlIfCos(panel.imageUrl, 3600)
+  const sourceImageUrl = toSignedUrlIfCos(panel.imageUrl, 7200)
   if (!sourceImageUrl) {
     throw new Error(`Panel ${panel.id} image url invalid`)
   }
-  const sourceImageBase64 = await normalizeToBase64ForGeneration(sourceImageUrl)
-
-  let lastFrameImageBase64: string | undefined
   const generationMode: VideoGenerationMode = firstLastFramePayload ? 'firstlastframe' : 'normal'
   const requestedGenerateAudio = typeof generationOptions.generateAudio === 'boolean'
     ? generationOptions.generateAudio
@@ -123,20 +122,32 @@ async function generateVideoForPanel(
     if (firstLastFrameCapabilities?.video?.firstlastframe !== true) {
       throw new Error(`VIDEO_FIRSTLASTFRAME_MODEL_UNSUPPORTED: ${model}`)
     }
-    if (
-      typeof firstLastFramePayload.lastFrameStoryboardId === 'string' &&
-      firstLastFramePayload.lastFrameStoryboardId &&
-      firstLastFramePayload.lastFramePanelIndex !== undefined
-    ) {
-      const lastPanel = await fetchPanelByStoryboardIndex(
-        firstLastFramePayload.lastFrameStoryboardId,
-        Number(firstLastFramePayload.lastFramePanelIndex),
-      )
-      if (lastPanel?.imageUrl) {
-        const lastFrameUrl = toSignedUrlIfCos(lastPanel.imageUrl, 3600)
-        if (lastFrameUrl) {
-          lastFrameImageBase64 = await normalizeToBase64ForGeneration(lastFrameUrl)
-        }
+  }
+
+  const parsedVideoModel = parseModelKeyStrict(model)
+  const usePublicMediaUrl = getProviderKey(parsedVideoModel?.provider).toLowerCase() === 'maas-seedance'
+  const publicMediaOptions = { absoluteBaseUrl: getPublicBaseUrl() }
+  const sourceImageForGeneration = usePublicMediaUrl
+    ? await normalizeToOriginalMediaUrl(sourceImageUrl, publicMediaOptions)
+    : await normalizeToBase64ForGeneration(sourceImageUrl)
+
+  let lastFrameImageForGeneration: string | undefined
+  if (
+    firstLastFramePayload &&
+    typeof firstLastFramePayload.lastFrameStoryboardId === 'string' &&
+    firstLastFramePayload.lastFrameStoryboardId &&
+    firstLastFramePayload.lastFramePanelIndex !== undefined
+  ) {
+    const lastPanel = await fetchPanelByStoryboardIndex(
+      firstLastFramePayload.lastFrameStoryboardId,
+      Number(firstLastFramePayload.lastFramePanelIndex),
+    )
+    if (lastPanel?.imageUrl) {
+      const lastFrameUrl = toSignedUrlIfCos(lastPanel.imageUrl, 3600)
+      if (lastFrameUrl) {
+        lastFrameImageForGeneration = usePublicMediaUrl
+          ? await normalizeToOriginalMediaUrl(lastFrameUrl, publicMediaOptions)
+          : await normalizeToBase64ForGeneration(lastFrameUrl)
       }
     }
   }
@@ -144,14 +155,14 @@ async function generateVideoForPanel(
   const generatedVideo = await resolveVideoSourceFromGeneration(job, {
     userId: job.data.userId,
     modelId: model,
-    imageUrl: sourceImageBase64,
+    imageUrl: sourceImageForGeneration,
     options: {
       prompt,
       ...(projectVideoRatio ? { aspectRatio: projectVideoRatio } : {}),
       ...generationOptions,
       generationMode,
       ...(typeof requestedGenerateAudio === 'boolean' ? { generateAudio: requestedGenerateAudio } : {}),
-      ...(lastFrameImageBase64 ? { lastFrameImageUrl: lastFrameImageBase64 } : {}),
+      ...(lastFrameImageForGeneration ? { lastFrameImageUrl: lastFrameImageForGeneration } : {}),
     },
   })
 

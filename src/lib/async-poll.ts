@@ -48,7 +48,7 @@ function getErrorMessage(error: unknown): string {
  * 解析 externalId 获取 provider、type 和请求信息
  */
 export function parseExternalId(externalId: string): {
-    provider: 'FAL' | 'ARK' | 'GEMINI' | 'GOOGLE' | 'MINIMAX' | 'VIDU' | 'OPENAI' | 'OCOMPAT' | 'BAILIAN' | 'SILICONFLOW' | 'UNKNOWN'
+    provider: 'FAL' | 'ARK' | 'GEMINI' | 'GOOGLE' | 'MINIMAX' | 'VIDU' | 'OPENAI' | 'OCOMPAT' | 'BAILIAN' | 'SILICONFLOW' | 'MAAS' | 'UNKNOWN'
     type: 'VIDEO' | 'IMAGE' | 'BATCH' | 'UNKNOWN'
     endpoint?: string
     requestId: string
@@ -210,6 +210,22 @@ export function parseExternalId(externalId: string): {
         }
     }
 
+    if (externalId.startsWith('MAAS:')) {
+        const parts = externalId.split(':')
+        const type = parts[1]
+        const providerToken = parts[2]
+        const requestId = parts.slice(3).join(':')
+        if (type !== 'VIDEO' || !providerToken || !requestId) {
+            throw new Error(`无效 MAAS externalId: "${externalId}"，应为 MAAS:VIDEO:providerToken:taskId`)
+        }
+        return {
+            provider: 'MAAS',
+            type: 'VIDEO',
+            providerToken,
+            requestId,
+        }
+    }
+
     throw new Error(
         `无法识别的 externalId 格式: "${externalId}". ` +
         `支持的格式: FAL:TYPE:endpoint:requestId, ARK:TYPE:requestId, GEMINI:BATCH:batchName, GOOGLE:VIDEO:operationName, MINIMAX:TYPE:taskId, VIDU:TYPE:taskId, OPENAI:VIDEO:providerToken:videoId, OCOMPAT:TYPE:providerToken:modelKeyToken:taskId, BAILIAN:TYPE:requestId, SILICONFLOW:TYPE:requestId`
@@ -252,13 +268,16 @@ export async function pollAsyncTask(
             return await pollBailianTask(parsed.requestId, userId)
         case 'SILICONFLOW':
             return await pollSiliconFlowTask(parsed.requestId)
+        case 'MAAS':
+            return await pollMaasSeedanceTask(parsed.requestId, userId, parsed.providerToken)
         default:
             // 🔥 移除 fallback：未知 provider 直接抛出错误
             throw new Error(`未知的 Provider: ${parsed.provider}`)
     }
 }
 
-function decodeProviderId(token: string): string {
+function decodeProviderId(token: string | undefined): string {
+    if (!token) throw new Error('PROVIDER_TOKEN_MISSING')
     const value = token.trim()
     if (!value) {
         throw new Error('OPENAI_PROVIDER_TOKEN_INVALID')
@@ -285,6 +304,13 @@ function decodeProviderId(token: string): string {
     }
 }
 
+function decodePlainProviderId(token: string | undefined): string {
+    if (!token) throw new Error('PROVIDER_TOKEN_MISSING')
+    const decoded = decodeURIComponent(token).trim()
+    if (!decoded) throw new Error('PROVIDER_TOKEN_INVALID')
+    return decoded
+}
+
 function decodeModelKey(token: string): string {
     try {
         return Buffer.from(token, 'base64url').toString('utf8')
@@ -306,6 +332,57 @@ function resolveOCompatModelKey(providerId: string, token: string): string {
         throw new Error('OCOMPAT_MODEL_KEY_TOKEN_INVALID')
     }
     return composed
+}
+
+async function pollMaasSeedanceTask(
+    taskId: string,
+    userId: string,
+    providerToken?: string,
+): Promise<PollResult> {
+    const providerId = decodePlainProviderId(providerToken)
+    const config = await getProviderConfig(userId, providerId)
+    if (!config.baseUrl) throw new Error(`PROVIDER_BASE_URL_MISSING: ${providerId}`)
+    const baseUrl = config.baseUrl.replace(/\/+$/, '')
+    const response = await fetch(`${baseUrl}/v1/videos/generations/${encodeURIComponent(taskId)}`, {
+        method: 'GET',
+        headers: {
+            Authorization: `Bearer ${config.apiKey}`,
+        },
+    })
+    const payload = await response.json().catch(() => ({})) as Record<string, unknown>
+    if (!response.ok) {
+        return {
+            status: 'failed',
+            error: `MAAS Seedance status request failed: ${response.status}`,
+        }
+    }
+
+    const status = typeof payload.status === 'string' ? payload.status.trim().toLowerCase() : ''
+    if (status === 'succeeded' || status === 'completed') {
+        const outputUrl = typeof payload.video_url === 'string' && payload.video_url.trim()
+            ? payload.video_url.trim()
+            : `/v1/videos/generations/${encodeURIComponent(taskId)}/content`
+        const resultUrl = outputUrl.startsWith('http://') || outputUrl.startsWith('https://')
+            ? outputUrl
+            : `${baseUrl}${outputUrl.startsWith('/') ? outputUrl : `/${outputUrl}`}`
+        return {
+            status: 'completed',
+            videoUrl: resultUrl,
+            resultUrl,
+            downloadHeaders: {
+                Authorization: `Bearer ${config.apiKey}`,
+            },
+        }
+    }
+    if (status === 'failed' || status === 'cancelled' || status === 'canceled') {
+        return {
+            status: 'failed',
+            error: typeof payload.error === 'string' && payload.error.trim()
+                ? payload.error.trim()
+                : `MAAS Seedance task failed: ${taskId}`,
+        }
+    }
+    return { status: 'pending' }
 }
 
 async function pollOCompatTask(

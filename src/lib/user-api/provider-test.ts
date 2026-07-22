@@ -20,6 +20,7 @@ export interface TestProviderResult {
 type PresetProviderType = 'ark' | 'google' | 'openrouter' | 'minimax' | 'fal' | 'vidu'
   | 'bailian'
   | 'siliconflow'
+  | 'maas-seedance'
 type CompatibleProviderType = 'openai-compatible' | 'gemini-compatible'
 
 type TestProviderPayload = {
@@ -828,6 +829,45 @@ async function testBailianProvider(apiKey: string): Promise<TestProviderResult> 
   }
 }
 
+async function testMaasSeedanceProvider(baseUrl: string, apiKey: string): Promise<TestProviderResult> {
+  const steps: TestStep[] = []
+  try {
+    const response = await fetch(`${sanitizeBaseUrl(baseUrl)}/health`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: AbortSignal.timeout(15_000),
+    })
+    const text = await response.text().catch(() => '')
+    if (!response.ok) {
+      steps.push({
+        name: 'models',
+        status: response.status === 401 || response.status === 403 ? 'fail' : 'fail',
+        message: response.status === 401 || response.status === 403
+          ? `Authentication failed (${response.status})`
+          : `Provider error (${response.status})`,
+        detail: text.slice(0, 500),
+      })
+      return { success: false, steps }
+    }
+    steps.push({
+      name: 'models',
+      status: 'pass',
+      message: 'Maas Seedance adapter is reachable',
+    })
+    steps.push({
+      name: 'credits',
+      status: 'skip',
+      message: 'Not supported by Maas Seedance adapter',
+    })
+    return { success: true, steps }
+  } catch (error) {
+    return {
+      success: false,
+      steps: [{ name: 'models', status: 'fail', message: toNetworkErrorMessage(error) }],
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -842,8 +882,8 @@ export async function testProviderConnection(payload: TestProviderPayload): Prom
     }
   }
 
-  // Compatible providers require baseUrl
-  if ((apiType === 'openai-compatible' || apiType === 'gemini-compatible') && !baseUrl) {
+  // Compatible providers and Maas Seedance require baseUrl
+  if ((apiType === 'openai-compatible' || apiType === 'gemini-compatible' || apiType === 'maas-seedance') && !baseUrl) {
     return {
       success: false,
       steps: [{ name: 'models', status: 'fail', message: 'Missing baseUrl' }],
@@ -871,6 +911,8 @@ export async function testProviderConnection(payload: TestProviderPayload): Prom
       return testBailianProvider(apiKey)
     case 'siliconflow':
       return testSiliconFlowProvider(apiKey)
+    case 'maas-seedance':
+      return testMaasSeedanceProvider(baseUrl!, apiKey)
     default:
       return {
         success: false,
