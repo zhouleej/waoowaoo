@@ -9,19 +9,16 @@ const env = {
   MOBILE_CLOUD_MAAS_ACCESS_KEY: 'ak-demo',
   MOBILE_CLOUD_MAAS_SECRET_KEY: 'sk-demo',
   MOBILE_CLOUD_MAAS_BASE_URL: 'https://ecloud.example.test',
-  MOBILE_CLOUD_MAAS_POOL_ID: 'CIDC-CORE-00',
 }
 
 describe('Mobile Cloud asset API client', () => {
-  it('signs requests, sends the documented pool header, and maps group pages', async () => {
+  it('signs requests and maps the documented group page body', async () => {
     const fetchImpl = vi.fn(async () => response({
       requestId: 'req-1',
       state: 'OK',
       body: {
-        pageNo: 1,
-        pageSize: 50,
-        totalSize: 1,
-        dataRows: [{ groupId: 'g-1', groupType: 'AIGC', groupName: 'Virtual', description: 'demo' }],
+        total: 1,
+        data: [{ groupId: 'g-1', groupType: 'AIGC', groupName: 'Virtual', description: 'demo' }],
       },
     }))
     const client = createMobileCloudMaasAssetClient({
@@ -39,7 +36,7 @@ describe('Mobile Cloud asset API client', () => {
     expect(url).toContain('AccessKey=ak-demo')
     expect(url).toContain('SignatureNonce=nonce-demo')
     expect(init.method).toBe('POST')
-    expect((init.headers as Record<string, string>)['pool-id']).toBe('CIDC-CORE-00')
+    expect((init.headers as Record<string, string>)['pool-id']).toBeUndefined()
     expect(JSON.parse(String(init.body))).toEqual({ pageNo: 1, pageSize: 50, groupType: 'AIGC' })
   })
 
@@ -62,5 +59,14 @@ describe('Mobile Cloud asset API client', () => {
       fetchImpl: vi.fn(async () => response({ state: 'FAILED', errorCode: 'BAD_REQUEST', errorMessage: 'bad input' })),
     })
     await expect(failedClient.listAssets()).rejects.toMatchObject({ kind: 'upstream', upstreamCode: 'BAD_REQUEST' })
+  })
+
+  it('maps the documented string bodies for asset creation and real-person group lookup', async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(response({ state: 'OK', body: 'asset-1' }))
+      .mockResolvedValueOnce(response({ state: 'OK', body: 'group-real-1' }))
+    const client = createMobileCloudMaasAssetClient({ env, fetchImpl, nonce: () => 'nonce-demo' })
+    await expect(client.createAsset({ groupId: 'group-1', assetName: 'face', assetUrl: 'https://cdn.example/face.png', assetType: 'Image' })).resolves.toEqual({ assetId: 'asset-1' })
+    await expect(client.findGroupByBytedToken('token-1')).resolves.toEqual({ groupId: 'group-real-1' })
   })
 })

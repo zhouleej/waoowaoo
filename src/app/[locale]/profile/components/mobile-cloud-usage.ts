@@ -1,5 +1,5 @@
 import type { MobileCloudUsageTrendPoint } from '@/lib/mobile-cloud-maas/types'
-import { getCalendarDatePreset } from '@/lib/mobile-cloud-maas/usage'
+import { getCalendarDatePreset } from '@/lib/mobile-cloud-maas/usage-service'
 
 export function getUsageDatePreset(days: number, now = new Date()): { beginDate: string; endDate: string } {
   return getCalendarDatePreset(days, now)

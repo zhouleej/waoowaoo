@@ -17,6 +17,7 @@ import type {
   MobileCloudPage,
   MobileCloudRealPersonSession,
 } from './asset-types'
+import { MOBILE_CLOUD_DEDUCTION_MODEL } from './asset-types'
 
 export type MobileCloudMaasOpenApiErrorKind = 'config' | 'auth' | 'network' | 'upstream' | 'invalid-response'
 
@@ -73,8 +74,10 @@ function number(value: unknown, fallback = 0): number {
 
 function page<T>(body: unknown, mapper: (value: Record<string, unknown>) => T): MobileCloudPage<T> {
   const record = asRecord(body)
-  const rows = Array.isArray(record.dataRows)
-    ? record.dataRows
+  const rows = Array.isArray(record.data)
+    ? record.data
+    : Array.isArray(record.dataRows)
+      ? record.dataRows
     : Array.isArray(record.items)
       ? record.items
       : null
@@ -94,8 +97,8 @@ function mapGroup(row: Record<string, unknown>): MobileCloudAssetGroup {
     groupName: text(row.groupName),
     description: text(row.description),
     assetCount: row.assetCount === undefined ? undefined : number(row.assetCount),
-    createTime: text(row.createTime) || undefined,
-    updateTime: text(row.updateTime) || undefined,
+    createTime: text(row.createdTime) || text(row.createTime) || undefined,
+    updateTime: text(row.updatedTime) || text(row.updateTime) || undefined,
   }
 }
 
@@ -108,8 +111,8 @@ function mapAsset(row: Record<string, unknown>): MobileCloudAsset {
     assetUrl: text(row.assetUrl),
     status: text(row.status) as MobileCloudAssetStatus,
     errorMessage: text(row.errorMessage) || undefined,
-    createTime: text(row.createTime) || undefined,
-    updateTime: text(row.updateTime) || undefined,
+    createTime: text(row.createdTime) || text(row.createTime) || undefined,
+    updateTime: text(row.updatedTime) || text(row.updateTime) || undefined,
   }
 }
 
@@ -171,7 +174,6 @@ export function createMobileCloudMaasAssetClient(options: AssetClientOptions = {
         headers: {
           Accept: 'application/json',
           'Content-Type': 'application/json',
-          'pool-id': config.poolId,
         },
         ...(requestOptions.body === undefined ? {} : { body: JSON.stringify(requestOptions.body) }),
         signal: controller.signal,
@@ -258,7 +260,9 @@ export function createMobileCloudMaasAssetClient(options: AssetClientOptions = {
       return mapAsset(asRecord(await request('GET', `/api/openapi-maas/exp/aicc/v2/asset/${encodeURIComponent(trimId(assetId, 'ASSET_ID'))}`)))
     },
     async createAsset(input: { groupId: string; assetName: string; assetUrl: string; assetType: MobileCloudAssetType }) {
-      return mapAsset(asRecord(await request('POST', '/api/openapi-maas/exp/aicc/v2/asset', { body: input })))
+      const body = await request<unknown>('POST', '/api/openapi-maas/exp/aicc/v2/asset', { body: input })
+      if (typeof body !== 'string' || !body.trim()) throw new MobileCloudMaasOpenApiError('invalid-response', 'MOBILE_CLOUD_ASSET_RESPONSE_INVALID')
+      return { assetId: body.trim() }
     },
     async updateAsset(assetId: string, input: { assetName: string }) {
       return mapAsset(asRecord(await request('PUT', `/api/openapi-maas/exp/aicc/v2/asset/${encodeURIComponent(trimId(assetId, 'ASSET_ID'))}`, { body: input })))
@@ -271,8 +275,10 @@ export function createMobileCloudMaasAssetClient(options: AssetClientOptions = {
       return { bytedToken: text(body.bytedToken), h5Link: text(body.h5Link), expiresIn: number(body.expiresIn) }
     },
     async findGroupByBytedToken(bytedToken: string) {
-      const body = asRecord(await request('POST', '/api/openapi-maas/exp/aicc/v2/real-person-auth/asset-group/by-byted-token', { body: { bytedToken: trimId(bytedToken, 'BYTED_TOKEN') } }))
-      return { groupId: text(body.groupId) }
+      const body = await request<unknown>('POST', '/api/openapi-maas/exp/aicc/v2/real-person-auth/asset-group/by-byted-token', { body: { bytedToken: trimId(bytedToken, 'BYTED_TOKEN') } })
+      if (typeof body === 'string' && body.trim()) return { groupId: body.trim() }
+      const record = asRecord(body)
+      return { groupId: text(record.groupId) }
     },
     async queryDeductions(input: {
       pageNo?: number
@@ -282,11 +288,10 @@ export function createMobileCloudMaasAssetClient(options: AssetClientOptions = {
       beginTime: string
       endTime: string
     }): Promise<MobileCloudPage<MobileCloudDeductionRow>> {
-      const config = requireConfig()
       const body = {
         pageNo: input.pageNo ?? 1,
         pageSize: input.pageSize ?? 50,
-        modelName: config.deductionModel,
+        modelName: MOBILE_CLOUD_DEDUCTION_MODEL,
         beginTime: input.beginTime,
         endTime: input.endTime,
         ...(input.apiKey ? { apiKey: input.apiKey } : {}),
@@ -295,10 +300,9 @@ export function createMobileCloudMaasAssetClient(options: AssetClientOptions = {
       return page(await request('POST', '/api/openapi-maas/model/aicc/deduction', { body }), mapDeduction)
     },
     async createDeductionExportTask(input: { apiKey?: string; ramName?: string; beginTime: string; endTime: string }) {
-      const config = requireConfig()
       return asRecord(await request('POST', '/api/openapi-maas/model/aicc/deduction/export-task', {
         body: {
-          modelName: config.deductionModel,
+          modelName: MOBILE_CLOUD_DEDUCTION_MODEL,
           beginTime: input.beginTime,
           endTime: input.endTime,
           ...(input.apiKey ? { apiKey: input.apiKey } : {}),

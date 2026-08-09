@@ -3,10 +3,10 @@ import { apiHandler, ApiError } from '@/lib/api-errors'
 import { isErrorResponse, requireUserAuth } from '@/lib/api-auth'
 import { checkPlatformAdmin } from '@/lib/platform-admin'
 import {
-  MobileCloudMaasError,
-  mobileCloudMaasUsageService,
-} from '@/lib/mobile-cloud-maas/client'
-import { countInclusiveDays, getCalendarDatePreset } from '@/lib/mobile-cloud-maas/usage'
+  MobileCloudMaasOpenApiError,
+  mobileCloudMaasAssetClient,
+} from '@/lib/mobile-cloud-maas/asset-client'
+import { countInclusiveDays, getCalendarDatePreset, mobileCloudMaasUsageService } from '@/lib/mobile-cloud-maas/usage-service'
 import type { MobileCloudUsageQuery } from '@/lib/mobile-cloud-maas/types'
 
 const PAGE_SIZES = new Set([10, 20, 50])
@@ -26,11 +26,12 @@ function parseQuery(request: NextRequest): MobileCloudUsageQuery {
   const defaultRange = getCalendarDatePreset(30)
   const beginDate = params.get('beginDate')?.trim() || defaultRange.beginDate
   const endDate = params.get('endDate')?.trim() || defaultRange.endDate
-  const inferenceName = params.get('inferenceName')?.trim() || ''
+  const apiKey = params.get('apiKey')?.trim() || ''
+  const ramName = params.get('ramName')?.trim() || ''
   const page = positiveInteger(params.get('page'), 1)
   const pageSize = positiveInteger(params.get('pageSize'), 20)
   if (!PAGE_SIZES.has(pageSize)) throw new ApiError('INVALID_PARAMS', { message: 'Invalid page size' })
-  if (inferenceName.length > 100) throw new ApiError('INVALID_PARAMS', { message: 'Inference name is too long' })
+  if (apiKey.length > 200 || ramName.length > 200) throw new ApiError('INVALID_PARAMS', { message: 'Credential filter is too long' })
   try {
     if (countInclusiveDays(beginDate, endDate) > 366) {
       throw new Error('MOBILE_CLOUD_DATE_RANGE_TOO_LONG')
@@ -38,7 +39,7 @@ function parseQuery(request: NextRequest): MobileCloudUsageQuery {
   } catch {
     throw new ApiError('INVALID_PARAMS', { message: 'Invalid date range' })
   }
-  return { beginDate, endDate, inferenceName, page, pageSize }
+  return { beginDate, endDate, apiKey, ramName, page, pageSize }
 }
 
 async function isCurrentUserPlatformAdmin(): Promise<boolean> {
@@ -46,22 +47,22 @@ async function isCurrentUserPlatformAdmin(): Promise<boolean> {
   return !(result instanceof Response) && result.isAdmin
 }
 
-function mobileCloudErrorResponse(error: MobileCloudMaasError, isAdmin: boolean): NextResponse {
+function mobileCloudErrorResponse(error: MobileCloudMaasOpenApiError, isAdmin: boolean): NextResponse {
   const code = error.kind === 'config'
-    ? 'MOBILE_CLOUD_CONFIG_MISSING'
+    ? 'MOBILE_CLOUD_OPENAPI_CONFIG_MISSING'
     : error.kind === 'auth'
-      ? 'MOBILE_CLOUD_SESSION_EXPIRED'
-      : 'MOBILE_CLOUD_UNAVAILABLE'
+      ? 'MOBILE_CLOUD_OPENAPI_AUTH_FAILED'
+      : 'MOBILE_CLOUD_OPENAPI_UNAVAILABLE'
   const message = error.kind === 'config'
-    ? '移动云用量尚未配置'
+    ? '移动云 OpenAPI 密钥尚未配置'
     : error.kind === 'auth'
-      ? '移动云控制台会话已失效'
-      : '移动云用量暂时不可用'
+      ? '移动云 OpenAPI 鉴权失败'
+      : '移动云资费接口暂时不可用'
   const diagnostics = isAdmin
     ? {
         configured: error.kind !== 'config',
         ...(error.kind === 'config' ? { missing: error.missing } : {}),
-        ...(error.kind === 'auth' ? { action: 'UPDATE_MOBILE_CLOUD_MAAS_COOKIE' } : {}),
+        ...(error.kind === 'auth' ? { action: 'CHECK_MOBILE_CLOUD_MAAS_ACCESS_KEY' } : {}),
       }
     : undefined
   return NextResponse.json({
@@ -74,9 +75,14 @@ function mobileCloudErrorResponse(error: MobileCloudMaasError, isAdmin: boolean)
 export const GET = apiHandler(async (request: NextRequest) => {
   const auth = await requireUserAuth()
   if (isErrorResponse(auth)) return auth
-  const query = parseQuery(request)
   const isAdmin = await isCurrentUserPlatformAdmin()
   try {
+    const exportTaskId = request.nextUrl.searchParams.get('exportTaskId')?.trim()
+    if (exportTaskId) {
+      const data = await mobileCloudMaasAssetClient.getDeductionExportTask(exportTaskId)
+      return NextResponse.json({ success: true, data })
+    }
+    const query = parseQuery(request)
     const data = await mobileCloudMaasUsageService.query(query)
     return NextResponse.json({
       success: true,
@@ -84,7 +90,37 @@ export const GET = apiHandler(async (request: NextRequest) => {
       ...(isAdmin ? { diagnostics: { configured: true } } : {}),
     })
   } catch (error) {
-    if (error instanceof MobileCloudMaasError) return mobileCloudErrorResponse(error, isAdmin)
+    if (error instanceof MobileCloudMaasOpenApiError) return mobileCloudErrorResponse(error, isAdmin)
+    throw error
+  }
+})
+
+export const POST = apiHandler(async (request: NextRequest) => {
+  const auth = await requireUserAuth()
+  if (isErrorResponse(auth)) return auth
+  const body = await request.json() as Record<string, unknown>
+  const beginDate = typeof body.beginDate === 'string' ? body.beginDate.trim() : ''
+  const endDate = typeof body.endDate === 'string' ? body.endDate.trim() : ''
+  if (!beginDate || !endDate) throw new ApiError('INVALID_PARAMS')
+  try {
+    if (countInclusiveDays(beginDate, endDate) > 366) throw new Error('MOBILE_CLOUD_DATE_RANGE_TOO_LONG')
+  } catch {
+    throw new ApiError('INVALID_PARAMS', { message: 'Invalid date range' })
+  }
+  const apiKey = typeof body.apiKey === 'string' ? body.apiKey.trim() : ''
+  const ramName = typeof body.ramName === 'string' ? body.ramName.trim() : ''
+  if (apiKey.length > 200 || ramName.length > 200) throw new ApiError('INVALID_PARAMS')
+  const isAdmin = await isCurrentUserPlatformAdmin()
+  try {
+    const data = await mobileCloudMaasAssetClient.createDeductionExportTask({
+      beginTime: `${beginDate} 00:00:00`,
+      endTime: `${new Date(Date.parse(`${endDate}T00:00:00Z`) + 24 * 60 * 60 * 1000).toISOString().slice(0, 10)} 00:00:00`,
+      ...(apiKey ? { apiKey } : {}),
+      ...(ramName ? { ramName } : {}),
+    })
+    return NextResponse.json({ success: true, data }, { status: 202 })
+  } catch (error) {
+    if (error instanceof MobileCloudMaasOpenApiError) return mobileCloudErrorResponse(error, isAdmin)
     throw error
   }
 })

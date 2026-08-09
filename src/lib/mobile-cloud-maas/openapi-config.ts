@@ -7,8 +7,6 @@ export interface MobileCloudMaasOpenApiConfig {
   baseUrl: string
   accessKey: string
   secretKey: string
-  poolId: string
-  deductionModel: string
 }
 
 export type MobileCloudMaasOpenApiConfigResult =
@@ -46,8 +44,6 @@ export function readMobileCloudMaasOpenApiConfig(
       baseUrl,
       accessKey,
       secretKey,
-      poolId: text(env, 'MOBILE_CLOUD_MAAS_POOL_ID') || 'CIDC-CORE-00',
-      deductionModel: text(env, 'MOBILE_CLOUD_MAAS_DEDUCTION_MODEL') || 'AICC-Doubao-Seedance-2.0',
     },
   }
 }

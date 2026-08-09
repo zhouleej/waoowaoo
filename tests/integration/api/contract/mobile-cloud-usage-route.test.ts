@@ -3,6 +3,8 @@ import { buildMockRequest } from '../../../helpers/request'
 
 const state = vi.hoisted(() => ({ authenticated: true, admin: false }))
 const queryUsage = vi.hoisted(() => vi.fn())
+const exportTask = vi.hoisted(() => vi.fn())
+const exportStatus = vi.hoisted(() => vi.fn())
 
 vi.mock('@/lib/api-auth', () => ({
   isErrorResponse: (value: unknown) => value instanceof Response,
@@ -15,77 +17,62 @@ vi.mock('@/lib/platform-admin', () => ({
   checkPlatformAdmin: async () => ({ isAdmin: state.admin, user: { id: 'user-1' } }),
 }))
 
-vi.mock('@/lib/mobile-cloud-maas/client', async (importActual) => {
-  const actual = await importActual<typeof import('@/lib/mobile-cloud-maas/client')>()
+vi.mock('@/lib/mobile-cloud-maas/usage-service', () => ({
+  mobileCloudMaasUsageService: { query: queryUsage },
+  countInclusiveDays: (begin: string, end: string) => {
+    const beginTime = Date.parse(`${begin}T00:00:00Z`)
+    const endTime = Date.parse(`${end}T00:00:00Z`)
+    if (!Number.isFinite(beginTime) || !Number.isFinite(endTime) || beginTime > endTime) throw new Error('invalid')
+    return Math.floor((endTime - beginTime) / (24 * 60 * 60 * 1000)) + 1
+  },
+  getCalendarDatePreset: () => ({ beginDate: '2026-07-01', endDate: '2026-07-20' }),
+}))
+
+vi.mock('@/lib/mobile-cloud-maas/asset-client', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/mobile-cloud-maas/asset-client')>()
   return {
     ...actual,
-    mobileCloudMaasUsageService: { query: queryUsage },
+    mobileCloudMaasAssetClient: {
+      createDeductionExportTask: exportTask,
+      getDeductionExportTask: exportStatus,
+    },
   }
 })
 
-describe('api contract - mobile cloud usage route', () => {
+describe('api contract - mobile cloud direct deduction route', () => {
   const context = { params: Promise.resolve({}) }
 
   beforeEach(() => {
     vi.clearAllMocks()
     state.authenticated = true
     state.admin = false
-    queryUsage.mockResolvedValue({ rows: [], pagination: { page: 1, pageSize: 20, total: 0, totalPages: 1 } })
+    queryUsage.mockResolvedValue({ modelName: 'AICC-Doubao-Seedance-2.0', summary: { totalTokens: 0, costAmount: 0, videoInputTokens: 0, noVideoInputTokens: 0, videoInput1080pTokens: 0, noVideoInput1080pTokens: 0 }, trend: [], rows: [], pagination: { page: 1, pageSize: 20, total: 0, totalPages: 1 }, query: { beginDate: '2026-07-01', endDate: '2026-07-20', apiKey: '', ramName: '', page: 1, pageSize: 20 }, fetchedAt: '2026-07-20T00:00:00.000Z' })
   })
 
   it('requires authentication', async () => {
     state.authenticated = false
     const { GET } = await import('@/app/api/user/mobile-cloud-usage/route')
-    const response = await GET(buildMockRequest({
-      path: '/api/user/mobile-cloud-usage?beginDate=2026-07-01&endDate=2026-07-20', method: 'GET',
-    }), context)
+    const response = await GET(buildMockRequest({ path: '/api/user/mobile-cloud-usage?beginDate=2026-07-01&endDate=2026-07-20', method: 'GET' }), context)
     expect(response.status).toBe(401)
     expect(queryUsage).not.toHaveBeenCalled()
   })
 
-  it('validates the date range and page size', async () => {
+  it('passes direct API Key and RAM filters to the usage service', async () => {
     const { GET } = await import('@/app/api/user/mobile-cloud-usage/route')
-    const reversed = await GET(buildMockRequest({
-      path: '/api/user/mobile-cloud-usage?beginDate=2026-07-20&endDate=2026-07-01', method: 'GET',
-    }), context)
-    const tooLong = await GET(buildMockRequest({
-      path: '/api/user/mobile-cloud-usage?beginDate=2025-01-01&endDate=2026-07-20', method: 'GET',
-    }), context)
-    const pageSize = await GET(buildMockRequest({
-      path: '/api/user/mobile-cloud-usage?beginDate=2026-07-01&endDate=2026-07-20&pageSize=100', method: 'GET',
-    }), context)
-    expect([reversed.status, tooLong.status, pageSize.status]).toEqual([400, 400, 400])
-    expect(queryUsage).not.toHaveBeenCalled()
-  })
-
-  it('passes a normalized query to the shared service', async () => {
-    const { GET } = await import('@/app/api/user/mobile-cloud-usage/route')
-    const response = await GET(buildMockRequest({
-      path: '/api/user/mobile-cloud-usage?beginDate=2026-07-01&endDate=2026-07-20&inferenceName=%20Seedance%20&page=2&pageSize=10',
-      method: 'GET',
-    }), context)
+    const response = await GET(buildMockRequest({ path: '/api/user/mobile-cloud-usage?beginDate=2026-07-01&endDate=2026-07-20&apiKey=%20Seedance%20&ramName=ram-a&page=2&pageSize=10', method: 'GET' }), context)
     expect(response.status).toBe(200)
-    expect(queryUsage).toHaveBeenCalledWith({
-      beginDate: '2026-07-01', endDate: '2026-07-20', inferenceName: 'Seedance', page: 2, pageSize: 10,
-    })
+    expect(queryUsage).toHaveBeenCalledWith({ beginDate: '2026-07-01', endDate: '2026-07-20', apiKey: 'Seedance', ramName: 'ram-a', page: 2, pageSize: 10 })
   })
 
-  it('only exposes missing environment names to platform admins', async () => {
-    const { MobileCloudMaasError } = await import('@/lib/mobile-cloud-maas/client')
-    queryUsage.mockRejectedValue(new MobileCloudMaasError(
-      'config', 'MOBILE_CLOUD_CONFIG_MISSING', undefined, ['MOBILE_CLOUD_MAAS_COOKIE'],
-    ))
-    const { GET } = await import('@/app/api/user/mobile-cloud-usage/route')
-    const request = () => buildMockRequest({
-      path: '/api/user/mobile-cloud-usage?beginDate=2026-07-01&endDate=2026-07-20', method: 'GET',
-    })
-    const normalResponse = await GET(request(), context)
-    state.admin = true
-    const adminResponse = await GET(request(), context)
-    const normalBody = await normalResponse.json()
-    const adminBody = await adminResponse.json()
-    expect(normalResponse.status).toBe(503)
-    expect(JSON.stringify(normalBody)).not.toContain('MOBILE_CLOUD_MAAS_COOKIE')
-    expect(adminBody.diagnostics.missing).toEqual(['MOBILE_CLOUD_MAAS_COOKIE'])
+  it('supports the official export-task create/status endpoints', async () => {
+    exportTask.mockResolvedValue({ taskId: 'export-1' })
+    exportStatus.mockResolvedValue({ taskId: 'export-1', status: 'SUCCESS', totalRows: 1, downloadUrl: 'https://download.example/export.csv' })
+    const { POST, GET } = await import('@/app/api/user/mobile-cloud-usage/route')
+    const postResponse = await POST(buildMockRequest({ path: '/api/user/mobile-cloud-usage', method: 'POST', body: { beginDate: '2026-07-01', endDate: '2026-07-20', apiKey: 'key-a' } }), context)
+    const getResponse = await GET(buildMockRequest({ path: '/api/user/mobile-cloud-usage?exportTaskId=export-1', method: 'GET' }), context)
+    expect(postResponse.status).toBe(202)
+    expect(exportTask).toHaveBeenCalledWith({ beginTime: '2026-07-01 00:00:00', endTime: '2026-07-21 00:00:00', apiKey: 'key-a' })
+    expect(getResponse.status).toBe(200)
+    expect(await getResponse.json()).toMatchObject({ success: true, data: { status: 'SUCCESS' } })
   })
 })

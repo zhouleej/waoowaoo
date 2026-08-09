@@ -22,9 +22,9 @@ describe('mobile cloud usage profile helpers', () => {
 
   it('scales chart points across the available drawing area', () => {
     expect(buildUsageChartPoints([
-      { date: '2026-07-18', totalTokens: 10, totalUsageAmount: 10 },
-      { date: '2026-07-19', totalTokens: 20, totalUsageAmount: 20 },
-      { date: '2026-07-20', totalTokens: 5, totalUsageAmount: 5 },
+      { date: '2026-07-18', totalTokens: 10, costAmount: 10 },
+      { date: '2026-07-19', totalTokens: 20, costAmount: 20 },
+      { date: '2026-07-20', totalTokens: 5, costAmount: 5 },
     ], 300, 120, 20)).toEqual([
       { x: 20, y: 60 },
       { x: 150, y: 20 },

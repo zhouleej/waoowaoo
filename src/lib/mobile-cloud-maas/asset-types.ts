@@ -1,6 +1,7 @@
 export type MobileCloudAssetGroupType = 'AIGC' | 'LivenessFace'
 export type MobileCloudAssetType = 'Image' | 'Video' | 'Audio'
 export type MobileCloudAssetStatus = 'PROCESSING' | 'ACTIVE' | 'FAILED'
+export const MOBILE_CLOUD_DEDUCTION_MODEL = 'AICC-Doubao-Seedance-2.0'
 
 export interface MobileCloudAssetGroup {
   groupId: string

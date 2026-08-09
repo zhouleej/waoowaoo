@@ -1,48 +1,20 @@
-export interface MobileCloudUsageRow {
-  promptTokens: number
-  completionTokens: number
-  totalTokens: number
-  useTime: string
-  inferenceId: string
-  inferenceName: string
-  domainType: string | null
-  promptUsageAmount: number
-  completionUsageAmount: number
-  totalUsageAmount: number
-}
+import type { MobileCloudDeductionRow } from './asset-types'
 
-export interface MobileCloudPackageRow {
-  instanceId: string
-  poolId: string
-  poolName: string
-  chaGroupName: string
-  resourceStatus: string
-  productOrderNum: number
-  effectTime: string
-  expireTime: string
-  totalResourcePoint: number | null
-  remainingResourcePoint: number | null
-}
-
-export interface MobileCloudPackageSummary {
-  instanceId: string
-  poolId: string
-  poolName: string
-  packageName: string
-  status: string
-  productOrderNum: number
-  effectTime: string
-  expireTime: string
-  totalTokens: number | null
-  usedTokens: number | null
-  remainingTokens: number | null
-  usedPercent: number | null
-}
+export type MobileCloudUsageRow = MobileCloudDeductionRow
 
 export interface MobileCloudUsageTrendPoint {
   date: string
   totalTokens: number
-  totalUsageAmount: number
+  costAmount: number
+}
+
+export interface MobileCloudUsageSummary {
+  totalTokens: number
+  costAmount: number
+  videoInputTokens: number
+  noVideoInputTokens: number
+  videoInput1080pTokens: number
+  noVideoInput1080pTokens: number
 }
 
 export interface MobileCloudUsagePagination {
@@ -55,23 +27,18 @@ export interface MobileCloudUsagePagination {
 export interface MobileCloudUsageQuery {
   beginDate: string
   endDate: string
-  inferenceName: string
+  apiKey: string
+  ramName: string
   page: number
   pageSize: number
 }
 
 export interface MobileCloudUsageData {
-  package: MobileCloudPackageSummary
+  modelName: string
+  summary: MobileCloudUsageSummary
   trend: MobileCloudUsageTrendPoint[]
   rows: MobileCloudUsageRow[]
   pagination: MobileCloudUsagePagination
   query: MobileCloudUsageQuery
   fetchedAt: string
-  cached: boolean
-  stale: boolean
-}
-
-export interface MobileCloudUpstreamList<T> {
-  totalSize: number
-  dataRows: T[]
 }
