@@ -218,6 +218,41 @@ describe('provider contract - openai compatible media template', () => {
     })
   })
 
+  it('passes trusted asset URIs through to the MAAS adapter without treating them as public URLs', async () => {
+    getProviderConfigMock.mockResolvedValue({
+      id: 'maas-seedance',
+      apiKey: 'maas-local-key',
+      baseUrl: server!.baseUrl,
+    })
+    server!.defineScenario({
+      method: 'POST',
+      path: '/v1/videos/generations',
+      mode: 'success',
+      submitResponse: {
+        status: 200,
+        body: { id: 'maas_asset_trial_1', status: 'processing' },
+      },
+    })
+
+    const generator = new MaasSeedanceVideoGenerator()
+    await generator.generate({
+      userId: 'user-local',
+      imageUrl: 'asset://asset-20260222234430-mxpgh',
+      prompt: '人物自然转身并微笑',
+      options: {
+        provider: 'maas-seedance',
+        modelId: 'doubao-seedance-2.0',
+        referenceImages: ['asset://asset-20260222234430-mxpgh'],
+      },
+    })
+
+    const requests = server!.getRequests('POST', '/v1/videos/generations')
+    expect(JSON.parse(requests[0]?.bodyText || '{}')).toEqual(expect.objectContaining({
+      image_url: 'asset://asset-20260222234430-mxpgh',
+      reference_images: ['asset://asset-20260222234430-mxpgh'],
+    }))
+  })
+
   it('fails explicitly when async create response omits task id', async () => {
     server!.defineScenario({
       method: 'POST',

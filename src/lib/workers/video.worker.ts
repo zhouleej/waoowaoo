@@ -20,6 +20,7 @@ import { getProviderKey } from '@/lib/api-config'
 import { resolveBuiltinCapabilitiesByModelKey } from '@/lib/model-capabilities/lookup'
 import { parseModelKeyStrict } from '@/lib/model-config-contract'
 import { getProviderConfig } from '@/lib/api-config'
+import { getSignedUrl } from '@/lib/storage'
 
 type AnyObj = Record<string, unknown>
 type VideoOptionValue = string | number | boolean
@@ -301,6 +302,58 @@ async function handleLipSyncTask(job: Job<TaskJobData>) {
   }
 }
 
+function isTrustedAssetUri(value: unknown): value is string {
+  return typeof value === 'string' && /^asset:\/\/[A-Za-z0-9._:-]+$/.test(value.trim())
+}
+
+async function handleVirtualHumanTrialTask(job: Job<TaskJobData>) {
+  const payload = (job.data.payload || {}) as AnyObj
+  const assetUri = typeof payload.assetUri === 'string' ? payload.assetUri.trim() : ''
+  if (!isTrustedAssetUri(assetUri)) throw new Error('VIRTUAL_HUMAN_TRIAL_ASSET_URI_INVALID')
+
+  const modelId = typeof payload.videoModel === 'string' ? payload.videoModel.trim() : ''
+  const parsedModel = parseModelKeyStrict(modelId)
+  if (!parsedModel || getProviderKey(parsedModel.provider).toLowerCase() !== 'maas-seedance') {
+    throw new Error('VIRTUAL_HUMAN_TRIAL_REQUIRES_MAAS_SEEDANCE')
+  }
+
+  const prompt = typeof payload.prompt === 'string' ? payload.prompt.trim() : ''
+  if (!prompt) throw new Error('VIRTUAL_HUMAN_TRIAL_PROMPT_REQUIRED')
+
+  await reportTaskProgress(job, 15, {
+    stage: 'virtual_human_trial_submit',
+    stageLabel: '提交虚拟人素材试用',
+    displayMode: 'detail',
+  })
+  const generationOptions = extractGenerationOptions(payload)
+  const source = await resolveVideoSourceFromGeneration(job, {
+    userId: job.data.userId,
+    modelId,
+    imageUrl: assetUri,
+    options: {
+      prompt,
+      resolution: '480p',
+      duration: 4,
+      generateAudio: false,
+      aspectRatio: '16:9',
+      ...generationOptions,
+    },
+    pollProgress: { start: 35, end: 92 },
+  })
+  await reportTaskProgress(job, 94, {
+    stage: 'virtual_human_trial_done',
+    stageLabel: '虚拟人素材试用完成',
+    displayMode: 'detail',
+  })
+  const cosKey = await uploadVideoSourceToCos(source.url, 'virtual-human-trial', job.data.taskId, source.downloadHeaders)
+  return {
+    success: true,
+    assetUri,
+    cosKey,
+    videoUrl: getSignedUrl(cosKey, 3600),
+  }
+}
+
 async function processVideoTask(job: Job<TaskJobData>) {
   await reportTaskProgress(job, 5, { stage: 'received' })
 
@@ -309,6 +362,8 @@ async function processVideoTask(job: Job<TaskJobData>) {
       return await handleVideoPanelTask(job)
     case TASK_TYPE.LIP_SYNC:
       return await handleLipSyncTask(job)
+    case TASK_TYPE.ASSET_HUB_VIRTUAL_HUMAN_TRIAL:
+      return await handleVirtualHumanTrialTask(job)
     default:
       throw new Error(`Unsupported video task type: ${job.data.type}`)
   }

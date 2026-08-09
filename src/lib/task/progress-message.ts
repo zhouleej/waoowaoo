@@ -41,6 +41,7 @@ const TASK_TYPE_LABELS: Record<string, string> = {
   [TASK_TYPE.ASSET_HUB_AI_MODIFY_LOCATION]: 'progress.taskType.assetHubAiModifyLocation',
   [TASK_TYPE.ASSET_HUB_AI_MODIFY_PROP]: 'progress.taskType.assetHubAiModifyProp',
   [TASK_TYPE.ASSET_HUB_REFERENCE_TO_CHARACTER]: 'progress.taskType.assetHubReferenceToCharacter',
+  [TASK_TYPE.ASSET_HUB_VIRTUAL_HUMAN_TRIAL]: 'progress.taskType.assetHubVirtualHumanTrial',
 }
 
 const STAGE_LABELS: Record<string, string> = {
@@ -72,6 +73,8 @@ const STAGE_LABELS: Record<string, string> = {
   insert_panel_persist: 'progress.stage.insertPanelPersist',
   polling_external: 'progress.stage.pollingExternal',
   enqueue_failed: 'progress.stage.enqueueFailed',
+  virtual_human_trial_submit: 'progress.stage.virtualHumanTrialSubmit',
+  virtual_human_trial_done: 'progress.stage.virtualHumanTrialDone',
   llm_proxy_submit: 'progress.stage.llmProxySubmit',
   llm_proxy_execute: 'progress.stage.llmProxyExecute',
   llm_proxy_persist: 'progress.stage.llmProxyPersist',

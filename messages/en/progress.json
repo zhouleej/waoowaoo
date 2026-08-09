@@ -82,7 +82,8 @@
     "assetHubAiModifyCharacter": "Asset hub character modify",
     "assetHubAiModifyLocation": "Asset hub location modify",
     "assetHubAiModifyProp": "Asset hub prop modify",
-    "assetHubReferenceToCharacter": "Asset hub reference to character"
+    "assetHubReferenceToCharacter": "Asset hub reference to character",
+    "assetHubVirtualHumanTrial": "Virtual human material trial"
   },
   "stage": {
     "received": "Task received",
@@ -113,6 +114,8 @@
     "insertPanelPersist": "Persist inserted panel",
     "pollingExternal": "Waiting for external service",
     "enqueueFailed": "Task enqueue failed",
+    "virtualHumanTrialSubmit": "Submit virtual human material trial",
+    "virtualHumanTrialDone": "Virtual human material trial completed",
     "llmProxySubmit": "Submit LLM task",
     "llmProxyExecute": "Execute LLM task",
     "llmProxyPersist": "Persist LLM result"

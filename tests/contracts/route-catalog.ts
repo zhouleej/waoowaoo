@@ -53,6 +53,7 @@ const ROUTE_FILES = [
   'src/app/api/asset-hub/update-asset-label/route.ts',
   'src/app/api/asset-hub/upload-image/route.ts',
   'src/app/api/asset-hub/upload-temp/route.ts',
+  'src/app/api/asset-hub/virtual-human-trial/route.ts',
   'src/app/api/asset-hub/voice-design/route.ts',
   'src/app/api/asset-hub/voices/[id]/route.ts',
   'src/app/api/asset-hub/voices/route.ts',
@@ -262,6 +263,7 @@ function resolveContractGroup(routeFile: string): RouteContractGroup {
     || routeFile.endsWith('/regenerate-single-image/route.ts')
     || routeFile.endsWith('/regenerate-storyboard-text/route.ts')
     || routeFile.endsWith('/voice-generate/route.ts')
+    || routeFile.endsWith('/virtual-human-trial/route.ts')
   ) {
     return 'direct-submit-routes'
   }

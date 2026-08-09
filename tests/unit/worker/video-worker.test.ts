@@ -63,6 +63,9 @@ const prismaMock = vi.hoisted(() => ({
     findUnique: vi.fn(),
   },
 }))
+const storageMock = vi.hoisted(() => ({
+  getSignedUrl: vi.fn((key: string) => `/api/storage/sign?key=${encodeURIComponent(key)}`),
+}))
 
 vi.mock('bullmq', () => ({
   Queue: class {
@@ -93,6 +96,7 @@ vi.mock('@/lib/workers/shared', () => ({
 }))
 vi.mock('@/lib/workers/utils', () => utilsMock)
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock }))
+vi.mock('@/lib/storage', () => storageMock)
 vi.mock('@/lib/media/outbound-image', () => outboundImageMock)
 vi.mock('@/lib/model-capabilities/lookup', () => ({
   resolveBuiltinCapabilitiesByModelKey: vi.fn(() => ({ video: { firstlastframe: true } })),
@@ -260,6 +264,52 @@ describe('worker video processor behavior', () => {
       videoUrl: 'cos/lip-sync/video.mp4',
       actualVideoTokens: 108000,
     })
+  })
+
+  it('ASSET_HUB_VIRTUAL_HUMAN_TRIAL: 仅接受 asset URI 并返回不落库的预览地址', async () => {
+    const processor = workerState.processor
+    expect(processor).toBeTruthy()
+    modelContractMock.parseModelKeyStrict.mockReturnValue({ provider: 'maas-seedance' })
+    utilsMock.resolveVideoSourceFromGeneration.mockResolvedValueOnce({ url: 'https://provider.example/trial.mp4' })
+    utilsMock.uploadVideoSourceToCos.mockResolvedValueOnce('virtual-human-trial/trial.mp4')
+
+    const result = await processor!(buildJob({
+      type: TASK_TYPE.ASSET_HUB_VIRTUAL_HUMAN_TRIAL,
+      targetType: 'VirtualHumanTrial',
+      targetId: 'user-1',
+      payload: {
+        assetUri: 'asset://asset-20260222234430-mxpgh',
+        prompt: '人物自然转身并微笑',
+        videoModel: 'maas-seedance::doubao-seedance-2.0',
+        generationOptions: { resolution: '480p', duration: 4 },
+      },
+    }))
+
+    expect(utilsMock.resolveVideoSourceFromGeneration).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ imageUrl: 'asset://asset-20260222234430-mxpgh' }),
+    )
+    expect(result).toEqual(expect.objectContaining({
+      success: true,
+      assetUri: 'asset://asset-20260222234430-mxpgh',
+      videoUrl: '/api/storage/sign?key=virtual-human-trial%2Ftrial.mp4',
+    }))
+    expect(prismaMock.novelPromotionPanel.update).not.toHaveBeenCalled()
+  })
+
+  it('ASSET_HUB_VIRTUAL_HUMAN_TRIAL: rejects non-MaaS model', async () => {
+    const processor = workerState.processor
+    expect(processor).toBeTruthy()
+    modelContractMock.parseModelKeyStrict.mockReturnValue({ provider: 'ark' })
+
+    await expect(processor!(buildJob({
+      type: TASK_TYPE.ASSET_HUB_VIRTUAL_HUMAN_TRIAL,
+      payload: {
+        assetUri: 'asset://asset-1',
+        prompt: '人物微笑',
+        videoModel: 'ark::doubao-seedance-2.0',
+      },
+    }))).rejects.toThrow('VIRTUAL_HUMAN_TRIAL_REQUIRES_MAAS_SEEDANCE')
   })
 
   it('LIP_SYNC: 缺少 panel 时显式失败', async () => {

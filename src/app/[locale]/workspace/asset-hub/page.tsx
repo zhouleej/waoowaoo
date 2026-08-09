@@ -16,6 +16,7 @@ import ImageEditModal from '@/app/[locale]/workspace/[projectId]/modes/novel-pro
 import VoiceDesignDialog from './components/VoiceDesignDialog'
 import VoiceCreationModal from './components/VoiceCreationModal'
 import VoicePickerDialog from './components/VoicePickerDialog'
+import VirtualHumanTrialModal from './components/VirtualHumanTrialModal'
 import {
     useAssets,
     useAssetActions,
@@ -74,6 +75,7 @@ export default function AssetHubPage() {
 
     // 音色库弹窗状态
     const [showAddVoice, setShowAddVoice] = useState(false)
+    const [showVirtualHumanTrial, setShowVirtualHumanTrial] = useState(false)
     const [voicePickerCharacterId, setVoicePickerCharacterId] = useState<string | null>(null)
     const [isDownloading, setIsDownloading] = useState(false)
 
@@ -464,6 +466,14 @@ export default function AssetHubPage() {
                         <Link href={{ pathname: '/profile' }} className="text-[var(--glass-tone-info-fg)] hover:underline">{t('modelHintLink')}</Link>
                         {t('modelHintSuffix')}
                     </p>
+                    <button
+                        type="button"
+                        onClick={() => setShowVirtualHumanTrial(true)}
+                        className="glass-btn-base glass-btn-tone-info mt-4 inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm"
+                    >
+                        <AppIcon name="sparklesAlt" className="h-4 w-4" />
+                        {t('virtualHumanTrial.button')}
+                    </button>
                 </div>
 
                 <div className="flex gap-6">
@@ -655,6 +665,10 @@ export default function AssetHubPage() {
                     onClose={() => setVoicePickerCharacterId(null)}
                     onSelect={handleVoiceSelect}
                 />
+            )}
+
+            {showVirtualHumanTrial && (
+                <VirtualHumanTrialModal onClose={() => setShowVirtualHumanTrial(false)} />
             )}
         </div>
     )

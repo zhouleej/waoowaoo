@@ -97,6 +97,11 @@ def require_auth(authorization: str | None) -> None:
 
 def require_public_url(value: str, field_name: str) -> str:
     trimmed = value.strip()
+    if trimmed.startswith("asset://"):
+        asset_id = trimmed.removeprefix("asset://")
+        if asset_id and all(char.isalnum() or char in "._:-" for char in asset_id):
+            return trimmed
+        raise HTTPException(status_code=400, detail=f"{field_name} has an invalid trusted asset URI")
     parsed = urlparse(trimmed)
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
         # #region debug-point C:python-before-public-url-reject

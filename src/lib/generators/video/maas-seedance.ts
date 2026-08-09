@@ -66,14 +66,28 @@ function requireHttpUrl(value: string, fieldName: string): string {
   return trimmed
 }
 
+function requireTrustedAssetUri(value: string, fieldName: string): string {
+  const trimmed = value.trim()
+  if (!/^asset:\/\/[A-Za-z0-9._:-]+$/.test(trimmed)) {
+    throw new Error(`MAAS_SEEDANCE_ASSET_URI_INVALID: ${fieldName}`)
+  }
+  return trimmed
+}
+
+async function normalizeMediaReference(value: string, fieldName: string): Promise<string> {
+  const trimmed = value.trim()
+  if (trimmed.startsWith('asset://')) return requireTrustedAssetUri(trimmed, fieldName)
+  const normalized = await normalizeToOriginalMediaUrl(trimmed, { absoluteBaseUrl: getPublicBaseUrl() })
+  return requireHttpUrl(normalized, fieldName)
+}
+
 async function normalizeUrlList(value: unknown, fieldName: string): Promise<string[]> {
   if (value === undefined) return []
   if (!Array.isArray(value)) {
     throw new Error(`MAAS_SEEDANCE_OPTION_INVALID: ${fieldName}`)
   }
-  const publicMediaOptions = { absoluteBaseUrl: getPublicBaseUrl() }
-  return await Promise.all(value.map(async (item, index) => requireHttpUrl(
-    await normalizeToOriginalMediaUrl(String(item), publicMediaOptions),
+  return await Promise.all(value.map(async (item, index) => await normalizeMediaReference(
+    String(item),
     `${fieldName}[${index}]`,
   )))
 }
@@ -99,16 +113,15 @@ export class MaasSeedanceVideoGenerator extends BaseVideoGenerator {
       throw new Error('MAAS_SEEDANCE_PROMPT_REQUIRED')
     }
 
-    const publicMediaOptions = { absoluteBaseUrl: getPublicBaseUrl() }
-    const normalizedImageUrl = await normalizeToOriginalMediaUrl(imageUrl, publicMediaOptions)
+    const normalizedImageUrl = await normalizeMediaReference(imageUrl, 'imageUrl')
     const normalizedLastFrameImageUrl = rawOptions.lastFrameImageUrl
-      ? await normalizeToOriginalMediaUrl(rawOptions.lastFrameImageUrl, publicMediaOptions)
+      ? await normalizeMediaReference(rawOptions.lastFrameImageUrl, 'lastFrameImageUrl')
       : undefined
     const body = {
       model,
       prompt: trimmedPrompt,
-      image_url: requireHttpUrl(normalizedImageUrl, 'imageUrl'),
-      ...(normalizedLastFrameImageUrl ? { last_frame_image_url: requireHttpUrl(normalizedLastFrameImageUrl, 'lastFrameImageUrl') } : {}),
+      image_url: normalizedImageUrl,
+      ...(normalizedLastFrameImageUrl ? { last_frame_image_url: normalizedLastFrameImageUrl } : {}),
       reference_images: await normalizeUrlList(rawOptions.referenceImages, 'referenceImages'),
       reference_videos: await normalizeUrlList(rawOptions.referenceVideos, 'referenceVideos'),
       reference_audios: await normalizeUrlList(rawOptions.referenceAudios, 'referenceAudios'),

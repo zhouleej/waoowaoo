@@ -21,7 +21,7 @@ const CONTRACT_TEST_BY_GROUP: Record<RouteCatalogEntry['contractGroup'], string>
 }
 
 function resolveChainTest(routeFile: string): string {
-  if (routeFile.includes('/generate-video/') || routeFile.includes('/lip-sync/')) {
+  if (routeFile.includes('/generate-video/') || routeFile.includes('/lip-sync/') || routeFile.includes('/virtual-human-trial/')) {
     return 'tests/integration/chain/video.chain.test.ts'
   }
   if (routeFile.includes('/voice-') || routeFile.includes('/voice/')) {
