@@ -36,6 +36,21 @@ function normalizeValue(value: string | number | boolean | null | undefined): st
   return String(value)
 }
 
+function formatTimestamp(value: number): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date(value))
+  const read = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value || ''
+  return `${read('year')}-${read('month')}-${read('day')}T${read('hour')}:${read('minute')}:${read('second')}Z`
+}
+
 function canonicalizeQuery(params: Record<string, string>): string {
   return Object.entries(params)
     .sort(([leftKey, leftValue], [rightKey, rightValue]) => {
@@ -56,7 +71,7 @@ export function buildMobileCloudSignature(input: MobileCloudSignatureInput): Mob
   }
 
   params.AccessKey = input.accessKey
-  params.Timestamp = new Date(input.now ?? Date.now()).toISOString()
+  params.Timestamp = formatTimestamp(input.now ?? Date.now())
   params.SignatureMethod = signatureMethod
   params.SignatureVersion = 'V2.0'
   params.SignatureNonce = input.nonce ?? randomUUID()

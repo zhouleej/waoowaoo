@@ -20,7 +20,7 @@ describe('Mobile Cloud BC-Signature V2.0', () => {
 
     expect(result.params).toMatchObject({
       AccessKey: 'ak-demo',
-      Timestamp: '2026-08-09T00:00:00.000Z',
+      Timestamp: '2026-08-09T08:00:00Z',
       SignatureMethod: 'HmacSHA1',
       SignatureVersion: 'V2.0',
       SignatureNonce: 'nonce-demo',
