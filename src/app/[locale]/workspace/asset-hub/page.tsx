@@ -17,6 +17,7 @@ import VoiceDesignDialog from './components/VoiceDesignDialog'
 import VoiceCreationModal from './components/VoiceCreationModal'
 import VoicePickerDialog from './components/VoicePickerDialog'
 import VirtualHumanTrialModal from './components/VirtualHumanTrialModal'
+import MobileCloudAssetPanel from './components/MobileCloudAssetPanel'
 import {
     useAssets,
     useAssetActions,
@@ -475,6 +476,8 @@ export default function AssetHubPage() {
                         {t('virtualHumanTrial.button')}
                     </button>
                 </div>
+
+                <MobileCloudAssetPanel />
 
                 <div className="flex gap-6">
                     {/* 左侧文件夹树 */}

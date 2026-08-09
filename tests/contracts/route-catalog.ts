@@ -53,6 +53,7 @@ const ROUTE_FILES = [
   'src/app/api/asset-hub/update-asset-label/route.ts',
   'src/app/api/asset-hub/upload-image/route.ts',
   'src/app/api/asset-hub/upload-temp/route.ts',
+  'src/app/api/asset-hub/mobile-cloud/route.ts',
   'src/app/api/asset-hub/virtual-human-trial/route.ts',
   'src/app/api/asset-hub/voice-design/route.ts',
   'src/app/api/asset-hub/voices/[id]/route.ts',
