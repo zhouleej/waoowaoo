@@ -9,6 +9,7 @@ import { useAssetActions } from '@/lib/query/hooks'
 import { useImageGenerationCount } from '@/lib/image-generation/use-image-generation-count'
 import ImageGenerationInlineCountButton from '@/components/image-generation/ImageGenerationInlineCountButton'
 import { getImageGenerationCountOptions } from '@/lib/image-generation/count'
+import LocalImageUpload from './LocalImageUpload'
 
 export interface PropCreationModalProps {
   mode: 'asset-hub' | 'project'
@@ -37,6 +38,8 @@ export function PropCreationModal({
   const [description, setDescription] = useState('')
   const [artStyle] = useState('american-comic')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [initialImageUrl, setInitialImageUrl] = useState<string | null>(null)
+  const [creationMode, setCreationMode] = useState<'ai' | 'upload'>('ai')
   const submittingState = isSubmitting
     ? resolveTaskPresentationState({
       phase: 'processing',
@@ -57,15 +60,20 @@ export function PropCreationModal({
   }, [isSubmitting, onClose])
 
   const handleSubmit = async (generateAfterCreate: boolean) => {
-    if (!name.trim() || !summary.trim() || !description.trim()) return
+    const isUpload = creationMode === 'upload'
+    if (!name.trim() || (!summary.trim() && !isUpload) || (!description.trim() && !isUpload)) return
+    if (isUpload && !initialImageUrl) return
     try {
       setIsSubmitting(true)
+      const submitSummary = summary.trim() || name.trim()
+      const submitDescription = description.trim() || submitSummary
       const result = await actions.create({
         name: name.trim(),
-        summary: summary.trim(),
-        description: description.trim(),
+        summary: submitSummary,
+        description: submitDescription,
         folderId,
         artStyle,
+        initialImageUrl: creationMode === 'upload' ? initialImageUrl : null,
       }) as { assetId?: string }
       if (generateAfterCreate) {
         if (!result.assetId) {
@@ -113,6 +121,15 @@ export function PropCreationModal({
                 className="glass-input-base w-full px-3 py-2 text-sm"
               />
             </div>
+            <div className="flex rounded-lg bg-[var(--glass-bg-surface-soft)] p-1" role="tablist" aria-label={t('prop.title')}>
+              <button type="button" role="tab" aria-selected={creationMode === 'ai'} onClick={() => setCreationMode('ai')} className={`flex-1 rounded-md px-3 py-2 text-sm transition-colors ${creationMode === 'ai' ? 'glass-btn-tone-info' : 'text-[var(--glass-text-secondary)]'}`}>
+                {t('upload.aiTab')}
+              </button>
+              <button type="button" role="tab" aria-selected={creationMode === 'upload'} onClick={() => setCreationMode('upload')} className={`flex-1 rounded-md px-3 py-2 text-sm transition-colors ${creationMode === 'upload' ? 'glass-btn-tone-info' : 'text-[var(--glass-text-secondary)]'}`}>
+                {t('upload.tab')}
+              </button>
+            </div>
+            {creationMode === 'upload' && <LocalImageUpload value={initialImageUrl} onChange={setInitialImageUrl} disabled={isSubmitting} />}
 
           <div className="space-y-2">
             <label className="glass-field-label block">
@@ -150,7 +167,7 @@ export function PropCreationModal({
           </button>
           <button
             onClick={() => void handleSubmit(false)}
-            disabled={isSubmitting || !name.trim() || !summary.trim() || !description.trim()}
+            disabled={isSubmitting || !name.trim() || (creationMode === 'upload' ? !initialImageUrl : !summary.trim() || !description.trim())}
             className="glass-btn-base glass-btn-secondary px-4 py-2 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed text-sm flex items-center gap-2"
           >
             {isSubmitting ? (
@@ -159,7 +176,7 @@ export function PropCreationModal({
               <span>{mode === 'asset-hub' ? t('common.addOnlyToAssetHubProp') : t('common.addOnlyProp')}</span>
             )}
           </button>
-          <ImageGenerationInlineCountButton
+          {creationMode === 'ai' && <ImageGenerationInlineCountButton
             prefix={<span>{t('common.addAndGeneratePrefix')}</span>}
             suffix={<span>{t('common.generateCountSuffix')}</span>}
             value={count}
@@ -171,7 +188,7 @@ export function PropCreationModal({
             ariaLabel={t('common.selectGenerateCount')}
             className="glass-btn-base glass-btn-primary flex items-center justify-center gap-1 rounded-lg px-4 py-2 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
             selectClassName="appearance-none bg-transparent border-0 pl-0 pr-3 text-sm font-semibold text-current outline-none cursor-pointer leading-none transition-colors"
-          />
+          />}
         </div>
       </div>
     </div>

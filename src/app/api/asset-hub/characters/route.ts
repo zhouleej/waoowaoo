@@ -60,13 +60,13 @@ export const POST = apiHandler(async (request: NextRequest) => {
         name,
         description,
         folderId,
-        initialImageUrl,
         referenceImageUrl,
         referenceImageUrls,
         generateFromReference,
         artStyle,
         customDescription
     } = body
+    const initialImageUrl = typeof body.initialImageUrl === 'string' ? body.initialImageUrl : null
     const count = normalizeImageGenerationCount('reference-to-character', (body as Record<string, unknown>).count)
 
     if (!name) {

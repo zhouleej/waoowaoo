@@ -296,6 +296,18 @@ describe('api contract - crud routes (behavior)', () => {
     )
   })
 
+  it('asset creation routes remain represented by the crud contract suite', () => {
+    expect(routes.map((entry) => entry.routeFile)).toEqual(
+      expect.arrayContaining([
+        'src/app/api/asset-hub/characters/route.ts',
+        'src/app/api/asset-hub/locations/route.ts',
+        'src/app/api/asset-hub/upload-temp/route.ts',
+        'src/app/api/novel-promotion/[projectId]/character/route.ts',
+        'src/app/api/novel-promotion/[projectId]/location/route.ts',
+      ]),
+    )
+  })
+
   it('all crud route methods reject unauthenticated requests (no 2xx pass-through)', async () => {
     const methods: ReadonlyArray<RouteMethod> = ['GET', 'POST', 'PATCH', 'PUT', 'DELETE']
     let checkedMethodCount = 0

@@ -1161,6 +1161,7 @@ export async function createAsset(input: AssetCreateInput) {
       initialDescription: description,
       artStyle: normalizeString(input.body.artStyle) || null,
       kind,
+      initialImageUrl: normalizeString(input.body.initialImageUrl) || null,
     })
     return { success: true, assetId: created.id }
   }
@@ -1178,6 +1179,7 @@ export async function createAsset(input: AssetCreateInput) {
     summary,
     initialDescription: description,
     kind,
+    initialImageUrl: normalizeString(input.body.initialImageUrl) || null,
   })
   return { success: true, assetId: created.id }
 }

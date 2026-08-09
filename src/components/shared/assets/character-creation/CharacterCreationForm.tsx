@@ -6,6 +6,7 @@ import { ART_STYLES } from '@/lib/constants'
 import CharacterCreationPreview from './CharacterCreationPreview'
 import { AppIcon } from '@/components/ui/icons'
 import { SegmentedControl } from '@/components/ui/SegmentedControl'
+import LocalImageUpload from '../LocalImageUpload'
 
 type Mode = 'asset-hub' | 'project'
 
@@ -17,8 +18,8 @@ interface AvailableCharacter {
 
 interface CharacterCreationFormProps {
   mode: Mode
-  createMode: 'reference' | 'description'
-  setCreateMode: (mode: 'reference' | 'description') => void
+  createMode: 'reference' | 'description' | 'upload'
+  setCreateMode: (mode: 'reference' | 'description' | 'upload') => void
   name: string
   setName: (value: string) => void
   description: string
@@ -28,6 +29,8 @@ interface CharacterCreationFormProps {
   artStyle: string
   setArtStyle: (value: string) => void
   referenceImagesBase64: string[]
+  uploadedImageUrl: string | null
+  setUploadedImageUrl: (value: string | null) => void
   referenceSubMode: 'direct' | 'extract'
   setReferenceSubMode: (mode: 'direct' | 'extract') => void
   isSubAppearance: boolean
@@ -69,6 +72,8 @@ export default function CharacterCreationForm({
   artStyle,
   setArtStyle,
   referenceImagesBase64,
+  uploadedImageUrl,
+  setUploadedImageUrl,
   referenceSubMode,
   setReferenceSubMode,
   isSubAppearance,
@@ -96,9 +101,10 @@ export default function CharacterCreationForm({
           options={[
             { value: 'description', label: <><SparklesIcon className="w-4 h-4" /><span>{t('character.modeDescription')}</span></> },
             { value: 'reference', label: <><PhotoIcon className="w-4 h-4" /><span>{t('character.modeReference')}</span></> },
+            { value: 'upload', label: <><PhotoIcon className="w-4 h-4" /><span>{t('upload.tab')}</span></> },
           ]}
           value={createMode}
-          onChange={(val) => setCreateMode(val as 'reference' | 'description')}
+            onChange={(val) => setCreateMode(val as 'reference' | 'description' | 'upload')}
         />
       </div>
 
@@ -234,6 +240,8 @@ export default function CharacterCreationForm({
 
         </div>
       )}
+
+      {createMode === 'upload' && <LocalImageUpload value={uploadedImageUrl} onChange={setUploadedImageUrl} />}
 
       {createMode === 'description' && (
         <>

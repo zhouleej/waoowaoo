@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 
 from maas_seedance import MaasSeedanceClient
 
+# python -m uvicorn py_api.maas_seedance_api:app --host 0.0.0.0 --port 8000 --reload
 
 MAAS_BASE_URL = os.getenv("MAAS_BASE_URL", "https://zhenze-huhehaote.cmecloud.cn/api/v3")
 MAAS_API_KEY = os.getenv("MAAS_API_KEY", "qzuthZNrHq7V9WQQMclw6YgLcj7hofROdCzfKDqtkno").strip()

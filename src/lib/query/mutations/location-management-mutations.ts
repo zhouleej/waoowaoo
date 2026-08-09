@@ -277,6 +277,7 @@ export function useCreateProjectLocation(projectId: string) {
             artStyle?: string
             count?: number
             availableSlots?: LocationAvailableSlot[]
+            initialImageUrl?: string | null
         }) =>
             await requestJsonWithError(
                 `/api/novel-promotion/${projectId}/location`,

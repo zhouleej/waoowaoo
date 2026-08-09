@@ -20,6 +20,7 @@ import { useImageGenerationCount } from '@/lib/image-generation/use-image-genera
 import ImageGenerationInlineCountButton from '@/components/image-generation/ImageGenerationInlineCountButton'
 import { getImageGenerationCountOptions } from '@/lib/image-generation/count'
 import type { LocationAvailableSlot } from '@/lib/location-available-slots'
+import LocalImageUpload from './LocalImageUpload'
 
 export interface LocationCreationModalProps {
     mode: 'asset-hub' | 'project'
@@ -65,6 +66,8 @@ export function LocationCreationModal({
     const [aiInstruction, setAiInstruction] = useState('')
     const [artStyle, setArtStyle] = useState('american-comic')
     const [availableSlots, setAvailableSlots] = useState<LocationAvailableSlot[]>([])
+    const [initialImageUrl, setInitialImageUrl] = useState<string | null>(null)
+    const [creationMode, setCreationMode] = useState<'ai' | 'upload'>('ai')
 
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [isAiDesigning, setIsAiDesigning] = useState(false)
@@ -145,11 +148,14 @@ export function LocationCreationModal({
 
     // 提交创建
     const handleSubmit = async () => {
-        if (!name.trim() || !description.trim()) return
+        const isUpload = creationMode === 'upload'
+        if (!name.trim() || (!description.trim() && !initialImageUrl && !isUpload)) return
+        if (isUpload && !initialImageUrl) return
 
         try {
             setIsSubmitting(true)
 
+            const submitDescription = description.trim() || name.trim()
             const body: {
                 name: string
                 description: string
@@ -157,7 +163,7 @@ export function LocationCreationModal({
                 folderId?: string | null
             } = {
                 name: name.trim(),
-                description: description.trim(),
+                description: submitDescription,
                 artStyle
             }
 
@@ -172,13 +178,15 @@ export function LocationCreationModal({
                     artStyle: body.artStyle,
                     folderId: body.folderId ?? null,
                     availableSlots,
+                    initialImageUrl,
                 })
             } else {
                 await createProjectLocation.mutateAsync({
                     name: body.name,
-                    description: body.description,
+                        description: body.description,
                     artStyle: body.artStyle,
                     availableSlots,
+                        initialImageUrl,
                 })
             }
 
@@ -316,8 +324,16 @@ export function LocationCreationModal({
                             </div>
                         )}
 
-                        {/* AI 设计区域 */}
-                        <div className="glass-surface-soft rounded-xl p-4 space-y-3 border border-[var(--glass-stroke-base)]">
+                        <div className="flex rounded-lg bg-[var(--glass-bg-surface-soft)] p-1" role="tablist" aria-label={t('location.title')}>
+                            <button type="button" role="tab" aria-selected={creationMode === 'ai'} onClick={() => setCreationMode('ai')} className={`flex-1 rounded-md px-3 py-2 text-sm transition-colors ${creationMode === 'ai' ? 'glass-btn-tone-info' : 'text-[var(--glass-text-secondary)]'}`}>
+                                {t('upload.aiTab')}
+                            </button>
+                            <button type="button" role="tab" aria-selected={creationMode === 'upload'} onClick={() => setCreationMode('upload')} className={`flex-1 rounded-md px-3 py-2 text-sm transition-colors ${creationMode === 'upload' ? 'glass-btn-tone-info' : 'text-[var(--glass-text-secondary)]'}`}>
+                                {t('upload.tab')}
+                            </button>
+                        </div>
+
+                        {creationMode === 'ai' ? <div className="glass-surface-soft rounded-xl p-4 space-y-3 border border-[var(--glass-stroke-base)]">
                             <div className="flex items-center gap-2 text-sm font-medium text-[var(--glass-tone-info-fg)]">
                                 <SparklesIcon className="w-4 h-4" />
                                 <span>{t('aiDesign.title')} {t('common.optional')}</span>
@@ -355,7 +371,7 @@ export function LocationCreationModal({
                             <p className="glass-field-hint">
                                 {t('aiDesign.tip')}
                             </p>
-                        </div>
+                        </div> : <LocalImageUpload value={initialImageUrl} onChange={setInitialImageUrl} disabled={isSubmitting} />}
 
                         {/* 场景描述 */}
                         <div className="space-y-2">
@@ -384,7 +400,7 @@ export function LocationCreationModal({
                     </button>
                     <button
                         onClick={handleSubmit}
-                        disabled={isSubmitting || !name.trim() || !description.trim()}
+                        disabled={isSubmitting || !name.trim() || (creationMode === 'upload' ? !initialImageUrl : !description.trim())}
                         className="glass-btn-base glass-btn-secondary px-4 py-2 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed text-sm flex items-center gap-2"
                     >
                         {isSubmitting ? (
@@ -393,7 +409,7 @@ export function LocationCreationModal({
                             <span>{mode === 'asset-hub' ? t('common.addOnlyToAssetHubLocation') : t('common.addOnlyLocation')}</span>
                         )}
                     </button>
-                    <ImageGenerationInlineCountButton
+                    {creationMode === 'ai' && <ImageGenerationInlineCountButton
                         prefix={<span>{t('common.addAndGeneratePrefix')}</span>}
                         suffix={<span>{t('common.generateCountSuffix')}</span>}
                         value={locationGenerationCount}
@@ -405,7 +421,7 @@ export function LocationCreationModal({
                         ariaLabel={t('common.selectGenerateCount')}
                         className="glass-btn-base glass-btn-primary flex items-center justify-center gap-1 rounded-lg px-4 py-2 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
                         selectClassName="appearance-none bg-transparent border-0 pl-0 pr-3 text-sm font-semibold text-current outline-none cursor-pointer leading-none transition-colors"
-                    />
+                    />}
                 </div>
             </div>
         </div>

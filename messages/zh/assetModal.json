@@ -44,6 +44,20 @@
         "textToImageTip": "文生图模式：基于提取的描述生成角色设定图",
         "pleaseExtractFirst": "请先提取角色描述"
     },
+    "upload": {
+        "tab": "本地上传",
+        "aiTab": "AI生成",
+        "title": "上传资产图片",
+        "hint": "JPG、PNG、WebP、GIF，最大 10MB",
+        "choose": "点击选择本地图片",
+        "uploading": "上传中...",
+        "preview": "资产图片预览",
+        "replace": "替换",
+        "remove": "移除",
+        "submit": "添加到资产库",
+        "invalidType": "仅支持 JPG、PNG、WebP、GIF 图片",
+        "tooLarge": "图片大小不能超过 10MB"
+    },
     "location": {
         "title": "新建场景",
         "name": "场景名称",

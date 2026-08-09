@@ -44,6 +44,20 @@
         "textToImageTip": "Text-to-image mode: Generate from extracted description",
         "pleaseExtractFirst": "Please extract character description first"
     },
+    "upload": {
+        "tab": "Local upload",
+        "aiTab": "AI generation",
+        "title": "Upload asset image",
+        "hint": "JPG, PNG, WebP or GIF, up to 10MB",
+        "choose": "Choose a local image",
+        "uploading": "Uploading...",
+        "preview": "Asset image preview",
+        "replace": "Replace",
+        "remove": "Remove",
+        "submit": "Add to asset library",
+        "invalidType": "Only JPG, PNG, WebP and GIF images are supported",
+        "tooLarge": "Image size cannot exceed 10MB"
+    },
     "location": {
         "title": "New Location",
         "name": "Location Name",

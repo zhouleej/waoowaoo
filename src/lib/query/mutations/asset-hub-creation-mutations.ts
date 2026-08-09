@@ -38,6 +38,7 @@ export function useCreateAssetHubLocation() {
       folderId: string | null
       artStyle: string
       count?: number
+      initialImageUrl?: string | null
       availableSlots?: LocationAvailableSlot[]
     }) => {
       return await requestJsonWithError('/api/asset-hub/locations', {
@@ -116,6 +117,7 @@ export function useCreateAssetHubCharacter() {
       referenceImageUrls?: string[]
       customDescription?: string
       count?: number
+      initialImageUrl?: string | null
     }) =>
       await requestJsonWithError('/api/asset-hub/characters', {
         method: 'POST',

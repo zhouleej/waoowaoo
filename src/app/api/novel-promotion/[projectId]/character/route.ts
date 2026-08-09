@@ -12,6 +12,7 @@ import {
   cleanupUnreferencedBailianVoices,
 } from '@/lib/providers/bailian'
 import { requireNovelPromotionCharacterInProject } from '@/lib/saas/novel-promotion-resource-access'
+import { resolveMediaRefFromLegacyValue } from '@/lib/media/service'
 
 function toObject(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
@@ -135,6 +136,7 @@ export const POST = apiHandler(async (
   const acceptLanguage = request.headers.get('accept-language') || ''
   const name = normalizeString(body.name)
   const description = normalizeString(body.description)
+  const initialImageUrl = normalizeString(body.initialImageUrl)
   const referenceImageUrl = normalizeString(body.referenceImageUrl)
   const generateFromReference = body.generateFromReference === true
   const customDescription = normalizeString(body.customDescription)
@@ -187,7 +189,9 @@ export const POST = apiHandler(async (
       changeReason: '初始形象',
       description: descText,
       descriptions: JSON.stringify([descText]),
-      imageUrls: encodeImageUrls([]),
+      imageUrl: initialImageUrl || null,
+      imageUrls: encodeImageUrls(initialImageUrl ? [initialImageUrl] : []),
+      imageMediaId: (await resolveMediaRefFromLegacyValue(initialImageUrl || null))?.id ?? null,
       previousImageUrls: encodeImageUrls([])}
   })
 

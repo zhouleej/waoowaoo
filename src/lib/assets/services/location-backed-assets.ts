@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto'
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
+import { resolveMediaRefFromLegacyValue } from '@/lib/media/service'
 import {
   type LocationAvailableSlot,
   stringifyLocationAvailableSlots,
@@ -193,6 +194,7 @@ export async function createProjectLocationBackedAsset(input: {
   summary: string
   initialDescription?: string
   kind: LocationBackedAssetKind
+  initialImageUrl?: string | null
 }): Promise<{ id: string }> {
   const id = randomUUID()
   await prisma.$executeRaw(Prisma.sql`
@@ -224,6 +226,13 @@ export async function createProjectLocationBackedAsset(input: {
     descriptions: [input.initialDescription ?? input.summary],
     availableSlots: [],
   })
+  if (input.initialImageUrl) {
+    const media = await resolveMediaRefFromLegacyValue(input.initialImageUrl)
+    await prisma.locationImage.update({
+      where: { locationId_imageIndex: { locationId: id, imageIndex: 0 } },
+      data: { imageUrl: input.initialImageUrl, imageMediaId: media?.id ?? null, isSelected: true },
+    })
+  }
   return { id }
 }
 
@@ -235,6 +244,7 @@ export async function createGlobalLocationBackedAsset(input: {
   initialDescription?: string
   artStyle?: string | null
   kind: LocationBackedAssetKind
+  initialImageUrl?: string | null
 }): Promise<{ id: string }> {
   const id = randomUUID()
   await prisma.$executeRaw(Prisma.sql`
@@ -266,6 +276,13 @@ export async function createGlobalLocationBackedAsset(input: {
     descriptions: [input.initialDescription ?? input.summary],
     availableSlots: [],
   })
+  if (input.initialImageUrl) {
+    const media = await resolveMediaRefFromLegacyValue(input.initialImageUrl)
+    await prisma.globalLocationImage.update({
+      where: { locationId_imageIndex: { locationId: id, imageIndex: 0 } },
+      data: { imageUrl: input.initialImageUrl, imageMediaId: media?.id ?? null, isSelected: true },
+    })
+  }
   return { id }
 }
 

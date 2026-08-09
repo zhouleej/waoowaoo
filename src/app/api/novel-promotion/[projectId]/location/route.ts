@@ -63,6 +63,7 @@ export const POST = apiHandler(async (
   const name = normalizeString(body.name)
   const description = normalizeString(body.description)
   const summary = normalizeString(body.summary)
+  const initialImageUrl = normalizeString(body.initialImageUrl)
   const availableSlots = normalizeLocationAvailableSlots(body.availableSlots)
   const count = Object.prototype.hasOwnProperty.call(body, 'count')
     ? normalizeImageGenerationCount('location', body.count)
@@ -100,6 +101,14 @@ export const POST = apiHandler(async (
       availableSlots: stringifyLocationAvailableSlots(availableSlots),
     })),
   })
+  if (initialImageUrl) {
+    const { resolveMediaRefFromLegacyValue } = await import('@/lib/media/service')
+    const media = await resolveMediaRefFromLegacyValue(initialImageUrl)
+    await prisma.locationImage.update({
+      where: { locationId_imageIndex: { locationId: location.id, imageIndex: 0 } },
+      data: { imageUrl: initialImageUrl, imageMediaId: media?.id ?? null, isSelected: true },
+    })
+  }
 
   // 返回包含图片的场景数据
   const locationWithImages = await prisma.novelPromotionLocation.findUnique({

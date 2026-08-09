@@ -31,7 +31,7 @@ export function CharacterCreationModal({
 }: CharacterCreationModalProps) {
   const t = useTranslations('assetModal')
 
-  const [createMode, setCreateMode] = useState<'reference' | 'description'>('description')
+  const [createMode, setCreateMode] = useState<'reference' | 'description' | 'upload'>('description')
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [aiInstruction, setAiInstruction] = useState('')
@@ -41,6 +41,7 @@ export function CharacterCreationModal({
   const [isSubAppearance, setIsSubAppearance] = useState(false)
   const [selectedCharacterId, setSelectedCharacterId] = useState('')
   const [changeReason, setChangeReason] = useState('')
+  const [uploadedImageUrl, setUploadedImageUrl] = useState<string | null>(null)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -77,6 +78,7 @@ export function CharacterCreationModal({
     aiInstruction,
     artStyle,
     referenceImagesBase64,
+    uploadedImageUrl,
     referenceSubMode,
     isSubAppearance,
     selectedCharacterId,
@@ -196,6 +198,8 @@ export function CharacterCreationModal({
             artStyle={artStyle}
             setArtStyle={(value) => setArtStyle(value)}
             referenceImagesBase64={referenceImagesBase64}
+            uploadedImageUrl={uploadedImageUrl}
+            setUploadedImageUrl={setUploadedImageUrl}
             referenceSubMode={referenceSubMode}
             setReferenceSubMode={(value) => setReferenceSubMode(value)}
             isSubAppearance={isSubAppearance}
@@ -239,6 +243,14 @@ export function CharacterCreationModal({
               className="glass-btn-base glass-btn-primary flex items-center justify-center gap-1 rounded-lg px-4 py-2 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
               selectClassName="appearance-none bg-transparent border-0 pl-0 pr-3 text-sm font-semibold text-current outline-none cursor-pointer leading-none transition-colors"
             />
+          ) : createMode === 'upload' ? (
+            <button
+              onClick={() => { void handleSubmit() }}
+              disabled={isSubmitting || !name.trim() || !uploadedImageUrl}
+              className="glass-btn-base glass-btn-primary px-4 py-2 rounded-lg text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {isSubmitting ? t('common.adding') : t('upload.submit')}
+            </button>
           ) : isSubAppearance ? (
             <button
               onClick={() => { void handleSubmit() }}

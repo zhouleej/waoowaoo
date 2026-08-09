@@ -29,6 +29,7 @@ interface UseCharacterCreationSubmitParams {
   aiInstruction: string
   artStyle: string
   referenceImagesBase64: string[]
+  uploadedImageUrl: string | null
   referenceSubMode: 'direct' | 'extract'
   isSubAppearance: boolean
   selectedCharacterId: string
@@ -53,6 +54,7 @@ export function useCharacterCreationSubmit({
   aiInstruction,
   artStyle,
   referenceImagesBase64,
+  uploadedImageUrl,
   referenceSubMode,
   isSubAppearance,
   selectedCharacterId,
@@ -158,6 +160,7 @@ export function useCharacterCreationSubmit({
           description: finalDescription || t('character.defaultDescription', { name: name.trim() }),
           folderId: folderId ?? null,
           artStyle,
+          initialImageUrl: uploadedImageUrl,
           generateFromReference: true,
           referenceImageUrls,
           customDescription: referenceSubMode === 'extract' ? finalDescription : undefined,
@@ -200,6 +203,7 @@ export function useCharacterCreationSubmit({
     referenceSubMode,
     t,
     uploadReferenceImages,
+    uploadedImageUrl,
   ])
 
   const handleAiDesign = useCallback(async () => {
@@ -246,20 +250,22 @@ export function useCharacterCreationSubmit({
       return
     }
 
-    if (!name.trim() || !description.trim()) return
+    if (!name.trim() || (!description.trim() && !uploadedImageUrl)) return
     try {
       setIsSubmitting(true)
       if (mode === 'asset-hub') {
         await createAssetHubCharacter.mutateAsync({
           name: name.trim(),
-          description: description.trim(),
+          description: description.trim() || t('character.defaultDescription', { name: name.trim() }),
           folderId: folderId ?? null,
           artStyle,
+          initialImageUrl: uploadedImageUrl,
         })
       } else {
         await createProjectCharacter.mutateAsync({
           name: name.trim(),
           description: description.trim(),
+          initialImageUrl: uploadedImageUrl,
         })
       }
       onSuccess()
@@ -286,6 +292,7 @@ export function useCharacterCreationSubmit({
     onSuccess,
     selectedCharacterId,
     t,
+    uploadedImageUrl,
   ])
 
   const handleSubmitAndGenerate = useCallback(async () => {

@@ -32,6 +32,9 @@ export const POST = apiHandler(async (request: NextRequest) => {
         }
         ext = matches[1] === 'jpeg' ? 'jpg' : matches[1]
         buffer = Buffer.from(matches[2], 'base64')
+        if (!['jpeg', 'jpg', 'png', 'webp', 'gif'].includes(matches[1]) || buffer.length > 10 * 1024 * 1024) {
+            throw new ApiError('INVALID_PARAMS')
+        }
     } else if (base64 && extension) {
         // 通用模式（音频等）
         buffer = Buffer.from(base64, 'base64')

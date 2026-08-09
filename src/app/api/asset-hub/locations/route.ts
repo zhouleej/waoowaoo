@@ -49,6 +49,7 @@ export const POST = apiHandler(async (request: NextRequest) => {
 
     const body = await request.json()
     const { name, summary, folderId, artStyle } = body
+    const initialImageUrl = typeof body.initialImageUrl === 'string' ? body.initialImageUrl : null
     const availableSlots = normalizeLocationAvailableSlots((body as Record<string, unknown>).availableSlots)
     const count = Object.prototype.hasOwnProperty.call(body as Record<string, unknown>, 'count')
         ? normalizeImageGenerationCount('location', (body as Record<string, unknown>).count)
@@ -92,6 +93,14 @@ export const POST = apiHandler(async (request: NextRequest) => {
             availableSlots: stringifyLocationAvailableSlots(availableSlots),
         }))
     })
+    if (initialImageUrl) {
+        const { resolveMediaRefFromLegacyValue } = await import('@/lib/media/service')
+        const media = await resolveMediaRefFromLegacyValue(initialImageUrl)
+        await prisma.globalLocationImage.update({
+            where: { locationId_imageIndex: { locationId: location.id, imageIndex: 0 } },
+            data: { imageUrl: initialImageUrl, imageMediaId: media?.id ?? null, isSelected: true },
+        })
+    }
 
     const locationWithImages = await prisma.globalLocation.findUnique({
         where: { id: location.id },
