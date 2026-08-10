@@ -39,4 +39,21 @@ describe('Mobile Cloud direct deduction usage service', () => {
     expect(result.rows).toHaveLength(1)
     expect(result.pagination).toMatchObject({ page: 1, pageSize: 1, total: 2, totalPages: 2 })
   })
+
+  it('splits a 30-day selection into upstream-safe date windows', async () => {
+    const queryDeductions = vi.fn().mockResolvedValue({ pageNo: 1, pageSize: 100, total: 0, items: [] })
+    const service = createMobileCloudMaasUsageService({ client: { queryDeductions } })
+
+    await service.query({ beginDate: '2026-07-12', endDate: '2026-08-10', apiKey: '', ramName: '', page: 1, pageSize: 20 })
+
+    expect(queryDeductions).toHaveBeenCalledTimes(2)
+    expect(queryDeductions).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      beginTime: '2026-07-12 00:00:00',
+      endTime: '2026-08-10 00:00:00',
+    }))
+    expect(queryDeductions).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      beginTime: '2026-08-10 00:00:00',
+      endTime: '2026-08-11 00:00:00',
+    }))
+  })
 })

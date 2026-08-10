@@ -32,6 +32,9 @@ interface UsageServiceOptions {
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000
+// The upstream rejects a request whose exclusive end is exactly 30 days
+// after its begin, so keep each request to 29 inclusive calendar days.
+const MAX_QUERY_DAYS = 29
 
 function parseDateOnly(value: string): Date {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
@@ -71,6 +74,10 @@ function toDateTime(date: string, end: boolean): string {
   if (!end) return `${date} 00:00:00`
   const nextDay = new Date(parseDateOnly(date).getTime() + DAY_MS).toISOString().slice(0, 10)
   return `${nextDay} 00:00:00`
+}
+
+function dateOnly(value: Date): string {
+  return value.toISOString().slice(0, 10)
 }
 
 function rowKey(row: MobileCloudUsageRow): string {
@@ -133,21 +140,30 @@ export function createMobileCloudMaasUsageService(options: UsageServiceOptions =
   return {
     async query(query: MobileCloudUsageQuery): Promise<MobileCloudUsageData> {
       const rows: MobileCloudUsageRow[] = []
-      let pageNo = 1
-      let totalPages = 1
-      do {
-        const result = await client.queryDeductions({
-          pageNo,
-          pageSize: 100,
-          ...(query.apiKey ? { apiKey: query.apiKey } : {}),
-          ...(query.ramName ? { ramName: query.ramName } : {}),
-          beginTime: toDateTime(query.beginDate, false),
-          endTime: toDateTime(query.endDate, true),
-        })
-        rows.push(...result.items)
-        totalPages = Math.max(1, Math.ceil(result.total / 100))
-        pageNo += 1
-      } while (pageNo <= totalPages)
+      const requestedEnd = parseDateOnly(query.endDate)
+      let chunkBegin = parseDateOnly(query.beginDate)
+      while (chunkBegin.getTime() <= requestedEnd.getTime()) {
+        const chunkEnd = new Date(Math.min(
+          requestedEnd.getTime(),
+          chunkBegin.getTime() + (MAX_QUERY_DAYS - 1) * DAY_MS,
+        ))
+        let pageNo = 1
+        let totalPages = 1
+        do {
+          const result = await client.queryDeductions({
+            pageNo,
+            pageSize: 100,
+            ...(query.apiKey ? { apiKey: query.apiKey } : {}),
+            ...(query.ramName ? { ramName: query.ramName } : {}),
+            beginTime: toDateTime(dateOnly(chunkBegin), false),
+            endTime: toDateTime(dateOnly(chunkEnd), true),
+          })
+          rows.push(...result.items)
+          totalPages = Math.max(1, Math.ceil(result.total / 100))
+          pageNo += 1
+        } while (pageNo <= totalPages)
+        chunkBegin = new Date(chunkEnd.getTime() + DAY_MS)
+      }
 
       const normalized = deduplicateRows(rows)
       const selected = paginate(normalized, query.page, query.pageSize)
