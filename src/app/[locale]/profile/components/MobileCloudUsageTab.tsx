@@ -56,8 +56,10 @@ export default function MobileCloudUsageTab() {
   const [diagnostics, setDiagnostics] = useState<string[]>([])
   const [reloadKey, setReloadKey] = useState(0)
   const [exporting, setExporting] = useState(false)
+  const [exportMode, setExportMode] = useState<'range' | 'query'>('range')
   const [exportUrls, setExportUrls] = useState<string[]>([])
   const [exportError, setExportError] = useState<string | null>(null)
+  const [queryExported, setQueryExported] = useState(false)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -118,7 +120,30 @@ export default function MobileCloudUsageTab() {
     setExporting(true)
     setExportUrls([])
     setExportError(null)
+    setQueryExported(false)
     try {
+      if (exportMode === 'query') {
+        const response = await fetch('/api/user/mobile-cloud-usage/export/query', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ beginDate: appliedRange.beginDate, endDate: appliedRange.endDate, apiKey, ramName }),
+        })
+        if (!response.ok) {
+          const payload = await response.json() as { error?: { message?: string } }
+          throw new Error(payload.error?.message || t('exportFailed'))
+        }
+        const blob = await response.blob()
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = `mobile-cloud-usage-${appliedRange.beginDate}-${appliedRange.endDate}.csv`
+        document.body.appendChild(link)
+        link.click()
+        link.remove()
+        window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+        setQueryExported(true)
+        return
+      }
       const response = await fetch('/api/user/mobile-cloud-usage/export', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -169,12 +194,14 @@ export default function MobileCloudUsageTab() {
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs">
           {adminConfigured !== null && <span className="rounded-full border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-muted)] px-3 py-1.5 text-[var(--glass-text-secondary)]">{adminConfigured ? t('configured') : t('notConfigured')}</span>}
+          <select value={exportMode} onChange={(event) => setExportMode(event.target.value as 'range' | 'query')} disabled={exporting || !data} aria-label={t('exportMode')} className="glass-input h-8 rounded-xl px-2 text-xs text-[var(--glass-text-secondary)]"><option value="range">{t('exportByRange')}</option><option value="query">{t('exportByQuery')}</option></select>
           <button type="button" onClick={startExport} disabled={exporting || !data} className="glass-btn-base glass-btn-tone-info inline-flex items-center gap-2 rounded-xl px-3 py-1.5 text-xs"><AppIcon name="download" className="h-3.5 w-3.5" />{exporting ? t('exporting') : t('export')}</button>
         </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto py-5">
         {exportError && <div className="mb-4 rounded-xl border border-[var(--glass-tone-danger-border)] bg-[var(--glass-tone-danger-bg)] px-4 py-3 text-sm text-[var(--glass-tone-danger-fg)]" role="alert">{exportError}</div>}
+        {queryExported && <div className="mb-4 rounded-xl border border-[var(--glass-tone-success-border)] bg-[var(--glass-tone-success-bg)] px-4 py-3 text-sm text-[var(--glass-tone-success-fg)]">{t('queryExportReady')}</div>}
         {exportUrls.length > 0 && <div className="mb-4 flex flex-col gap-2 rounded-xl border border-[var(--glass-tone-success-border)] bg-[var(--glass-tone-success-bg)] px-4 py-3 text-sm text-[var(--glass-tone-success-fg)]">{exportUrls.map((url, index) => <a key={url} href={url} target="_blank" rel="noreferrer" className="underline">{exportUrls.length === 1 ? t('downloadExport') : t('downloadExportPart', { number: index + 1 })}</a>)}</div>}
         {loading && !data ? (
           <div className="flex min-h-72 items-center justify-center gap-3 text-sm text-[var(--glass-text-secondary)]" role="status"><AppIcon name="loader" className="h-5 w-5 animate-spin" />{t('loading')}</div>

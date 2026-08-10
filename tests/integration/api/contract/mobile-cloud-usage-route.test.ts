@@ -64,6 +64,19 @@ describe('api contract - mobile cloud direct deduction route', () => {
     expect(queryUsage).toHaveBeenCalledWith({ beginDate: '2026-07-01', endDate: '2026-07-20', apiKey: 'Seedance', ramName: 'ram-a', page: 2, pageSize: 10 })
   })
 
+  it('exports all rows from the query usage service as a CSV attachment', async () => {
+    queryUsage.mockResolvedValueOnce({
+      rows: [{ taskId: 'task-1', userName: 'ram-a', inputTokens: 1, outputTokens: 2, totalTokens: 3, videoInputTokens: 0, noVideoInputTokens: 3, videoInput1080pTokens: 0, noVideoInput1080pTokens: 0, costAmount: 0.12, deductTime: '2026-07-01 10:00:00' }],
+    })
+    const { POST } = await import('@/app/api/user/mobile-cloud-usage/export/query/route')
+    const response = await POST(buildMockRequest({ path: '/api/user/mobile-cloud-usage/export/query', method: 'POST', body: { beginDate: '2026-07-01', endDate: '2026-07-20', apiKey: 'key-a', ramName: 'ram-a' } }), context)
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toContain('text/csv')
+    expect(response.headers.get('content-disposition')).toContain('mobile-cloud-usage-2026-07-01-2026-07-20.csv')
+    expect(await response.text()).toContain('task-1')
+    expect(queryUsage).toHaveBeenCalledWith({ beginDate: '2026-07-01', endDate: '2026-07-20', apiKey: 'key-a', ramName: 'ram-a', page: 1, pageSize: 100000 })
+  })
+
   it('splits export ranges and aggregates the official create/status endpoints', async () => {
     exportTask.mockImplementation(async ({ beginTime }: { beginTime: string }) => ({ taskId: `export-${beginTime}` }))
     exportStatus.mockImplementation(async (taskId: string) => ({ taskId, status: 'SUCCESS', totalRows: 1, downloadUrl: `https://download.example/${encodeURIComponent(taskId)}` }))
