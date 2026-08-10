@@ -59,6 +59,7 @@ next-env.d.ts
 .env.test
 .env.*.local
 docker-logs/
+.venv
 
 # database
 *.db
