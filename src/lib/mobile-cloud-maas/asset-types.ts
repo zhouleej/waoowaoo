@@ -59,3 +59,11 @@ export interface MobileCloudExportTask {
   downloadUrl?: string
   errorMessage?: string
 }
+
+export interface MobileCloudExportTaskBatch {
+  taskIds: string[]
+  status: 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED'
+  totalRows: number
+  downloadUrls: string[]
+  errorMessage?: string
+}

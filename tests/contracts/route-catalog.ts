@@ -176,6 +176,8 @@ const ROUTE_FILES = [
   'src/app/api/user/ai-story-expand/route.ts',
   'src/app/api/user/models/route.ts',
   'src/app/api/user/mobile-cloud-usage/route.ts',
+  'src/app/api/user/mobile-cloud-usage/export/route.ts',
+  'src/app/api/user/mobile-cloud-usage/export/status/route.ts',
   'src/app/api/user/transactions/route.ts',
   'src/app/api/organizations/route.ts',
   'src/app/api/organizations/current/route.ts',

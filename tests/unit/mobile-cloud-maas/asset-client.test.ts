@@ -92,4 +92,18 @@ describe('Mobile Cloud asset API client', () => {
     await expect(client.createAsset({ groupId: 'group-1', assetName: 'face', assetUrl: 'https://cdn.example/face.png', assetType: 'Image' })).resolves.toEqual({ assetId: 'asset-1' })
     await expect(client.findGroupByBytedToken('token-1')).resolves.toEqual({ groupId: 'group-real-1' })
   })
+
+  it('sends the documented export-task entry parameters and maps task status', async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(response({ state: 'OK', body: { taskId: 'export-1' } }))
+      .mockResolvedValueOnce(response({ state: 'OK', body: { taskId: 'export-1', status: 'SUCCESS', totalRows: 2, downloadUrl: 'https://download.example/export.xlsx' } }))
+    const client = createMobileCloudMaasAssetClient({ env, fetchImpl, nonce: () => 'nonce-demo' })
+    await expect(client.createDeductionExportTask({ apiKey: 'key-name', ramName: 'ram-a', beginTime: '2026-07-12 06:00:00', endTime: '2026-07-12 17:00:00' })).resolves.toEqual({ taskId: 'export-1' })
+    await expect(client.getDeductionExportTask('export-1')).resolves.toMatchObject({ status: 'SUCCESS', totalRows: 2, downloadUrl: 'https://download.example/export.xlsx' })
+    expect(JSON.parse(String((fetchImpl.mock.calls[0][1] as RequestInit).body))).toEqual({
+      modelName: 'AICC-Doubao-Seedance-2.0', apiKey: 'key-name', ramName: 'ram-a',
+      beginTime: '2026-07-12 06:00:00', endTime: '2026-07-12 17:00:00',
+    })
+    expect(String(fetchImpl.mock.calls[1][0])).toContain('/api/openapi-maas/model/aicc/deduction/export-task/export-1')
+  })
 })

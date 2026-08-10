@@ -56,7 +56,8 @@ export default function MobileCloudUsageTab() {
   const [diagnostics, setDiagnostics] = useState<string[]>([])
   const [reloadKey, setReloadKey] = useState(0)
   const [exporting, setExporting] = useState(false)
-  const [exportUrl, setExportUrl] = useState<string | null>(null)
+  const [exportUrls, setExportUrls] = useState<string[]>([])
+  const [exportError, setExportError] = useState<string | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -115,29 +116,34 @@ export default function MobileCloudUsageTab() {
 
   const startExport = async () => {
     setExporting(true)
-    setExportUrl(null)
+    setExportUrls([])
+    setExportError(null)
     try {
-      const response = await fetch('/api/user/mobile-cloud-usage', {
+      const response = await fetch('/api/user/mobile-cloud-usage/export', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ beginDate: appliedRange.beginDate, endDate: appliedRange.endDate, apiKey, ramName }),
       })
-      const payload = await response.json() as { success?: boolean; data?: { taskId: string }; error?: { message?: string } }
-      if (!response.ok || !payload.success || !payload.data?.taskId) throw new Error(payload.error?.message || t('exportFailed'))
+      const payload = await response.json() as { success?: boolean; data?: { taskIds: string[] }; error?: { message?: string } }
+      if (!response.ok || !payload.success || !payload.data?.taskIds?.length) throw new Error(payload.error?.message || t('exportFailed'))
       for (let attempt = 0; attempt < 30; attempt += 1) {
         await new Promise((resolve) => window.setTimeout(resolve, 2000))
-        const statusResponse = await fetch(`/api/user/mobile-cloud-usage?exportTaskId=${encodeURIComponent(payload.data.taskId)}`)
-        const status = await statusResponse.json() as { success?: boolean; data?: { status: string; downloadUrl?: string; errorMessage?: string } }
+        const statusResponse = await fetch('/api/user/mobile-cloud-usage/export/status', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ taskIds: payload.data.taskIds }),
+        })
+        const status = await statusResponse.json() as { success?: boolean; data?: { status: string; downloadUrls?: string[]; errorMessage?: string } }
         if (!status.success || !status.data) throw new Error(t('exportFailed'))
-        if (status.data.status === 'SUCCESS' && status.data.downloadUrl) {
-          setExportUrl(status.data.downloadUrl)
+        if (status.data.status === 'SUCCESS' && status.data.downloadUrls?.length) {
+          setExportUrls(status.data.downloadUrls)
           return
         }
         if (status.data.status === 'FAILED') throw new Error(status.data.errorMessage || t('exportFailed'))
       }
       throw new Error(t('exportTimeout'))
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : t('exportFailed'))
+      setExportError(cause instanceof Error ? cause.message : t('exportFailed'))
     } finally {
       setExporting(false)
     }
@@ -164,7 +170,8 @@ export default function MobileCloudUsageTab() {
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto py-5">
-        {exportUrl && <div className="mb-4 rounded-xl border border-[var(--glass-tone-success-border)] bg-[var(--glass-tone-success-bg)] px-4 py-3 text-sm text-[var(--glass-tone-success-fg)]"><a href={exportUrl} target="_blank" rel="noreferrer" className="underline">{t('downloadExport')}</a></div>}
+        {exportError && <div className="mb-4 rounded-xl border border-[var(--glass-tone-danger-border)] bg-[var(--glass-tone-danger-bg)] px-4 py-3 text-sm text-[var(--glass-tone-danger-fg)]" role="alert">{exportError}</div>}
+        {exportUrls.length > 0 && <div className="mb-4 flex flex-col gap-2 rounded-xl border border-[var(--glass-tone-success-border)] bg-[var(--glass-tone-success-bg)] px-4 py-3 text-sm text-[var(--glass-tone-success-fg)]">{exportUrls.map((url, index) => <a key={url} href={url} target="_blank" rel="noreferrer" className="underline">{exportUrls.length === 1 ? t('downloadExport') : t('downloadExportPart', { number: index + 1 })}</a>)}</div>}
         {loading && !data ? (
           <div className="flex min-h-72 items-center justify-center gap-3 text-sm text-[var(--glass-text-secondary)]" role="status"><AppIcon name="loader" className="h-5 w-5 animate-spin" />{t('loading')}</div>
         ) : error ? (

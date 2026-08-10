@@ -64,16 +64,19 @@ describe('api contract - mobile cloud direct deduction route', () => {
     expect(queryUsage).toHaveBeenCalledWith({ beginDate: '2026-07-01', endDate: '2026-07-20', apiKey: 'Seedance', ramName: 'ram-a', page: 2, pageSize: 10 })
   })
 
-  it('supports the official export-task create/status endpoints', async () => {
-    exportTask.mockResolvedValue({ taskId: 'export-1' })
-    exportStatus.mockResolvedValue({ taskId: 'export-1', status: 'SUCCESS', totalRows: 1, downloadUrl: 'https://download.example/export.csv' })
-    const { POST, GET } = await import('@/app/api/user/mobile-cloud-usage/route')
-    const postResponse = await POST(buildMockRequest({ path: '/api/user/mobile-cloud-usage', method: 'POST', body: { beginDate: '2026-07-01', endDate: '2026-07-20', apiKey: 'key-a' } }), context)
-    const getResponse = await GET(buildMockRequest({ path: '/api/user/mobile-cloud-usage?exportTaskId=export-1', method: 'GET' }), context)
+  it('splits export ranges and aggregates the official create/status endpoints', async () => {
+    exportTask.mockImplementation(async ({ beginTime }: { beginTime: string }) => ({ taskId: `export-${beginTime}` }))
+    exportStatus.mockImplementation(async (taskId: string) => ({ taskId, status: 'SUCCESS', totalRows: 1, downloadUrl: `https://download.example/${encodeURIComponent(taskId)}` }))
+    const { POST: createExport } = await import('@/app/api/user/mobile-cloud-usage/export/route')
+    const { POST: queryExport } = await import('@/app/api/user/mobile-cloud-usage/export/status/route')
+    const postResponse = await createExport(buildMockRequest({ path: '/api/user/mobile-cloud-usage/export', method: 'POST', body: { beginDate: '2026-07-01', endDate: '2026-07-01', apiKey: 'key-a' } }), context)
+    const created = await postResponse.json()
+    const statusResponse = await queryExport(buildMockRequest({ path: '/api/user/mobile-cloud-usage/export/status', method: 'POST', body: { taskIds: created.data.taskIds } }), context)
     expect(postResponse.status).toBe(202)
-    expect(exportTask).toHaveBeenCalledWith({ beginTime: '2026-07-01 00:00:00', endTime: '2026-07-21 00:00:00', apiKey: 'key-a' })
-    expect(getResponse.status).toBe(200)
-    expect(await getResponse.json()).toMatchObject({ success: true, data: { status: 'SUCCESS' } })
+    expect(exportTask).toHaveBeenCalledTimes(2)
+    expect(exportTask).toHaveBeenNthCalledWith(1, expect.objectContaining({ beginTime: '2026-07-01 00:00:00', endTime: '2026-07-01 23:59:59', apiKey: 'key-a' }))
+    expect(statusResponse.status).toBe(200)
+    expect(await statusResponse.json()).toMatchObject({ success: true, data: { status: 'SUCCESS', totalRows: 2, downloadUrls: expect.any(Array) } })
   })
 
   it('shows the main-account requirement only to platform admins', async () => {
