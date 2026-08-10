@@ -174,6 +174,9 @@ export function createMobileCloudMaasAssetClient(options: AssetClientOptions = {
         headers: {
           Accept: 'application/json',
           'Content-Type': 'application/json',
+          // Keep parity with ecloudsdkmaas Config(pool_id=...). The pool is
+          // transport metadata, not part of the deduction request body.
+          'Pool-Id': config.poolId,
         },
         ...(requestOptions.body === undefined ? {} : { body: JSON.stringify(requestOptions.body) }),
         signal: controller.signal,
@@ -182,11 +185,13 @@ export function createMobileCloudMaasAssetClient(options: AssetClientOptions = {
       if (response.status === 401 || response.status === 403) {
         throw new MobileCloudMaasOpenApiError('auth', 'MOBILE_CLOUD_OPENAPI_AUTH_FAILED', response.status)
       }
-      if (!response.ok) throw new MobileCloudMaasOpenApiError('upstream', 'MOBILE_CLOUD_OPENAPI_FAILED', response.status)
       let payload: unknown
       try {
         payload = await response.json()
       } catch {
+        if (!response.ok) {
+          throw new MobileCloudMaasOpenApiError('upstream', 'MOBILE_CLOUD_OPENAPI_FAILED', response.status)
+        }
         throw new MobileCloudMaasOpenApiError('invalid-response', 'MOBILE_CLOUD_ASSET_RESPONSE_INVALID', response.status)
       }
       const envelope = asRecord(payload) as unknown as Envelope<T>
@@ -199,6 +204,7 @@ export function createMobileCloudMaasAssetClient(options: AssetClientOptions = {
           text(envelope.errorCode) || undefined,
         )
       }
+      if (!response.ok) throw new MobileCloudMaasOpenApiError('upstream', 'MOBILE_CLOUD_OPENAPI_FAILED', response.status)
       if (!('body' in envelope)) throw new MobileCloudMaasOpenApiError('invalid-response', 'MOBILE_CLOUD_ASSET_RESPONSE_INVALID', response.status)
       return envelope.body
     } catch (error) {

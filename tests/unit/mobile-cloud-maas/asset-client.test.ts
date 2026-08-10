@@ -9,6 +9,7 @@ const env = {
   MOBILE_CLOUD_MAAS_ACCESS_KEY: 'ak-demo',
   MOBILE_CLOUD_MAAS_SECRET_KEY: 'sk-demo',
   MOBILE_CLOUD_MAAS_BASE_URL: 'https://ecloud.example.test',
+  MOBILE_CLOUD_MAAS_POOL_ID: 'CIDC-CORE-00',
 }
 
 describe('Mobile Cloud asset API client', () => {
@@ -36,7 +37,7 @@ describe('Mobile Cloud asset API client', () => {
     expect(url).toContain('AccessKey=ak-demo')
     expect(url).toContain('SignatureNonce=nonce-demo')
     expect(init.method).toBe('POST')
-    expect((init.headers as Record<string, string>)['pool-id']).toBeUndefined()
+    expect((init.headers as Record<string, string>)['Pool-Id']).toBe('CIDC-CORE-00')
     expect(JSON.parse(String(init.body))).toEqual({ pageNo: 1, pageSize: 50, groupType: 'AIGC' })
   })
 
@@ -59,6 +60,28 @@ describe('Mobile Cloud asset API client', () => {
       fetchImpl: vi.fn(async () => response({ state: 'FAILED', errorCode: 'BAD_REQUEST', errorMessage: 'bad input' })),
     })
     await expect(failedClient.listAssets()).rejects.toMatchObject({ kind: 'upstream', upstreamCode: 'BAD_REQUEST' })
+  })
+
+  it('preserves a documented business error returned with HTTP 400', async () => {
+    const client = createMobileCloudMaasAssetClient({
+      env,
+      fetchImpl: vi.fn(async () => response({
+        state: 'ERROR',
+        errorCode: 'C400999',
+        errorMessage: '需要主账号才能进行此操作',
+        body: null,
+      }, 400)),
+    })
+
+    await expect(client.queryDeductions({
+      beginTime: '2026-07-16 06:00:00',
+      endTime: '2026-08-10 17:00:00',
+    })).rejects.toMatchObject({
+      kind: 'upstream',
+      status: 400,
+      upstreamCode: 'C400999',
+      message: '需要主账号才能进行此操作',
+    })
   })
 
   it('maps the documented string bodies for asset creation and real-person group lookup', async () => {

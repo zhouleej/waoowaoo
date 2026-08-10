@@ -75,4 +75,31 @@ describe('api contract - mobile cloud direct deduction route', () => {
     expect(getResponse.status).toBe(200)
     expect(await getResponse.json()).toMatchObject({ success: true, data: { status: 'SUCCESS' } })
   })
+
+  it('shows the main-account requirement only to platform admins', async () => {
+    state.admin = true
+    const { MobileCloudMaasOpenApiError } = await import('@/lib/mobile-cloud-maas/asset-client')
+    queryUsage.mockRejectedValue(new MobileCloudMaasOpenApiError(
+      'upstream',
+      '需要主账号才能进行此操作',
+      400,
+      [],
+      'C400999',
+    ))
+    const { GET } = await import('@/app/api/user/mobile-cloud-usage/route')
+    const response = await GET(buildMockRequest({ path: '/api/user/mobile-cloud-usage', method: 'GET' }), context)
+
+    expect(response.status).toBe(503)
+    expect(await response.json()).toMatchObject({
+      error: {
+        code: 'MOBILE_CLOUD_OPENAPI_MAIN_ACCOUNT_REQUIRED',
+        message: '资费明细仅支持移动云主账号，请配置主账号的 AK/SK',
+      },
+      diagnostics: {
+        configured: true,
+        action: 'USE_MOBILE_CLOUD_MAIN_ACCOUNT_ACCESS_KEY',
+        upstreamCode: 'C400999',
+      },
+    })
+  })
 })

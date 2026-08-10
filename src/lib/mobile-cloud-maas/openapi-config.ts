@@ -7,6 +7,7 @@ export interface MobileCloudMaasOpenApiConfig {
   baseUrl: string
   accessKey: string
   secretKey: string
+  poolId: string
 }
 
 export type MobileCloudMaasOpenApiConfigResult =
@@ -22,6 +23,10 @@ export function readMobileCloudMaasOpenApiConfig(
 ): MobileCloudMaasOpenApiConfigResult {
   const accessKey = text(env, 'MOBILE_CLOUD_MAAS_ACCESS_KEY')
   const secretKey = text(env, 'MOBILE_CLOUD_MAAS_SECRET_KEY')
+  // ecloudsdkmaas Config(pool_id=...) routes the request to the pool and
+  // emits the Pool-Id header. The MaaS core pool is the documented default
+  // used by the Python example supplied with this integration.
+  const poolId = text(env, 'MOBILE_CLOUD_MAAS_POOL_ID') || 'CIDC-CORE-00'
   const missing: string[] = []
   if (!accessKey) missing.push('MOBILE_CLOUD_MAAS_ACCESS_KEY')
   if (!secretKey) missing.push('MOBILE_CLOUD_MAAS_SECRET_KEY')
@@ -44,6 +49,7 @@ export function readMobileCloudMaasOpenApiConfig(
       baseUrl,
       accessKey,
       secretKey,
+      poolId,
     },
   }
 }
