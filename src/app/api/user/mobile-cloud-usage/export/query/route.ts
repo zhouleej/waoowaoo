@@ -3,7 +3,7 @@ import { apiHandler, ApiError } from '@/lib/api-errors'
 import { isErrorResponse, requireUserAuth } from '@/lib/api-auth'
 import { MobileCloudMaasOpenApiError } from '@/lib/mobile-cloud-maas/asset-client'
 import { countInclusiveDays, mobileCloudMaasUsageService } from '@/lib/mobile-cloud-maas/usage-service'
-import { buildMobileCloudUsageCsv } from '@/lib/mobile-cloud-maas/usage-export'
+import { buildMobileCloudUsageCsv, buildMobileCloudUsageFilename } from '@/lib/mobile-cloud-maas/usage-export'
 import { isCurrentUserPlatformAdmin, mobileCloudErrorResponse } from '@/lib/mobile-cloud-maas/route-support'
 
 export const POST = apiHandler(async (request: NextRequest) => {
@@ -23,11 +23,12 @@ export const POST = apiHandler(async (request: NextRequest) => {
   const isAdmin = await isCurrentUserPlatformAdmin()
   try {
     const data = await mobileCloudMaasUsageService.query({ beginDate, endDate, apiKey, ramName, page: 1, pageSize: 100_000 })
-    const filename = `mobile-cloud-usage-${beginDate}-${endDate}.csv`
+    const filename = buildMobileCloudUsageFilename()
+    const encodedFilename = encodeURIComponent(filename)
     return new NextResponse(buildMobileCloudUsageCsv(data.rows), {
       headers: {
         'Content-Type': 'text/csv; charset=utf-8',
-        'Content-Disposition': `attachment; filename="${filename}"`,
+        'Content-Disposition': `attachment; filename="query-details.csv"; filename*=UTF-8''${encodedFilename}`,
         'X-Mobile-Cloud-Usage-Rows': String(data.rows.length),
       },
     })

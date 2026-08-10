@@ -136,7 +136,9 @@ export default function MobileCloudUsageTab() {
         const url = URL.createObjectURL(blob)
         const link = document.createElement('a')
         link.href = url
-        link.download = `mobile-cloud-usage-${appliedRange.beginDate}-${appliedRange.endDate}.csv`
+        const contentDisposition = response.headers.get('content-disposition') || ''
+        const encodedFilename = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1]
+        link.download = encodedFilename ? decodeURIComponent(encodedFilename) : 'query-details.csv'
         document.body.appendChild(link)
         link.click()
         link.remove()
