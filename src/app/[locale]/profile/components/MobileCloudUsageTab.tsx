@@ -124,17 +124,21 @@ export default function MobileCloudUsageTab() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ beginDate: appliedRange.beginDate, endDate: appliedRange.endDate, apiKey, ramName }),
       })
-      const payload = await response.json() as { success?: boolean; data?: { taskIds: string[] }; error?: { message?: string } }
+      const payload = await response.json() as { success?: boolean; data?: { taskIds: string[]; pendingWindows: Array<{ beginTime: string; endTime: string }> }; error?: { message?: string } }
       if (!response.ok || !payload.success || !payload.data?.taskIds?.length) throw new Error(payload.error?.message || t('exportFailed'))
+      let taskIds = payload.data.taskIds
+      let pendingWindows = payload.data.pendingWindows
       for (let attempt = 0; attempt < 30; attempt += 1) {
         await new Promise((resolve) => window.setTimeout(resolve, 2000))
         const statusResponse = await fetch('/api/user/mobile-cloud-usage/export/status', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ taskIds: payload.data.taskIds }),
+          body: JSON.stringify({ taskIds, pendingWindows, apiKey, ramName }),
         })
-        const status = await statusResponse.json() as { success?: boolean; data?: { status: string; downloadUrls?: string[]; errorMessage?: string } }
+        const status = await statusResponse.json() as { success?: boolean; data?: { taskIds: string[]; status: string; downloadUrls?: string[]; pendingWindows: Array<{ beginTime: string; endTime: string }>; errorMessage?: string } }
         if (!status.success || !status.data) throw new Error(t('exportFailed'))
+        taskIds = status.data.taskIds
+        pendingWindows = status.data.pendingWindows
         if (status.data.status === 'SUCCESS' && status.data.downloadUrls?.length) {
           setExportUrls(status.data.downloadUrls)
           return

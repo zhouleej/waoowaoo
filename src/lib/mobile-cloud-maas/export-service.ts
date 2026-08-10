@@ -1,8 +1,9 @@
 import { mapWithConcurrency } from '@/lib/async/map-with-concurrency'
-import type { MobileCloudExportTask, MobileCloudExportTaskBatch } from './asset-types'
+import type { MobileCloudExportTask, MobileCloudExportTaskBatch, MobileCloudExportWindow } from './asset-types'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const MAX_EXPORT_WINDOW_MS = DAY_MS - 1000
+const MAX_UNFINISHED_EXPORT_TASKS = 3
 
 export interface MobileCloudExportTaskClient {
   createDeductionExportTask(input: {
@@ -12,6 +13,11 @@ export interface MobileCloudExportTaskClient {
     endTime: string
   }): Promise<{ taskId: string }>
   getDeductionExportTask(taskId: string): Promise<MobileCloudExportTask>
+}
+
+export interface MobileCloudExportTaskFilters {
+  apiKey?: string
+  ramName?: string
 }
 
 function parseDateOnly(value: string): Date {
@@ -43,15 +49,24 @@ export function buildMobileCloudExportWindows(beginDate: string, endDate: string
 
 export async function createMobileCloudExportTaskBatch(
   client: MobileCloudExportTaskClient,
-  input: { beginDate: string; endDate: string; apiKey?: string; ramName?: string },
-): Promise<string[]> {
+  input: { beginDate: string; endDate: string } & MobileCloudExportTaskFilters,
+): Promise<{ taskIds: string[]; pendingWindows: MobileCloudExportWindow[] }> {
   const windows = buildMobileCloudExportWindows(input.beginDate, input.endDate)
-  const tasks = await mapWithConcurrency(windows, 4, (window) => client.createDeductionExportTask({
+  return createNextMobileCloudExportTasks(client, windows, input)
+}
+
+async function createNextMobileCloudExportTasks(
+  client: MobileCloudExportTaskClient,
+  windows: MobileCloudExportWindow[],
+  filters: MobileCloudExportTaskFilters,
+): Promise<{ taskIds: string[]; pendingWindows: MobileCloudExportWindow[] }> {
+  const activeWindows = windows.slice(0, MAX_UNFINISHED_EXPORT_TASKS)
+  const tasks = await mapWithConcurrency(activeWindows, MAX_UNFINISHED_EXPORT_TASKS, (window) => client.createDeductionExportTask({
     ...window,
-    ...(input.apiKey ? { apiKey: input.apiKey } : {}),
-    ...(input.ramName ? { ramName: input.ramName } : {}),
+    ...(filters.apiKey ? { apiKey: filters.apiKey } : {}),
+    ...(filters.ramName ? { ramName: filters.ramName } : {}),
   }))
-  return tasks.map((task) => task.taskId)
+  return { taskIds: tasks.map((task) => task.taskId), pendingWindows: windows.slice(MAX_UNFINISHED_EXPORT_TASKS) }
 }
 
 export async function getMobileCloudExportTaskBatchStatus(
@@ -75,6 +90,20 @@ export async function getMobileCloudExportTaskBatchStatus(
     status,
     totalRows: tasks.reduce((total, task) => total + (task.totalRows ?? 0), 0),
     downloadUrls: tasks.flatMap((task) => task.downloadUrl ? [task.downloadUrl] : []),
+    pendingWindows: [],
     ...(failed?.errorMessage ? { errorMessage: failed.errorMessage } : {}),
   }
+}
+
+export async function advanceMobileCloudExportTaskBatch(
+  client: MobileCloudExportTaskClient,
+  input: { taskIds: string[]; pendingWindows: MobileCloudExportWindow[] } & MobileCloudExportTaskFilters,
+): Promise<MobileCloudExportTaskBatch> {
+  const current = await getMobileCloudExportTaskBatchStatus(client, input.taskIds)
+  if (current.status !== 'SUCCESS' || input.pendingWindows.length === 0) {
+    return { ...current, pendingWindows: input.pendingWindows }
+  }
+  const next = await createNextMobileCloudExportTasks(client, input.pendingWindows, input)
+  const nextStatus = await getMobileCloudExportTaskBatchStatus(client, [...current.taskIds, ...next.taskIds])
+  return { ...nextStatus, pendingWindows: next.pendingWindows }
 }

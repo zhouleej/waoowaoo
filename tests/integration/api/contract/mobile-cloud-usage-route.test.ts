@@ -71,7 +71,7 @@ describe('api contract - mobile cloud direct deduction route', () => {
     const { POST: queryExport } = await import('@/app/api/user/mobile-cloud-usage/export/status/route')
     const postResponse = await createExport(buildMockRequest({ path: '/api/user/mobile-cloud-usage/export', method: 'POST', body: { beginDate: '2026-07-01', endDate: '2026-07-01', apiKey: 'key-a' } }), context)
     const created = await postResponse.json()
-    const statusResponse = await queryExport(buildMockRequest({ path: '/api/user/mobile-cloud-usage/export/status', method: 'POST', body: { taskIds: created.data.taskIds } }), context)
+    const statusResponse = await queryExport(buildMockRequest({ path: '/api/user/mobile-cloud-usage/export/status', method: 'POST', body: { taskIds: created.data.taskIds, pendingWindows: created.data.pendingWindows } }), context)
     expect(postResponse.status).toBe(202)
     expect(exportTask).toHaveBeenCalledTimes(2)
     expect(exportTask).toHaveBeenNthCalledWith(1, expect.objectContaining({ beginTime: '2026-07-01 00:00:00', endTime: '2026-07-01 23:59:59', apiKey: 'key-a' }))

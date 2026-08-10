@@ -60,10 +60,16 @@ export interface MobileCloudExportTask {
   errorMessage?: string
 }
 
+export interface MobileCloudExportWindow {
+  beginTime: string
+  endTime: string
+}
+
 export interface MobileCloudExportTaskBatch {
   taskIds: string[]
   status: 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED'
   totalRows: number
   downloadUrls: string[]
+  pendingWindows: MobileCloudExportWindow[]
   errorMessage?: string
 }

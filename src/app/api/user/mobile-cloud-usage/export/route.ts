@@ -23,8 +23,8 @@ export const POST = apiHandler(async (request: NextRequest) => {
   if (apiKey.length > 200 || ramName.length > 200) throw new ApiError('INVALID_PARAMS')
   const isAdmin = await isCurrentUserPlatformAdmin()
   try {
-    const taskIds = await createMobileCloudExportTaskBatch(mobileCloudMaasAssetClient, { beginDate, endDate, apiKey, ramName })
-    return NextResponse.json({ success: true, data: { taskIds } }, { status: 202 })
+    const data = await createMobileCloudExportTaskBatch(mobileCloudMaasAssetClient, { beginDate, endDate, apiKey, ramName })
+    return NextResponse.json({ success: true, data }, { status: 202 })
   } catch (error) {
     if (error instanceof MobileCloudMaasOpenApiError) return mobileCloudErrorResponse(error, isAdmin)
     throw error
