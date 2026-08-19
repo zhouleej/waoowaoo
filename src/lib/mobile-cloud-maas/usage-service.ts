@@ -14,6 +14,9 @@ import type {
   MobileCloudUsageSummary,
   MobileCloudUsageTrendPoint,
 } from './types'
+// 纯日期工具函数从独立文件 re-export，避免客户端组件间接引入 node:crypto
+export { countInclusiveDays, getCalendarDatePreset } from './date-utils'
+import { parseDateOnly } from './date-utils'
 
 interface DeductionClient {
   queryDeductions(input: {
@@ -35,36 +38,6 @@ const DAY_MS = 24 * 60 * 60 * 1000
 // The upstream rejects a request whose exclusive end is exactly 30 days
 // after its begin, so keep each request to 29 inclusive calendar days.
 const MAX_QUERY_DAYS = 29
-
-function parseDateOnly(value: string): Date {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
-  if (!match) throw new Error('MOBILE_CLOUD_DATE_INVALID')
-  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])))
-  if (date.getUTCFullYear() !== Number(match[1]) || date.getUTCMonth() !== Number(match[2]) - 1 || date.getUTCDate() !== Number(match[3])) {
-    throw new Error('MOBILE_CLOUD_DATE_INVALID')
-  }
-  return date
-}
-
-function dateInTimeZone(value: Date, timeZone: string): string {
-  const parts = new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(value)
-  const read = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value || ''
-  return `${read('year')}-${read('month')}-${read('day')}`
-}
-
-export function countInclusiveDays(beginDate: string, endDate: string): number {
-  const begin = parseDateOnly(beginDate)
-  const end = parseDateOnly(endDate)
-  if (begin.getTime() > end.getTime()) throw new Error('MOBILE_CLOUD_DATE_RANGE_INVALID')
-  return Math.floor((end.getTime() - begin.getTime()) / DAY_MS) + 1
-}
-
-export function getCalendarDatePreset(days: number, now = new Date(), timeZone = 'Asia/Shanghai') {
-  const endDate = dateInTimeZone(now, timeZone)
-  const end = parseDateOnly(endDate)
-  const begin = new Date(end.getTime() - (Math.max(1, days) - 1) * DAY_MS)
-  return { beginDate: begin.toISOString().slice(0, 10), endDate }
-}
 
 function round(value: number): number {
   return Math.round((value + Number.EPSILON) * 1_000_000) / 1_000_000
