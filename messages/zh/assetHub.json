@@ -26,7 +26,16 @@
         "video": "视频",
         "audio": "音频",
         "noAssets": "该素材组暂无素材",
-        "requestFailed": "移动云素材接口暂时不可用"
+        "requestFailed": "移动云素材接口暂时不可用",
+        "pickCharacter": "从角色选择",
+        "pickLocation": "从场景选择",
+        "pickProp": "从道具选择",
+        "pickerTitle": "从资产中心选择",
+        "pickerTypeLabel": "资产类型",
+        "pickerSearch": "搜索资产名称",
+        "pickerEmpty": "暂无资产，请先在资产中心创建",
+        "pickerCancel": "取消",
+        "pickerConfirm": "确认选择"
     },
     "modelHint": "资产中心使用默认模型，如需修改请在",
     "modelHintLink": "API配置页面",

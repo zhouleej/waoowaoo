@@ -26,7 +26,16 @@
         "video": "Video",
         "audio": "Audio",
         "noAssets": "No assets in this group",
-        "requestFailed": "Mobile Cloud asset API is temporarily unavailable"
+        "requestFailed": "Mobile Cloud asset API is temporarily unavailable",
+        "pickCharacter": "Pick from Characters",
+        "pickLocation": "Pick from Locations",
+        "pickProp": "Pick from Props",
+        "pickerTitle": "Select from Asset Hub",
+        "pickerTypeLabel": "Asset type",
+        "pickerSearch": "Search by name",
+        "pickerEmpty": "No assets yet. Please create them in the Asset Hub first.",
+        "pickerCancel": "Cancel",
+        "pickerConfirm": "Confirm Selection"
     },
     "modelHint": "Asset Hub uses default models. To change settings, go to",
     "modelHintLink": "API Settings",

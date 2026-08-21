@@ -18,4 +18,12 @@ describe('Mobile Cloud asset route contract', () => {
     expect(64).toBeLessThanOrEqual(64)
     expect(300).toBeLessThanOrEqual(300)
   })
+
+  it('registers the resolve-asset-url endpoint as an authenticated asset-hub CRUD route', () => {
+    const entry = ROUTE_CATALOG.find((item) => item.routeFile === 'src/app/api/asset-hub/mobile-cloud/resolve-asset-url/route.ts')
+    expect(entry).toMatchObject({
+      category: 'asset-hub',
+      contractGroup: 'crud-asset-hub-routes',
+    })
+  })
 })
