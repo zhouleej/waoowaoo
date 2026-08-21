@@ -175,3 +175,6 @@ npm run dev
 2、增加/完善场景等图片上传的附件逻辑，使得场景和演出角色对应（@功能）
 
 3、监狱牢房的柱子判断问题（9宫格帧图片识别问题）
+
+启动python应用
+python -m uvicorn maas_seedance_api:app --host 0.0.0.0 --port 8000 --reload

@@ -133,15 +133,15 @@ export const POST = apiHandler(async (request: NextRequest) => {
       if (body.groupType !== 'AIGC') throw new ApiError('INVALID_PARAMS')
       const data = await mobileCloudMaasAssetClient.createGroup({
         groupType: 'AIGC',
-        groupName: text(body.groupName, 100),
-        ...(optionalText(body.description, 500) ? { description: optionalText(body.description, 500) } : {}),
+        groupName: text(body.groupName, 64),
+        ...(optionalText(body.description, 300) ? { description: optionalText(body.description, 300) } : {}),
       })
       return NextResponse.json({ success: true, data }, { status: 201 })
     }
     if (resource === 'asset') {
       const data = await mobileCloudMaasAssetClient.createAsset({
         groupId: text(body.groupId, 200),
-        assetName: text(body.assetName, 100),
+        assetName: text(body.assetName, 64),
         assetUrl: requireHttpUrl(body.assetUrl),
         assetType: requireEnum(body.assetType, ASSET_TYPES),
       })
@@ -171,8 +171,8 @@ export const PUT = apiHandler(async (request: NextRequest) => {
 
   try {
     if (resource === 'group') {
-      const groupName = optionalText(body.groupName, 100)
-      const description = optionalText(body.description, 500)
+      const groupName = optionalText(body.groupName, 64)
+      const description = optionalText(body.description, 300)
       if (!groupName && !description) throw new ApiError('INVALID_PARAMS')
       const data = await mobileCloudMaasAssetClient.updateGroup(id, {
         ...(groupName ? { groupName } : {}),
@@ -181,7 +181,9 @@ export const PUT = apiHandler(async (request: NextRequest) => {
       return NextResponse.json({ success: true, data })
     }
     if (resource === 'asset') {
-      const data = await mobileCloudMaasAssetClient.updateAsset(id, { assetName: text(body.assetName, 100) })
+      const assetName = optionalText(body.assetName, 64)
+      if (!assetName) throw new ApiError('INVALID_PARAMS')
+      const data = await mobileCloudMaasAssetClient.updateAsset(id, { assetName })
       return NextResponse.json({ success: true, data })
     }
     throw new ApiError('INVALID_PARAMS')

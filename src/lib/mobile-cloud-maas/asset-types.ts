@@ -58,6 +58,8 @@ export interface MobileCloudExportTask {
   totalRows?: number
   downloadUrl?: string
   errorMessage?: string
+  createdTime?: string
+  updatedTime?: string
 }
 
 export interface MobileCloudExportWindow {

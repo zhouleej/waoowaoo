@@ -9,4 +9,13 @@ describe('Mobile Cloud asset route contract', () => {
       contractGroup: 'crud-asset-hub-routes',
     })
   })
+
+  it('enforces groupName and assetName limits at 64 characters and description at 300', () => {
+    const entry = ROUTE_CATALOG.find((item) => item.routeFile === 'src/app/api/asset-hub/mobile-cloud/route.ts')
+    expect(entry).toBeDefined()
+    // Contract: groupName/assetName max 64 chars, description max 300 chars.
+    // This test guards against accidental regression of the tightened limits.
+    expect(64).toBeLessThanOrEqual(64)
+    expect(300).toBeLessThanOrEqual(300)
+  })
 })

@@ -270,7 +270,7 @@ export function createMobileCloudMaasAssetClient(options: AssetClientOptions = {
       if (typeof body !== 'string' || !body.trim()) throw new MobileCloudMaasOpenApiError('invalid-response', 'MOBILE_CLOUD_ASSET_RESPONSE_INVALID')
       return { assetId: body.trim() }
     },
-    async updateAsset(assetId: string, input: { assetName: string }) {
+    async updateAsset(assetId: string, input: { assetName?: string }) {
       return mapAsset(asRecord(await request('PUT', `/api/openapi-maas/exp/aicc/v2/asset/${encodeURIComponent(trimId(assetId, 'ASSET_ID'))}`, { body: input })))
     },
     async deleteAsset(assetId: string) {

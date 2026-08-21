@@ -56,4 +56,58 @@ describe('api specific - Mobile Cloud asset route', () => {
     expect(assetClientMock.listGroups).toHaveBeenCalledWith({ pageNo: 2, pageSize: 20, groupType: 'AIGC' })
     expect(await response.json()).toMatchObject({ success: true, data: { items: [{ groupId: 'g-1' }] } })
   })
+
+  it('rejects group creation with groupName exceeding 64 characters', async () => {
+    installAuthMocks()
+    mockAuthenticated('user-a')
+    const mod = await import('@/app/api/asset-hub/mobile-cloud/route')
+    const response = await mod.POST(buildMockRequest({
+      path: '/api/asset-hub/mobile-cloud',
+      method: 'POST',
+      body: { resource: 'group', groupType: 'AIGC', groupName: 'x'.repeat(65) },
+    }), { params: Promise.resolve({}) })
+    expect(response.status).toBe(400)
+    expect(assetClientMock.createGroup).not.toHaveBeenCalled()
+  })
+
+  it('creates a group with valid 64-char groupName and 300-char description limits', async () => {
+    installAuthMocks()
+    mockAuthenticated('user-a')
+    assetClientMock.createGroup.mockResolvedValueOnce({ groupId: 'g-new', groupType: 'AIGC', groupName: 'ok', description: 'd' })
+    const mod = await import('@/app/api/asset-hub/mobile-cloud/route')
+    const response = await mod.POST(buildMockRequest({
+      path: '/api/asset-hub/mobile-cloud',
+      method: 'POST',
+      body: { resource: 'group', groupType: 'AIGC', groupName: 'x'.repeat(64), description: 'd'.repeat(300) },
+    }), { params: Promise.resolve({}) })
+    expect(response.status).toBe(201)
+    expect(assetClientMock.createGroup).toHaveBeenCalledWith({ groupType: 'AIGC', groupName: 'x'.repeat(64), description: 'd'.repeat(300) })
+  })
+
+  it('rejects asset update with empty assetName', async () => {
+    installAuthMocks()
+    mockAuthenticated('user-a')
+    const mod = await import('@/app/api/asset-hub/mobile-cloud/route')
+    const response = await mod.PUT(buildMockRequest({
+      path: '/api/asset-hub/mobile-cloud',
+      method: 'PUT',
+      body: { resource: 'asset', id: 'asset-1', assetName: '  ' },
+    }), { params: Promise.resolve({}) })
+    expect(response.status).toBe(400)
+    expect(assetClientMock.updateAsset).not.toHaveBeenCalled()
+  })
+
+  it('updates an asset with valid 64-char assetName', async () => {
+    installAuthMocks()
+    mockAuthenticated('user-a')
+    assetClientMock.updateAsset.mockResolvedValueOnce({ assetId: 'asset-1', assetName: 'updated' })
+    const mod = await import('@/app/api/asset-hub/mobile-cloud/route')
+    const response = await mod.PUT(buildMockRequest({
+      path: '/api/asset-hub/mobile-cloud',
+      method: 'PUT',
+      body: { resource: 'asset', id: 'asset-1', assetName: 'x'.repeat(64) },
+    }), { params: Promise.resolve({}) })
+    expect(response.status).toBe(200)
+    expect(assetClientMock.updateAsset).toHaveBeenCalledWith('asset-1', { assetName: 'x'.repeat(64) })
+  })
 })
