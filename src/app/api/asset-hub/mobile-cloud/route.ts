@@ -10,6 +10,9 @@ import type {
   MobileCloudAssetStatus,
   MobileCloudAssetType,
 } from '@/lib/mobile-cloud-maas/asset-types'
+import { createScopedLogger } from '@/lib/logging/core'
+
+const logger = createScopedLogger({ module: 'api.mobile-cloud-asset' })
 
 const GROUP_TYPES = new Set<MobileCloudAssetGroupType>(['AIGC', 'LivenessFace'])
 const ASSET_TYPES = new Set<MobileCloudAssetType>(['Image', 'Video', 'Audio'])
@@ -70,6 +73,24 @@ function errorResponse(error: MobileCloudMaasOpenApiError): NextResponse {
     : error.kind === 'auth'
       ? 'MOBILE_CLOUD_OPENAPI_AUTH_FAILED'
       : 'MOBILE_CLOUD_OPENAPI_UNAVAILABLE'
+
+  // Log the full error server-side so operators can diagnose root causes
+  // (network failures, upstream rejections, invalid responses) that the
+  // generic client-facing message hides.
+  logger.error({
+    message: 'Mobile Cloud OpenAPI request failed',
+    action: 'mobile-cloud-asset.error',
+    errorCode: code,
+    retryable: error.kind !== 'config' && error.kind !== 'auth',
+    details: {
+      kind: error.kind,
+      httpStatus: error.status,
+      upstreamCode: error.upstreamCode,
+      upstreamMessage: error.message,
+      missing: error.missing.length > 0 ? error.missing : undefined,
+    },
+  })
+
   return NextResponse.json({
     success: false,
     error: {
@@ -78,6 +99,17 @@ function errorResponse(error: MobileCloudMaasOpenApiError): NextResponse {
       retryable: error.kind !== 'config' && error.kind !== 'auth',
     },
     ...(error.kind === 'config' ? { diagnostics: { missing: error.missing } } : {}),
+    // Include diagnostic details for non-config errors so the client can
+    // surface actionable information (e.g. upstream error message, HTTP
+    // status, error kind) instead of a generic "unavailable" message.
+    ...(error.kind !== 'config' ? {
+      diagnostics: {
+        kind: error.kind,
+        ...(error.status ? { httpStatus: error.status } : {}),
+        ...(error.upstreamCode ? { upstreamCode: error.upstreamCode } : {}),
+        ...(error.message && error.message !== code ? { upstreamMessage: error.message } : {}),
+      },
+    } : {}),
   }, { status })
 }
 

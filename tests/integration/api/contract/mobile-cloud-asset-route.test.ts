@@ -26,4 +26,16 @@ describe('Mobile Cloud asset route contract', () => {
       contractGroup: 'crud-asset-hub-routes',
     })
   })
+
+  it('documents the error diagnostics contract for non-config OpenAPI failures', () => {
+    // Contract: when the Mobile Cloud OpenAPI returns a non-config error
+    // (network / upstream / invalid-response), the route must include a
+    // `diagnostics` object in the response body so the client can surface
+    // actionable information instead of a generic "unavailable" message.
+    // The diagnostics object contains: kind, httpStatus?, upstreamCode?,
+    // upstreamMessage? — verified by the specific test suite.
+    const entry = ROUTE_CATALOG.find((item) => item.routeFile === 'src/app/api/asset-hub/mobile-cloud/route.ts')
+    expect(entry).toBeDefined()
+    expect(entry?.contractGroup).toBe('crud-asset-hub-routes')
+  })
 })

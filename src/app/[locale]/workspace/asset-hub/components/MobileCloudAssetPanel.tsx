@@ -38,9 +38,26 @@ interface MobileCloudAssetPanelProps {
 }
 
 async function readData<T>(response: Response): Promise<T> {
-  const payload = await response.json() as { success?: boolean; data?: T; error?: { message?: string } }
+  const payload = await response.json() as {
+    success?: boolean
+    data?: T
+    error?: { message?: string; code?: string }
+    diagnostics?: { kind?: string; httpStatus?: number; upstreamCode?: string; upstreamMessage?: string }
+  }
   if (!response.ok || !payload.success || payload.data === undefined) {
-    throw new Error(payload.error?.message || 'MOBILE_CLOUD_ASSET_REQUEST_FAILED')
+    // Build a descriptive error message that includes upstream diagnostics
+    // when available, so the user can understand *why* the request failed
+    // (e.g. network timeout, upstream rejected the asset URL, etc.).
+    const baseMsg = payload.error?.message || 'MOBILE_CLOUD_ASSET_REQUEST_FAILED'
+    const diag = payload.diagnostics
+    const diagParts: string[] = []
+    if (diag?.kind) diagParts.push(`kind=${diag.kind}`)
+    if (diag?.httpStatus) diagParts.push(`HTTP ${diag.httpStatus}`)
+    if (diag?.upstreamCode) diagParts.push(`upstream=${diag.upstreamCode}`)
+    if (diag?.upstreamMessage && diag.upstreamMessage !== payload.error?.code) {
+      diagParts.push(diag.upstreamMessage)
+    }
+    throw new Error(diagParts.length > 0 ? `${baseMsg} (${diagParts.join(', ')})` : baseMsg)
   }
   return payload.data
 }

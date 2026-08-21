@@ -7,22 +7,48 @@ import {
   resetAuthMockState,
 } from '../../../helpers/auth'
 
-const assetClientMock = vi.hoisted(() => ({
-  listGroups: vi.fn(async () => ({ pageNo: 1, pageSize: 50, total: 1, items: [{ groupId: 'g-1', groupType: 'AIGC', groupName: '虚拟人', description: '' }] })),
-  listAssets: vi.fn(async () => ({ pageNo: 1, pageSize: 50, total: 0, items: [] })),
-  createGroup: vi.fn(),
-  createAsset: vi.fn(),
-  createRealPersonAuthSession: vi.fn(),
-  findGroupByBytedToken: vi.fn(),
-  updateGroup: vi.fn(),
-  updateAsset: vi.fn(),
-  deleteGroup: vi.fn(),
-  deleteAsset: vi.fn(),
-}))
+const { assetClientMock, MobileCloudMaasOpenApiError } = vi.hoisted(() => {
+  class MobileCloudMaasOpenApiError extends Error {
+    constructor(
+      public readonly kind: 'config' | 'auth' | 'network' | 'upstream' | 'invalid-response',
+      message: string,
+      public readonly status?: number,
+      public readonly missing: string[] = [],
+      public readonly upstreamCode?: string,
+    ) {
+      super(message)
+      this.name = 'MobileCloudMaasOpenApiError'
+    }
+  }
+  return {
+    assetClientMock: {
+      listGroups: vi.fn(async () => ({ pageNo: 1, pageSize: 50, total: 1, items: [{ groupId: 'g-1', groupType: 'AIGC', groupName: '虚拟人', description: '' }] })),
+      listAssets: vi.fn(async () => ({ pageNo: 1, pageSize: 50, total: 0, items: [] })),
+      createGroup: vi.fn(),
+      createAsset: vi.fn(),
+      createRealPersonAuthSession: vi.fn(),
+      findGroupByBytedToken: vi.fn(),
+      updateGroup: vi.fn(),
+      updateAsset: vi.fn(),
+      deleteGroup: vi.fn(),
+      deleteAsset: vi.fn(),
+    },
+    MobileCloudMaasOpenApiError,
+  }
+})
 
 vi.mock('@/lib/mobile-cloud-maas/asset-client', () => ({
   mobileCloudMaasAssetClient: assetClientMock,
-  MobileCloudMaasOpenApiError: class MobileCloudMaasOpenApiError extends Error {},
+  MobileCloudMaasOpenApiError,
+}))
+
+vi.mock('@/lib/logging/core', () => ({
+  createScopedLogger: () => ({
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  }),
 }))
 
 describe('api specific - Mobile Cloud asset route', () => {
@@ -109,5 +135,47 @@ describe('api specific - Mobile Cloud asset route', () => {
     }), { params: Promise.resolve({}) })
     expect(response.status).toBe(200)
     expect(assetClientMock.updateAsset).toHaveBeenCalledWith('asset-1', { assetName: 'x'.repeat(64) })
+  })
+
+  it('includes diagnostic details when the upstream API rejects the request', async () => {
+    installAuthMocks()
+    mockAuthenticated('user-a')
+    assetClientMock.createAsset.mockRejectedValueOnce(
+      new MobileCloudMaasOpenApiError('upstream', 'asset URL is not accessible', 400, [], 'INVALID_ASSET_URL'),
+    )
+    const mod = await import('@/app/api/asset-hub/mobile-cloud/route')
+    const response = await mod.POST(buildMockRequest({
+      path: '/api/asset-hub/mobile-cloud',
+      method: 'POST',
+      body: { resource: 'asset', groupId: 'g-1', assetName: 'test', assetUrl: 'https://example.com/img.png', assetType: 'Image' },
+    }), { params: Promise.resolve({}) })
+    expect(response.status).toBe(400)
+    const body = await response.json()
+    expect(body.success).toBe(false)
+    expect(body.error.code).toBe('MOBILE_CLOUD_OPENAPI_UNAVAILABLE')
+    expect(body.diagnostics).toMatchObject({
+      kind: 'upstream',
+      httpStatus: 400,
+      upstreamCode: 'INVALID_ASSET_URL',
+      upstreamMessage: 'asset URL is not accessible',
+    })
+  })
+
+  it('includes diagnostic kind when a network error occurs', async () => {
+    installAuthMocks()
+    mockAuthenticated('user-a')
+    assetClientMock.listGroups.mockRejectedValueOnce(
+      new MobileCloudMaasOpenApiError('network', 'MOBILE_CLOUD_OPENAPI_NETWORK_FAILED'),
+    )
+    const mod = await import('@/app/api/asset-hub/mobile-cloud/route')
+    const response = await mod.GET(buildMockRequest({
+      path: '/api/asset-hub/mobile-cloud?resource=groups',
+      method: 'GET',
+    }), { params: Promise.resolve({}) })
+    expect(response.status).toBe(503)
+    const body = await response.json()
+    expect(body.error.code).toBe('MOBILE_CLOUD_OPENAPI_UNAVAILABLE')
+    expect(body.diagnostics).toMatchObject({ kind: 'network' })
+    expect(body.diagnostics.upstreamCode).toBeUndefined()
   })
 })
