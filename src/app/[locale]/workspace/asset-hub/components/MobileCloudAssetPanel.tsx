@@ -125,7 +125,7 @@ export default function MobileCloudAssetPanel({ docsUrl = 'https://ecloud.10086.
         setAssets([])
         setSelectedGroupId('')
       } else {
-        const assetData = await readData<{ items: Asset[] }>(await apiFetch(`/api/asset-hub/mobile-cloud?resource=assets&groupIds=${encodeURIComponent(groupIds.join(','))}&pageSize=100`))
+        const assetData = await readData<{ items: Asset[] }>(await apiFetch(`/api/asset-hub/mobile-cloud?resource=assets&groupType=${encodeURIComponent(groupType)}&groupIds=${encodeURIComponent(groupIds.join(','))}&pageSize=100`))
         setAssets(assetData.items)
         setSelectedGroupId((current) => groupIds.includes(current) ? current : groupIds[0])
       }
@@ -141,6 +141,18 @@ export default function MobileCloudAssetPanel({ docsUrl = 'https://ecloud.10086.
   }, [open, refresh])
 
   const selectedAssets = assets.filter((asset) => asset.groupId === selectedGroupId)
+
+  const getAssetTypeIcon = (type: AssetType) => {
+    if (type === 'Video') return 'video' as const
+    if (type === 'Audio') return 'audioWave' as const
+    return 'image' as const
+  }
+
+  const getAssetStatusClassName = (status: Asset['status']) => {
+    if (status === 'ACTIVE') return 'bg-[var(--glass-tone-success-bg)] text-[var(--glass-tone-success-fg)]'
+    if (status === 'FAILED') return 'bg-[var(--glass-tone-danger-bg)] text-[var(--glass-tone-danger-fg)]'
+    return 'bg-[var(--glass-tone-warning-bg)] text-[var(--glass-tone-warning-fg)]'
+  }
 
   const createGroup = async () => {
     if (!groupName.trim()) return
@@ -215,6 +227,11 @@ export default function MobileCloudAssetPanel({ docsUrl = 'https://ecloud.10086.
     } finally {
       setSaving(false)
     }
+  }
+
+  const reopenRealPersonAuth = () => {
+    if (!authSession?.h5Link) return
+    window.open(authSession.h5Link, '_blank', 'noopener,noreferrer')
   }
 
   const openPicker = useCallback(async (kind: PickerKind) => {
@@ -325,8 +342,8 @@ export default function MobileCloudAssetPanel({ docsUrl = 'https://ecloud.10086.
                 {t('docs')} <AppIcon name="externalLink" className="h-3 w-3" />
               </a>
               {groupType === 'LivenessFace' && (
-                <button type="button" onClick={openRealPersonAuth} disabled={saving} className="glass-btn-base rounded-lg px-3 py-1.5 text-xs">
-                  {t('realAuth')}
+                <button type="button" onClick={openRealPersonAuth} disabled={saving} className="glass-btn-tone-info rounded-lg px-3 py-1.5 text-xs">
+                  {t('createRealGroup')}
                 </button>
               )}
             </div>
@@ -335,9 +352,14 @@ export default function MobileCloudAssetPanel({ docsUrl = 'https://ecloud.10086.
           {authSession && (
             <div className="mb-4 rounded-xl border border-[var(--glass-tone-warning-border)] bg-[var(--glass-tone-warning-bg)] p-3 text-xs text-[var(--glass-text-secondary)]">
               <p>{t('authHint')}</p>
-              <button type="button" onClick={syncRealPersonGroup} disabled={saving} className="glass-btn-tone-info mt-2 rounded-lg px-3 py-1.5">
-                {t('syncAuth')}
-              </button>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button type="button" onClick={reopenRealPersonAuth} disabled={saving} className="glass-btn-base rounded-lg px-3 py-1.5">
+                  {t('continueRealAuth')}
+                </button>
+                <button type="button" onClick={syncRealPersonGroup} disabled={saving} className="glass-btn-tone-info rounded-lg px-3 py-1.5">
+                  {t('syncAuth')}
+                </button>
+              </div>
             </div>
           )}
 
@@ -356,6 +378,22 @@ export default function MobileCloudAssetPanel({ docsUrl = 'https://ecloud.10086.
                   <input value={groupName} onChange={(event) => setGroupName(event.target.value)} placeholder={t('groupName')} className="glass-input w-full text-xs" />
                   <input value={groupDescription} onChange={(event) => setGroupDescription(event.target.value)} placeholder={t('groupDescription')} className="glass-input w-full text-xs" />
                   <button type="button" onClick={createGroup} disabled={saving || !groupName.trim()} className="glass-btn-tone-info w-full rounded-lg px-3 py-1.5 text-xs">{t('createGroup')}</button>
+                </div>
+              )}
+              {groupType === 'LivenessFace' && (
+                <div className="rounded-xl border border-[var(--glass-tone-info-border)] bg-[var(--glass-tone-info-bg)] p-3">
+                  <div className="flex items-start gap-2">
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--glass-bg-surface-strong)] text-[var(--glass-tone-info-fg)]">
+                      <AppIcon name="user" className="h-4 w-4" />
+                    </span>
+                    <div>
+                      <p className="text-xs font-medium text-[var(--glass-text-primary)]">{t('realCreateTitle')}</p>
+                      <p className="mt-1 text-[11px] leading-5 text-[var(--glass-text-secondary)]">{t('realCreateHint')}</p>
+                    </div>
+                  </div>
+                  <button type="button" onClick={openRealPersonAuth} disabled={saving} className="glass-btn-tone-info mt-3 w-full rounded-lg px-3 py-1.5 text-xs">
+                    {t('createRealGroup')}
+                  </button>
                 </div>
               )}
               {visibleGroups.map((group) => (
@@ -400,17 +438,57 @@ export default function MobileCloudAssetPanel({ docsUrl = 'https://ecloud.10086.
                   </div>
                 </>
               )}
-              <div className="grid gap-2 sm:grid-cols-2">
-                {selectedAssets.map((asset) => (
-                  <a key={asset.assetId} href={asset.assetUrl || undefined} target="_blank" rel="noreferrer" className="rounded-xl border border-[var(--glass-border-subtle)] p-3 transition hover:border-[var(--glass-tone-info-border)]">
-                    <span className="flex items-center justify-between gap-2">
-                      <span className="truncate text-xs font-medium text-[var(--glass-text-primary)]">{asset.assetName || asset.assetId}</span>
-                      <span className="shrink-0 text-[10px] text-[var(--glass-text-tertiary)]">{asset.status}</span>
-                    </span>
-                    <span className="mt-1 block truncate text-[10px] text-[var(--glass-text-tertiary)]">{asset.assetType} · {asset.assetId}</span>
-                    {asset.status === 'FAILED' && asset.errorMessage && <span className="mt-1 block text-[10px] text-[var(--glass-tone-danger-fg)]">{asset.errorMessage}</span>}
-                  </a>
-                ))}
+              <div className="app-scrollbar max-h-[420px] min-h-[180px] overflow-y-auto pr-1">
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  {selectedAssets.map((asset) => (
+                    <a
+                      key={asset.assetId}
+                      href={asset.assetUrl || undefined}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="group overflow-hidden rounded-xl border border-[var(--glass-border-subtle)] bg-[var(--glass-bg-surface)] transition hover:-translate-y-0.5 hover:border-[var(--glass-tone-info-border)] hover:shadow-md"
+                      title={asset.assetName || asset.assetId}
+                    >
+                      <div className="relative aspect-[16/10] overflow-hidden bg-[var(--glass-bg-muted)]">
+                        {asset.assetType === 'Image' && asset.assetUrl ? (
+                          <MediaImageWithLoading
+                            src={asset.assetUrl}
+                            alt={asset.assetName || asset.assetId}
+                            containerClassName="h-full w-full"
+                            className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
+                          />
+                        ) : asset.assetType === 'Video' && asset.assetUrl ? (
+                          <video
+                            src={asset.assetUrl}
+                            muted
+                            playsInline
+                            preload="metadata"
+                            className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
+                          />
+                        ) : (
+                          <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-[var(--glass-text-tertiary)]">
+                            <AppIcon name={getAssetTypeIcon(asset.assetType)} className="h-8 w-8" />
+                            <span className="text-[10px]">{asset.assetType}</span>
+                          </div>
+                        )}
+                        <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-[var(--glass-bg-surface-strong)]/90 px-2 py-1 text-[10px] font-medium text-[var(--glass-text-secondary)] shadow-sm backdrop-blur-sm">
+                          <AppIcon name={getAssetTypeIcon(asset.assetType)} className="h-3 w-3" />
+                          {asset.assetType}
+                        </span>
+                        <span className={`absolute right-2 top-2 rounded-full px-2 py-1 text-[10px] font-medium ${getAssetStatusClassName(asset.status)}`}>
+                          {asset.status}
+                        </span>
+                      </div>
+                      <div className="p-3">
+                        <p className="truncate text-sm font-medium text-[var(--glass-text-primary)]">{asset.assetName || asset.assetId}</p>
+                        <p className="mt-1 truncate text-[10px] text-[var(--glass-text-tertiary)]">{asset.assetId}</p>
+                        {asset.status === 'FAILED' && asset.errorMessage && (
+                          <p className="mt-2 line-clamp-2 text-[10px] leading-4 text-[var(--glass-tone-danger-fg)]">{asset.errorMessage}</p>
+                        )}
+                      </div>
+                    </a>
+                  ))}
+                </div>
               </div>
               {selectedGroupId && !loading && selectedAssets.length === 0 && <p className="rounded-xl border border-dashed border-[var(--glass-border-subtle)] py-8 text-center text-xs text-[var(--glass-text-tertiary)]">{t('noAssets')}</p>}
             </div>

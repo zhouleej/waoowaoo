@@ -259,6 +259,23 @@ export function useRefreshAssets(input: { scope: 'global' | 'project'; projectId
   }
 }
 
+export function usePublishProjectAssets(projectId: string) {
+  const queryClient = useQueryClient()
+  return async (asset?: { assetId: string; kind: AssetKind }) => {
+    const response = await apiFetch(`/api/projects/${projectId}/assets/publish`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(asset || {}),
+    })
+    if (!response.ok) throw new Error('Failed to publish project assets')
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.assets.all('project', projectId) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.globalAssets.all() }),
+    ])
+    return await response.json() as { published?: number; alreadyPublished?: number; skipped?: number }
+  }
+}
+
 export function useAssetActions(input: AssetActionScopeInput) {
   const queryClient = useQueryClient()
 

@@ -24,6 +24,15 @@ export function readNumber(value: unknown, field: string, options?: { required?:
   return n
 }
 
+export function readBoolean(value: unknown, field: string, options?: { required?: boolean }) {
+  if (value === undefined || value === null || value === '') {
+    if (options?.required) throw new Error(`${field}不能为空`)
+    return undefined
+  }
+  if (typeof value !== 'boolean') throw new Error(`${field}必须是布尔值`)
+  return value
+}
+
 export function readJsonObject(value: unknown, field: string) {
   if (value === undefined || value === null) return undefined
   if (typeof value !== 'object' || Array.isArray(value)) throw new Error(`${field}必须是对象`)

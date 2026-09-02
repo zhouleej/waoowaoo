@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { requirePlatformAdmin, createAdminAuditLog } from '@/lib/platform-admin'
 import { apiHandler } from '@/lib/api-errors'
 import { badRequest, notFound } from '@/lib/api-auth'
-import { parsePagination, readNumber, readString } from '@/lib/saas/validation'
+import { parsePagination, readBoolean, readNumber, readString } from '@/lib/saas/validation'
 import { serializeSubscription } from '@/lib/saas/serializers'
 import { parseSubscriptionStatus } from '@/lib/saas/billing-status'
 import { subscriptionPeriodFor, syncOrganizationSubscriptionState } from '@/lib/saas/billing-state'
@@ -57,7 +57,7 @@ export const POST = apiHandler(async (req) => {
           status,
           currentPeriodStart: period.start,
           currentPeriodEnd: period.end,
-          autoRenew: Boolean(body.autoRenew),
+          autoRenew: readBoolean(body.autoRenew ?? false, '自动续费')!,
           seats: readNumber(body.seats ?? 1, '席位数', { min: 1, integer: true }) || 1,
           metadata: body.metadata && typeof body.metadata === 'object' ? body.metadata : undefined,
         },

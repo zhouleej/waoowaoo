@@ -10,6 +10,7 @@ export {
     useAssets,
     useAssetActions,
     useRefreshAssets,
+    usePublishProjectAssets,
 } from './useAssets'
 
 export {

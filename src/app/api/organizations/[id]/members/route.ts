@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { withPrismaRetry } from '@/lib/prisma-retry'
-import { requireUserAuth, isErrorResponse, forbidden, notFound, badRequest, checkOrganizationManagePermission } from '@/lib/api-auth'
+import { requireUserAuth, isErrorResponse, forbidden, notFound, badRequest } from '@/lib/api-auth'
 import { apiHandler } from '@/lib/api-errors'
-import { writeEnterpriseAudit } from '@/lib/saas/permissions'
+import { requireOrganizationRole, writeEnterpriseAudit } from '@/lib/saas/permissions'
 
 /**
  * POST /api/organizations/[id]/members
@@ -20,7 +20,7 @@ export const POST = apiHandler(async (req, ctx) => {
   const { session } = authResult
 
   // 验证权限
-  const permResult = await checkOrganizationManagePermission(organizationId, session.user.id)
+  const permResult = await requireOrganizationRole(organizationId, session.user.id, ['owner', 'admin'])
   if (permResult.error) return permResult.error
 
   const { membership: currentUser } = permResult
@@ -124,21 +124,8 @@ export const GET = apiHandler(async (_req, ctx) => {
   if (isErrorResponse(authResult)) return authResult
   const { session } = authResult
 
-  // 检查用户是否为成员
-  const membership = await withPrismaRetry(() =>
-    prisma.organizationMember.findUnique({
-      where: {
-        organizationId_userId: {
-          organizationId,
-          userId: session.user.id,
-        },
-      },
-    })
-  )
-
-  if (!membership) {
-    return forbidden('您不是该组织成员')
-  }
+  const permResult = await requireOrganizationRole(organizationId, session.user.id, ['owner', 'admin', 'member'])
+  if (permResult.error) return permResult.error
 
   // 获取成员列表
   const members = await withPrismaRetry(() =>

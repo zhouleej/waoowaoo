@@ -28,6 +28,8 @@ interface AssetToolbarProps {
     isAnalyzingAssets: boolean
     isGlobalAnalyzing?: boolean
     onGlobalAnalyze?: () => void
+    isPublishing?: boolean
+    onPublishConfirmed?: () => void
     /** Episode filter */
     episodeId: string | null
     onEpisodeChange: (episodeId: string | null) => void
@@ -162,6 +164,8 @@ export default function AssetToolbar({
     isAnalyzingAssets,
     isGlobalAnalyzing = false,
     onGlobalAnalyze,
+    isPublishing = false,
+    onPublishConfirmed,
     episodeId,
     onEpisodeChange,
     episodes,
@@ -275,6 +279,12 @@ export default function AssetToolbar({
                         >
                             <AppIcon name="idea" className="w-3.5 h-3.5" />
                             <span>{t("toolbar.globalAnalyze")}</span>
+                        </button>
+                    )}
+                    {onPublishConfirmed && (
+                        <button onClick={onPublishConfirmed} disabled={isPublishing || isBatchSubmitting || isAnalyzingAssets} className="glass-btn-base glass-btn-secondary flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed" title={t('toolbar.publishConfirmedHint')}>
+                            <AppIcon name={isPublishing ? 'refresh' : 'upload'} className={`w-3.5 h-3.5 ${isPublishing ? 'animate-spin' : ''}`} />
+                            <span>{t('toolbar.publishConfirmed')}</span>
                         </button>
                     )}
                 </div>

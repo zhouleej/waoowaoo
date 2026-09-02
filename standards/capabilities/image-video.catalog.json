@@ -1227,6 +1227,11 @@
         "modelId":  "doubao-seedance-2.0",
         "capabilities":  {
                              "video":  {
+                                           "resolutionOptions":  [
+                                                                     "480p",
+                                                                     "720p",
+                                                                     "1080p"
+                                                                 ],
                                            "generationModeOptions":  [
                                                                          "normal",
                                                                          "firstlastframe"

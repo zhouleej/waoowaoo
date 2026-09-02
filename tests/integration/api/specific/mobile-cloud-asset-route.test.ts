@@ -83,6 +83,37 @@ describe('api specific - Mobile Cloud asset route', () => {
     expect(await response.json()).toMatchObject({ success: true, data: { items: [{ groupId: 'g-1' }] } })
   })
 
+  it('requires and forwards groupType when querying assets', async () => {
+    installAuthMocks()
+    mockAuthenticated('user-a')
+    const mod = await import('@/app/api/asset-hub/mobile-cloud/route')
+    const response = await mod.GET(buildMockRequest({
+      path: '/api/asset-hub/mobile-cloud?resource=assets&groupType=AIGC&groupIds=g-1&pageNo=2&pageSize=20',
+      method: 'GET',
+    }), { params: Promise.resolve({}) })
+
+    expect(response.status).toBe(200)
+    expect(assetClientMock.listAssets).toHaveBeenCalledWith({
+      pageNo: 2,
+      pageSize: 20,
+      groupType: 'AIGC',
+      groupIds: ['g-1'],
+    })
+  })
+
+  it('rejects an asset query without the upstream-required groupType', async () => {
+    installAuthMocks()
+    mockAuthenticated('user-a')
+    const mod = await import('@/app/api/asset-hub/mobile-cloud/route')
+    const response = await mod.GET(buildMockRequest({
+      path: '/api/asset-hub/mobile-cloud?resource=assets&groupIds=g-1',
+      method: 'GET',
+    }), { params: Promise.resolve({}) })
+
+    expect(response.status).toBe(400)
+    expect(assetClientMock.listAssets).not.toHaveBeenCalled()
+  })
+
   it('rejects group creation with groupName exceeding 64 characters', async () => {
     installAuthMocks()
     mockAuthenticated('user-a')

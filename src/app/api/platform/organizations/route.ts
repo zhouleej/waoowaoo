@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePlatformAdmin, createAdminAuditLog } from '@/lib/platform-admin'
 import { apiHandler } from '@/lib/api-errors'
+import { badRequest } from '@/lib/api-auth'
+import { ORGANIZATION_STATUSES, readPlatformPagination, readStringEnum } from '@/lib/platform/validation'
 
 /**
  * GET /api/platform/organizations
@@ -15,8 +17,14 @@ export const GET = apiHandler(async (req) => {
 
   const { searchParams } = new URL(req.url)
 
-  const page = parseInt(searchParams.get('page') || '1')
-  const limit = parseInt(searchParams.get('limit') || '10')
+  let page: number
+  let limit: number
+  let skip: number
+  try {
+    ({ page, limit, skip } = readPlatformPagination(searchParams, { limit: 10 }))
+  } catch (error) {
+    return badRequest(error instanceof Error ? error.message : 'Invalid pagination parameters')
+  }
   const search = searchParams.get('search') || ''
   const status = searchParams.get('status') || ''
 
@@ -30,13 +38,17 @@ export const GET = apiHandler(async (req) => {
   }
 
   if (status) {
-    where.status = status
+    try {
+      where.status = readStringEnum(status, 'status', ORGANIZATION_STATUSES)
+    } catch (error) {
+      return badRequest(error instanceof Error ? error.message : 'Invalid organization status')
+    }
   }
 
   const [organizations, total] = await Promise.all([
     prisma.organization.findMany({
       where,
-      skip: (page - 1) * limit,
+      skip,
       take: limit,
       orderBy: { createdAt: 'desc' },
       include: {
@@ -103,14 +115,41 @@ export const POST = apiHandler(async (req) => {
   if (authResult instanceof NextResponse) return authResult
   const { user } = authResult
 
-  const body = await req.json()
+  let body: Record<string, unknown>
+  try {
+    body = await req.json()
+  } catch {
+    return badRequest('Request body must be valid JSON')
+  }
   const { name, slug, ownerId, status = 'active', settings } = body
 
-  if (!name || !slug) {
+  if (typeof name !== 'string' || !name.trim() || typeof slug !== 'string' || !slug.trim()) {
     return NextResponse.json({ error: 'name and slug are required' }, { status: 400 })
   }
 
-  const existing = await prisma.organization.findUnique({ where: { slug } })
+  const normalizedName = name.trim()
+  const normalizedSlug = slug.trim()
+  if (normalizedName.length > 120 || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(normalizedSlug) || normalizedSlug.length > 80) {
+    return badRequest('Invalid organization name or slug')
+  }
+  let normalizedStatus: (typeof ORGANIZATION_STATUSES)[number]
+  try {
+    normalizedStatus = readStringEnum(status, 'status', ORGANIZATION_STATUSES)
+  } catch (error) {
+    return badRequest(error instanceof Error ? error.message : 'Invalid organization status')
+  }
+  if (typeof ownerId !== 'string' || !ownerId.trim()) {
+    return badRequest('An organization owner must be selected')
+  }
+  if (settings !== undefined && (typeof settings !== 'object' || settings === null || Array.isArray(settings))) {
+    return badRequest('settings must be an object')
+  }
+  const effectiveOwnerId = ownerId.trim()
+  const owner = await prisma.user.findUnique({ where: { id: effectiveOwnerId }, select: { id: true, isGlobalLocked: true } })
+  if (!owner) return NextResponse.json({ error: 'Owner not found' }, { status: 404 })
+  if (owner.isGlobalLocked) return badRequest('A locked account cannot be the organization owner')
+
+  const existing = await prisma.organization.findUnique({ where: { slug: normalizedSlug } })
   if (existing) {
     return NextResponse.json({ error: 'slug already exists' }, { status: 409 })
   }
@@ -118,10 +157,10 @@ export const POST = apiHandler(async (req) => {
   const organization = await prisma.$transaction(async (tx) => {
     const org = await tx.organization.create({
       data: {
-        name,
-        slug,
-        ownerId: ownerId || user.id,
-        status,
+        name: normalizedName,
+        slug: normalizedSlug,
+        ownerId: effectiveOwnerId,
+        status: normalizedStatus,
         settings: settings && typeof settings === 'object' ? settings : undefined,
       },
     })
@@ -138,7 +177,7 @@ export const POST = apiHandler(async (req) => {
     await tx.organizationMember.create({
       data: {
         organizationId: org.id,
-        userId: ownerId || user.id,
+        userId: effectiveOwnerId,
         role: 'owner',
         status: 'active',
       },
@@ -152,7 +191,7 @@ export const POST = apiHandler(async (req) => {
     action: 'create_organization',
     targetType: 'Organization',
     targetId: organization.id,
-    details: { name, slug },
+    details: { name: normalizedName, slug: normalizedSlug, ownerId: effectiveOwnerId, createdByPlatformAdmin: user.id },
   })
 
   return NextResponse.json({ data: organization }, { status: 201 })

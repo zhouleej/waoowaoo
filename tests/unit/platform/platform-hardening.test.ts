@@ -9,12 +9,18 @@ const authState = vi.hoisted(() => ({
 }))
 
 const requirePlatformAdminMock = vi.hoisted(() => vi.fn())
+const createAdminAuditLogMock = vi.hoisted(() => vi.fn())
 
 const prismaMock = vi.hoisted(() => ({
   organizationMember: {
     findUnique: vi.fn(),
     findMany: vi.fn(),
+    update: vi.fn(),
+    create: vi.fn(),
   },
+  organization: { findUnique: vi.fn() },
+  user: { findUnique: vi.fn() },
+  $transaction: vi.fn((callback) => callback(prismaMock)),
 }))
 
 vi.mock('@/lib/platform-admin', async () => {
@@ -33,6 +39,7 @@ vi.mock('@/lib/platform-admin', async () => {
         user: { id: 'platform-admin', name: 'Platform Admin', email: 'admin@example.com' },
       }
     }),
+    createAdminAuditLog: createAdminAuditLogMock,
   }
 })
 
@@ -85,6 +92,7 @@ describe('platform organization members route', () => {
         },
       },
     ])
+    createAdminAuditLogMock.mockResolvedValue(undefined)
   })
 
   it('lets a platform admin list organization members without an organization membership check', async () => {
@@ -127,6 +135,29 @@ describe('platform organization members route', () => {
     expect(forbidden.status).toBe(403)
 
     expect(prismaMock.organizationMember.findMany).not.toHaveBeenCalled()
+  })
+
+  it('lets a platform admin promote an organization member without making the platform admin the owner', async () => {
+    const route = await import('@/app/api/platform/organizations/[id]/members/route')
+    prismaMock.organization.findUnique.mockResolvedValue({ id: 'org-1', ownerId: 'owner-1', status: 'active' })
+    prismaMock.user.findUnique.mockResolvedValue({ id: 'member-1', isGlobalLocked: false })
+    prismaMock.organizationMember.findUnique.mockResolvedValue({ id: 'membership-1', role: 'member' })
+    prismaMock.organizationMember.update.mockResolvedValue({ id: 'membership-1', organizationId: 'org-1', userId: 'member-1', role: 'admin', status: 'active' })
+
+    const res = await route.POST(buildMockRequest({
+      path: '/api/platform/organizations/org-1/members',
+      method: 'POST',
+      body: { userId: 'member-1' },
+    }), { params: Promise.resolve({ id: 'org-1' }) })
+
+    expect(res.status).toBe(200)
+    expect(prismaMock.organizationMember.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: { role: 'admin', status: 'active' },
+    }))
+    expect(createAdminAuditLogMock).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'set_organization_admin',
+      details: expect.objectContaining({ organizationId: 'org-1', userId: 'member-1', previousRole: 'member' }),
+    }))
   })
 })
 
@@ -227,5 +258,70 @@ describe('platform admin frontend wiring', () => {
     expect(combinedPages).not.toMatch(/>\s*Admin\s*</)
     expect(combinedPages).not.toMatch(/>\s*取消\s*</)
     expect(combinedPages).not.toContain('密码 *')
+  })
+
+  it('prevents administrator self-demotion in both the UI and API route', () => {
+    const pageSource = readProjectFile('src/app/[locale]/admin/platform/users/page.tsx')
+    const routeSource = readProjectFile('src/app/api/platform/users/[id]/route.ts')
+
+    expect(pageSource).toContain("userId === session?.user?.id && isAdmin")
+    expect(pageSource).toContain('disabled={user.id === session?.user?.id && user.isPlatformAdmin}')
+    expect(routeSource).toContain('id === user.id && nextIsPlatformAdmin === false')
+    expect(routeSource).toContain('At least one database platform administrator must remain')
+  })
+
+  it('shares bounded pagination across the large platform lists', () => {
+    for (const file of [
+      'src/app/api/platform/users/route.ts',
+      'src/app/api/platform/organizations/route.ts',
+      'src/app/api/platform/audit-logs/route.ts',
+    ]) {
+      expect(readProjectFile(file), file).toContain('readPlatformPagination')
+    }
+  })
+
+  it('keeps audit-log retry and pagination requests numeric', () => {
+    const pageSource = readProjectFile('src/app/[locale]/admin/platform/audit/page.tsx')
+    const routeSource = readProjectFile('src/app/api/platform/audit-logs/route.ts')
+
+    expect(pageSource).toContain('onRetry={() => void fetchLogs(pagination.page)}')
+    expect(routeSource).toContain('totalPages: Math.max(1, Math.ceil(total / limit))')
+  })
+
+  it('does not disguise a plans API failure as an empty plan list', () => {
+    const source = readProjectFile('src/app/api/platform/plans/route.ts')
+
+    expect(source).not.toContain('unavailable: true')
+    expect(source).toContain('totalPages: Math.max(1, Math.ceil(total / limit))')
+  })
+
+  it('uses safe manual-subscription defaults and localized billing values', () => {
+    const source = readProjectFile('src/app/[locale]/admin/platform/billing/page.tsx')
+
+    expect(source).toContain("autoRenew: false")
+    expect(source).toContain('replaceSubscriptionConfirm')
+    expect(source).toContain('statusFilterOptions')
+    expect(source).toContain('statusLabel(t, row.status)')
+    expect(source).toContain('orderTypeLabel(t, row.type)')
+  })
+
+  it('requires an explicit organization owner instead of defaulting to the platform administrator', () => {
+    const routeSource = readProjectFile('src/app/api/platform/organizations/route.ts')
+    const pageSource = readProjectFile('src/app/[locale]/admin/platform/organizations/page.tsx')
+
+    expect(routeSource).toContain("return badRequest('An organization owner must be selected')")
+    expect(routeSource).toContain('const effectiveOwnerId = ownerId.trim()')
+    expect(routeSource).not.toContain("ownerId.trim() : user.id")
+    expect(pageSource).toContain('ownerId: createOwnerId')
+    expect(pageSource).toContain('setOrganizationAdmin')
+  })
+
+  it('renders nested confirmation dialogs above platform detail modals', () => {
+    const dialogSource = readProjectFile('src/components/ConfirmDialog.tsx')
+    const usersPageSource = readProjectFile('src/app/[locale]/admin/platform/users/page.tsx')
+
+    expect(dialogSource).toContain('z-[200]')
+    expect(usersPageSource).toContain('z-[120]')
+    expect(usersPageSource).toContain('show={!!unlinkTarget}')
   })
 })

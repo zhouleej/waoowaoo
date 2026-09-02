@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePlatformAdmin, createAdminAuditLog } from '@/lib/platform-admin'
 import { apiHandler } from '@/lib/api-errors'
+import { badRequest } from '@/lib/api-auth'
+import { ORGANIZATION_BUSINESS_STATUSES, ORGANIZATION_STATUSES, readStringEnum } from '@/lib/platform/validation'
 
 export const GET = apiHandler<{ id: string }>(async (_req, { params }) => {
   const authResult = await requirePlatformAdmin()
@@ -31,16 +33,40 @@ export const PATCH = apiHandler<{ id: string }>(async (req, { params }) => {
   if (authResult instanceof NextResponse) return authResult
   const { user } = authResult
   const { id } = await params
-  const body = await req.json()
+  let body: Record<string, unknown>
+  try {
+    body = await req.json()
+  } catch {
+    return badRequest('Request body must be valid JSON')
+  }
   const org = await prisma.organization.findUnique({ where: { id } })
   if (!org) return NextResponse.json({ error: 'Organization not found' }, { status: 404 })
+  if (body.name !== undefined && (typeof body.name !== 'string' || !body.name.trim() || body.name.trim().length > 120)) {
+    return badRequest('Invalid organization name')
+  }
+  if (body.settings !== undefined && (typeof body.settings !== 'object' || body.settings === null || Array.isArray(body.settings))) {
+    return badRequest('settings must be an object')
+  }
+  let status: (typeof ORGANIZATION_STATUSES)[number] | undefined
+  let businessStatus: (typeof ORGANIZATION_BUSINESS_STATUSES)[number] | undefined
+  try {
+    status = body.status === undefined ? undefined : readStringEnum(body.status, 'status', ORGANIZATION_STATUSES)
+    businessStatus = body.businessStatus === undefined
+      ? undefined
+      : readStringEnum(body.businessStatus, 'businessStatus', ORGANIZATION_BUSINESS_STATUSES)
+  } catch (error) {
+    return badRequest(error instanceof Error ? error.message : 'Invalid organization status')
+  }
+  if (body.name === undefined && status === undefined && businessStatus === undefined && body.settings === undefined) {
+    return badRequest('At least one supported organization field is required')
+  }
   const updated = await prisma.organization.update({
     where: { id },
     data: {
       ...(typeof body.name === 'string' && body.name.trim() ? { name: body.name.trim() } : {}),
-      ...(typeof body.status === 'string' ? { status: body.status } : {}),
-      ...(typeof body.businessStatus === 'string' ? { businessStatus: body.businessStatus } : {}),
-      ...(body.settings && typeof body.settings === 'object' ? { settings: body.settings } : {}),
+      ...(status !== undefined ? { status } : {}),
+      ...(businessStatus !== undefined ? { businessStatus } : {}),
+      ...(body.settings !== undefined ? { settings: body.settings } : {}),
     },
     include: { owner: true, balance: true, currentPlan: true },
   })

@@ -273,7 +273,7 @@ function applyVideoDurationScaling(input: {
   return input.amount * (selectedDuration / baseDuration)
 }
 
-type Seedance2Resolution = '480p' | '720p'
+type Seedance2Resolution = '480p' | '720p' | '1080p'
 type Seedance2AspectRatio = '16:9' | '4:3' | '1:1' | '3:4' | '9:16' | '21:9'
 
 const SEEDANCE_2_TOKEN_PRICED_MODEL_IDS = new Set([
@@ -302,9 +302,17 @@ const SEEDANCE_2_OUTPUT_DIMENSIONS: Record<
     '9:16': { width: 720, height: 1280 },
     '21:9': { width: 1470, height: 630 },
   },
+  '1080p': {
+    '16:9': { width: 1920, height: 1080 },
+    '4:3': { width: 1664, height: 1248 },
+    '1:1': { width: 1440, height: 1440 },
+    '3:4': { width: 1248, height: 1664 },
+    '9:16': { width: 1080, height: 1920 },
+    '21:9': { width: 2206, height: 946 },
+  },
 }
 
-const SEEDANCE_2_VIDEO_INPUT_MIN_TOKEN_FLOOR: Record<number, Record<Seedance2Resolution, number>> = {
+const SEEDANCE_2_VIDEO_INPUT_MIN_TOKEN_FLOOR: Record<number, Partial<Record<Seedance2Resolution, number>>> = {
   4: { '480p': 70308, '720p': 151200 },
   5: { '480p': 90396, '720p': 194400 },
   6: { '480p': 100440, '720p': 216000 },
@@ -335,7 +343,7 @@ function readMetadataNumber(metadata: Record<string, unknown> | undefined, field
 }
 
 function resolveSeedance2Resolution(value: CapabilityValue | undefined): Seedance2Resolution {
-  if (value === '480p' || value === '720p') return value
+  if (value === '480p' || value === '720p' || value === '1080p') return value
   throw new BillingOperationError(
     'BILLING_UNKNOWN_VIDEO_RESOLUTION',
     `Unsupported video resolution pricing: ${String(value)}`,

@@ -3,6 +3,8 @@ import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/prisma'
 import { requirePlatformAdmin, createAdminAuditLog } from '@/lib/platform-admin'
 import { apiHandler } from '@/lib/api-errors'
+import { badRequest } from '@/lib/api-auth'
+import { readPlatformPagination } from '@/lib/platform/validation'
 
 /**
  * GET /api/platform/users
@@ -16,8 +18,14 @@ export const GET = apiHandler(async (req) => {
 
   const { searchParams } = new URL(req.url)
 
-  const page = parseInt(searchParams.get('page') || '1')
-  const limit = parseInt(searchParams.get('limit') || '10')
+  let page: number
+  let limit: number
+  let skip: number
+  try {
+    ({ page, limit, skip } = readPlatformPagination(searchParams, { limit: 10 }))
+  } catch (error) {
+    return badRequest(error instanceof Error ? error.message : 'Invalid pagination parameters')
+  }
   const search = searchParams.get('search') || ''
   const status = searchParams.get('status') || ''
   const organizationId = searchParams.get('organizationId') || ''
@@ -43,7 +51,7 @@ export const GET = apiHandler(async (req) => {
     ;[users, total] = await Promise.all([
       prisma.user.findMany({
         where,
-        skip: (page - 1) * limit,
+          skip,
         take: limit,
         orderBy: { createdAt: 'desc' },
         select: {
@@ -74,7 +82,7 @@ export const GET = apiHandler(async (req) => {
     ;[users, total] = await Promise.all([
       prisma.user.findMany({
         where,
-        skip: (page - 1) * limit,
+          skip,
         take: limit,
         orderBy: { createdAt: 'desc' },
         select: {

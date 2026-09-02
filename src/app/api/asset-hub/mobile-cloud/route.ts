@@ -134,12 +134,15 @@ export const GET = apiHandler(async (request: NextRequest) => {
       return NextResponse.json({ success: true, data })
     }
     if (resource === 'assets') {
-      const groupType = params.get('groupType')
+      // The upstream asset query requires the group type even when groupIds
+      // are supplied. Validate it locally so a malformed UI request is not
+      // sent as a misleading upstream availability failure.
+      const groupType = requireEnum(params.get('groupType'), GROUP_TYPES)
       const statuses = params.get('statuses')?.split(',').map((item) => item.trim()).filter(Boolean)
       const data = await mobileCloudMaasAssetClient.listAssets({
         pageNo,
         pageSize,
-        ...(groupType ? { groupType: requireEnum(groupType, GROUP_TYPES) } : {}),
+        groupType,
         ...(params.get('groupIds') ? { groupIds: parseIdList(params.get('groupIds')) } : {}),
         ...(params.get('assetName') ? { assetName: text(params.get('assetName'), 100) } : {}),
         ...(statuses?.length ? { statuses: statuses.map((item) => requireEnum(item, ASSET_STATUSES)) } : {}),

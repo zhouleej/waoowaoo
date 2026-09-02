@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { withPrismaRetry } from '@/lib/prisma-retry'
 import { requireUserAuth, isErrorResponse, forbidden, notFound, badRequest } from '@/lib/api-auth'
 import { apiHandler } from '@/lib/api-errors'
+import { requireOrganizationRole } from '@/lib/saas/permissions'
 
 /**
  * GET /api/organizations/[id]
@@ -49,13 +50,14 @@ export const GET = apiHandler(async (_req, ctx) => {
     return notFound('Organization')
   }
 
-  // 检查用户是否为成员
-  const isMember = organization.members.some((m) => m.user.id === session.user.id)
-  if (!isMember) {
-    return forbidden('您不是该组织成员')
-  }
+  const permission = await requireOrganizationRole(organizationId, session.user.id, ['owner', 'admin', 'member'])
+  if (permission.error) return permission.error
 
-  return NextResponse.json(organization)
+  return NextResponse.json({
+    ...organization,
+    currentUserRole: permission.membership!.role,
+    currentUserStatus: permission.membership!.status,
+  })
 })
 
 /**
@@ -93,11 +95,8 @@ export const PATCH = apiHandler(async (req, ctx) => {
     return notFound('Organization')
   }
 
-  // 检查用户是否为 owner
-  const membership = (organization as { members: Array<{ userId: string; role: string }> }).members.find((m) => m.userId === session.user.id)
-  if (!membership || membership.role !== 'owner') {
-    return forbidden('只有组织所有者可以更新组织')
-  }
+  const permission = await requireOrganizationRole(organizationId, session.user.id, ['owner'])
+  if (permission.error) return permission.error
 
   // 更新组织
   const updated = await withPrismaRetry(() =>
@@ -163,10 +162,8 @@ export const DELETE = apiHandler(async (_req, ctx) => {
     return notFound('Organization')
   }
 
-  const membership = organization.members.find((member) => member.userId === session.user.id)
-  if (!membership || membership.role !== 'owner') {
-    return forbidden('只有组织所有者可以删除组织')
-  }
+  const permission = await requireOrganizationRole(organizationId, session.user.id, ['owner'])
+  if (permission.error) return permission.error
 
   if (organization.projects.length > 0) {
     return forbidden('组织仍存在项目，禁止硬删除；请先迁移或删除组织项目')

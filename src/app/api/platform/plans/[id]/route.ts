@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { requirePlatformAdmin, createAdminAuditLog } from '@/lib/platform-admin'
 import { apiHandler } from '@/lib/api-errors'
 import { badRequest, notFound } from '@/lib/api-auth'
-import { readJsonObject, readNumber, readString } from '@/lib/saas/validation'
+import { readBoolean, readJsonObject, readNumber, readString } from '@/lib/saas/validation'
 import { serializePlan } from '@/lib/saas/serializers'
 import type { Prisma } from '@prisma/client'
 
@@ -39,7 +39,7 @@ export const PATCH = apiHandler<{ id: string }>(async (req, { params }) => {
           ...(body.description !== undefined ? { description: readString(body.description, '描述', { max: 1000 }) || null } : {}),
           ...(body.status !== undefined ? { status: readString(body.status, '状态', { required: true, max: 32 }) } : {}),
           ...(body.sortOrder !== undefined ? { sortOrder: readNumber(body.sortOrder, '排序', { integer: true }) } : {}),
-          ...(body.isPublic !== undefined ? { isPublic: Boolean(body.isPublic) } : {}),
+          ...(body.isPublic !== undefined ? { isPublic: readBoolean(body.isPublic, '是否公开') } : {}),
           ...(body.metadata !== undefined ? { metadata: readJsonObject(body.metadata, '扩展信息') as Prisma.InputJsonValue } : {}),
         },
       })

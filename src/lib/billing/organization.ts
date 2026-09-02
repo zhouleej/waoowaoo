@@ -1048,9 +1048,10 @@ export async function checkOrganizationRole(
         userId,
       },
     },
+    include: { organization: true },
   })
 
-  if (!member) {
+  if (!member || member.status !== 'active' || member.organization.status !== 'active') {
     return false
   }
 

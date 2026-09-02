@@ -4,6 +4,7 @@ import { useCallback, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { isAbortError } from '@/lib/error-utils'
 import { useCopyProjectAssetFromGlobal } from '@/lib/query/hooks'
+import { apiFetch } from '@/lib/api-fetch'
 
 type ToastType = 'success' | 'warning' | 'error'
 
@@ -78,6 +79,26 @@ export function useAssetsCopyFromHub({ projectId, onRefresh, showToast }: UseAss
     }
   }, [copyFromGlobalAsset, copyFromGlobalTarget, onRefresh, showToast, t])
 
+  const handleConfirmCopyFromProject = useCallback(async (projectAssetId: string) => {
+    if (!copyFromGlobalTarget) return
+    setIsGlobalCopyInFlight(true)
+    try {
+      const publishResponse = await apiFetch(`/api/projects/${projectId}/assets/publish`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assetId: projectAssetId, kind: copyFromGlobalTarget.type }),
+      })
+      if (!publishResponse.ok) throw new Error('Failed to publish selected project asset')
+      const published = await publishResponse.json() as { globalAssetId?: string }
+      if (!published.globalAssetId) throw new Error('Selected project asset is not ready for reuse')
+      await copyFromGlobalAsset.mutateAsync({ type: copyFromGlobalTarget.type, targetId: copyFromGlobalTarget.targetId, globalAssetId: published.globalAssetId })
+      showToast(t('assetLibrary.copySuccessCharacter'), 'success')
+      setCopyFromGlobalTarget(null)
+      await Promise.resolve(onRefresh())
+    } catch (error: unknown) {
+      if (!isAbortError(error)) showToast(t('assetLibrary.copyFailed', { error: getErrorMessage(error) }), 'error')
+    } finally { setIsGlobalCopyInFlight(false) }
+  }, [copyFromGlobalAsset, copyFromGlobalTarget, onRefresh, projectId, showToast, t])
+
   return {
     copyFromGlobalTarget,
     isGlobalCopyInFlight,
@@ -86,6 +107,7 @@ export function useAssetsCopyFromHub({ projectId, onRefresh, showToast }: UseAss
     handleCopyPropFromGlobal,
     handleVoiceSelectFromHub,
     handleConfirmCopyFromGlobal,
+    handleConfirmCopyFromProject,
     handleCloseCopyPicker,
   }
 }

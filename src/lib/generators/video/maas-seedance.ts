@@ -50,6 +50,7 @@ interface MaasSeedanceVideoOptions {
   duration?: number
   aspectRatio?: string
   ratio?: string
+  resolution?: string
   generateAudio?: boolean
   watermark?: boolean
   lastFrameImageUrl?: string
@@ -127,6 +128,7 @@ export class MaasSeedanceVideoGenerator extends BaseVideoGenerator {
       reference_audios: await normalizeUrlList(rawOptions.referenceAudios, 'referenceAudios'),
       ...(typeof rawOptions.duration === 'number' ? { duration: rawOptions.duration } : {}),
       ...(rawOptions.aspectRatio || rawOptions.ratio ? { ratio: rawOptions.aspectRatio || rawOptions.ratio } : {}),
+      ...(typeof rawOptions.resolution === 'string' ? { resolution: rawOptions.resolution } : {}),
       ...(typeof rawOptions.generateAudio === 'boolean' ? { generate_audio: rawOptions.generateAudio } : {}),
       ...(typeof rawOptions.watermark === 'boolean' ? { watermark: rawOptions.watermark } : {}),
     }

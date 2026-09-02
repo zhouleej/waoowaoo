@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePlatformAdmin, createAdminAuditLog } from '@/lib/platform-admin'
 import { apiHandler } from '@/lib/api-errors'
+import { badRequest } from '@/lib/api-auth'
+import { readStrictBoolean } from '@/lib/platform/validation'
 
 /**
  * GET /api/platform/users/[id]
@@ -149,7 +151,12 @@ export const PATCH = apiHandler<{ id: string }>(async (req, { params }) => {
   const { user } = authResult
   const { id } = await params
 
-  const body = await req.json()
+  let body: { isPlatformAdmin?: unknown; isGlobalLocked?: unknown }
+  try {
+    body = await req.json()
+  } catch {
+    return badRequest('Request body must be valid JSON')
+  }
   const { isPlatformAdmin, isGlobalLocked } = body
 
   // 验证至少有一个有效字段
@@ -158,6 +165,23 @@ export const PATCH = apiHandler<{ id: string }>(async (req, { params }) => {
       { error: 'At least one of isPlatformAdmin or isGlobalLocked is required' },
       { status: 400 }
     )
+  }
+
+  let nextIsPlatformAdmin: boolean | undefined
+  let nextIsGlobalLocked: boolean | undefined
+  try {
+    nextIsPlatformAdmin = isPlatformAdmin === undefined
+      ? undefined
+      : readStrictBoolean(isPlatformAdmin, 'isPlatformAdmin')
+    nextIsGlobalLocked = isGlobalLocked === undefined
+      ? undefined
+      : readStrictBoolean(isGlobalLocked, 'isGlobalLocked')
+  } catch (error) {
+    return badRequest(error instanceof Error ? error.message : 'Invalid user attributes')
+  }
+
+  if (id === user.id && nextIsPlatformAdmin === false) {
+    return badRequest('You cannot remove your own platform administrator role')
   }
 
   // 检查用户是否存在
@@ -175,23 +199,34 @@ export const PATCH = apiHandler<{ id: string }>(async (req, { params }) => {
 
   // 构建更新数据
   const updateData: { isPlatformAdmin?: boolean; isGlobalLocked?: boolean } = {}
-  if (isPlatformAdmin !== undefined) updateData.isPlatformAdmin = isPlatformAdmin
-  if (isGlobalLocked !== undefined) updateData.isGlobalLocked = isGlobalLocked
+  if (nextIsPlatformAdmin !== undefined) updateData.isPlatformAdmin = nextIsPlatformAdmin
+  if (nextIsGlobalLocked !== undefined) updateData.isGlobalLocked = nextIsGlobalLocked
 
-  const updatedUser = await prisma.user.update({
-    where: { id },
-    data: updateData,
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      image: true,
-      createdAt: true,
-      updatedAt: true,
-      isPlatformAdmin: true,
-      isGlobalLocked: true,
-    },
-  })
+  const updatedUser = await prisma.$transaction(async (tx) => {
+    if (existingUser.isPlatformAdmin && nextIsPlatformAdmin === false) {
+      const platformAdminCount = await tx.user.count({ where: { isPlatformAdmin: true } })
+      if (platformAdminCount <= 1) return null
+    }
+
+    return tx.user.update({
+      where: { id },
+      data: updateData,
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        image: true,
+        createdAt: true,
+        updatedAt: true,
+        isPlatformAdmin: true,
+        isGlobalLocked: true,
+      },
+    })
+  }, { isolationLevel: 'Serializable' })
+
+  if (!updatedUser) {
+    return badRequest('At least one database platform administrator must remain')
+  }
 
   // 记录操作日志
   await createAdminAuditLog({

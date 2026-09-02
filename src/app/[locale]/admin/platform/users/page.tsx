@@ -210,6 +210,10 @@ export default function PlatformUsersPage() {
 
   const handleAdminClick = (userId: string, isAdmin: boolean, e?: React.MouseEvent) => {
     if (e) e.stopPropagation()
+    if (userId === session?.user?.id && isAdmin) {
+      showToast(t('cannotRemoveOwnAdmin'), 'error')
+      return
+    }
     setAdminTarget({ id: userId, isAdmin })
     setShowAdminConfirm(true)
   }
@@ -497,12 +501,13 @@ export default function PlatformUsersPage() {
                           {/* 设置/取消管理员按�?*/}
                           <button
                             onClick={(e) => handleAdminClick(user.id, user.isPlatformAdmin, e)}
+                            disabled={user.id === session?.user?.id && user.isPlatformAdmin}
                             className={`glass-btn-base px-3 py-1.5 text-xs rounded-lg flex items-center gap-1 ${
                               user.isPlatformAdmin
                                 ? 'glass-btn-tone-warning'
                                 : 'glass-btn-tone-info'
-                            }`}
-                            title={user.isPlatformAdmin ? t('removeAdmin') : t('setAdmin')}
+                            } disabled:cursor-not-allowed disabled:opacity-50`}
+                            title={user.id === session?.user?.id && user.isPlatformAdmin ? t('cannotRemoveOwnAdmin') : user.isPlatformAdmin ? t('removeAdmin') : t('setAdmin')}
                           >
                             <AppIcon name={user.isPlatformAdmin ? 'minus' : 'badgeCheck'} className="w-3.5 h-3.5" />
                             {user.isPlatformAdmin ? t('removeAdmin') : t('setAdmin')}
@@ -636,11 +641,13 @@ export default function PlatformUsersPage() {
                     </button>
                     <button
                       onClick={(e) => handleAdminClick(selectedUser.id, selectedUser.isPlatformAdmin, e as unknown as React.MouseEvent)}
+                      disabled={selectedUser.id === session?.user?.id && selectedUser.isPlatformAdmin}
                       className={`glass-btn-base px-4 py-2 text-sm rounded-lg flex items-center gap-2 ${
                         selectedUser.isPlatformAdmin
                           ? 'glass-btn-tone-warning'
                           : 'glass-btn-tone-info'
-                      }`}
+                      } disabled:cursor-not-allowed disabled:opacity-50`}
+                      title={selectedUser.id === session?.user?.id && selectedUser.isPlatformAdmin ? t('cannotRemoveOwnAdmin') : undefined}
                     >
                       <AppIcon name={selectedUser.isPlatformAdmin ? 'minus' : 'badgeCheck'} className="w-4 h-4" />
                       {selectedUser.isPlatformAdmin ? t('removeAdmin') : t('setAdmin')}

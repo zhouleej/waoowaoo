@@ -19,6 +19,8 @@ interface GlobalAssetPickerProps {
     isOpen: boolean
     onClose: () => void
     onSelect: (globalAssetId: string) => void
+    onSelectProjectAsset?: (projectAssetId: string) => void
+    projectId?: string
     type: 'character' | 'location' | 'prop' | 'voice'
     loading?: boolean
 }
@@ -79,10 +81,13 @@ export default function GlobalAssetPicker({
     isOpen,
     onClose,
     onSelect,
+    onSelectProjectAsset,
+    projectId,
     type,
     loading: externalLoading
 }: GlobalAssetPickerProps) {
     const t = useTranslations('assetPicker')
+    const [source, setSource] = useState<'project' | 'global'>(projectId ? 'project' : 'global')
 
     // 轻量级查询：只查询当前 type，不附带任务状态
     const charactersQuery = useQuery({
@@ -125,12 +130,24 @@ export default function GlobalAssetPicker({
         },
         enabled: type === 'voice',
     })
+    const projectAssetsQuery = useQuery({
+        queryKey: ['project-assets-picker', projectId, type],
+        queryFn: async () => {
+            const res = await apiFetch(`/api/assets?scope=project&projectId=${encodeURIComponent(projectId || '')}&kind=${type}`)
+            if (!res.ok) throw new Error('Failed to fetch project assets')
+            const data = await res.json()
+            return data.assets as CharacterAssetSummary[] | LocationAssetSummary[] | PropAssetSummary[] | VoiceAssetSummary[]
+        },
+        enabled: Boolean(projectId) && source === 'project',
+    })
 
-    const characters = (charactersQuery.data || []) as CharacterAssetSummary[]
-    const locations = (locationsQuery.data || []) as LocationAssetSummary[]
-    const props = (propsQuery.data || []) as PropAssetSummary[]
-    const voices = (voicesQuery.data || []) as VoiceAssetSummary[]
-    const isLoading = type === 'character'
+    const globalItems = type === 'character' ? charactersQuery.data || [] : type === 'location' ? locationsQuery.data || [] : type === 'prop' ? propsQuery.data || [] : voicesQuery.data || []
+    const selectedItems = source === 'project' ? projectAssetsQuery.data || [] : globalItems
+    const characters = selectedItems as CharacterAssetSummary[]
+    const locations = selectedItems as LocationAssetSummary[]
+    const props = selectedItems as PropAssetSummary[]
+    const voices = selectedItems as VoiceAssetSummary[]
+    const isLoading = source === 'project' ? projectAssetsQuery.isFetching : type === 'character'
         ? charactersQuery.isFetching
         : type === 'location'
             ? locationsQuery.isFetching
@@ -181,6 +198,7 @@ export default function GlobalAssetPicker({
         if (isOpen) {
             setSelectedId(null)
             setSearchQuery('')
+            setSource(projectId ? 'project' : 'global')
             if (type === 'character') {
                 refetchCharacters()
             } else if (type === 'location') {
@@ -200,7 +218,8 @@ export default function GlobalAssetPicker({
     const handleConfirm = () => {
         if (selectedId) {
             stopAudio()  // 确认复制时停止音频播放
-            onSelect(selectedId)
+            if (source === 'project' && onSelectProjectAsset) onSelectProjectAsset(selectedId)
+            else onSelect(selectedId)
         }
     }
 
@@ -281,6 +300,13 @@ export default function GlobalAssetPicker({
                         <XMarkIcon className="w-5 h-5" />
                     </button>
                 </div>
+
+                {projectId && onSelectProjectAsset && (
+                    <div className="px-6 pb-3 flex gap-2">
+                        <button onClick={() => { setSource('project'); setSelectedId(null) }} className={`glass-btn-base px-3 py-1.5 text-sm ${source === 'project' ? 'glass-btn-primary' : 'glass-btn-secondary'}`}>{t('currentProject')}</button>
+                        <button onClick={() => { setSource('global'); setSelectedId(null) }} className={`glass-btn-base px-3 py-1.5 text-sm ${source === 'global' ? 'glass-btn-primary' : 'glass-btn-secondary'}`}>{t('myAssetHub')}</button>
+                    </div>
+                )}
 
                 {/* 搜索栏 */}
                 <div className="px-6 pb-3">

@@ -71,6 +71,21 @@ interface BillingInvoice {
 
 const emptyPagination: Pagination = { page: 1, limit: 10, total: 0, totalPages: 1 }
 const entitlementKeys = ['memberLimit', 'monthlyCredits', 'modelAccess', 'taskTypes', 'overagePolicy']
+const statusFilterOptions: Record<TabKey, string[]> = {
+  plans: ['active', 'inactive'],
+  subscriptions: ['trialing', 'active', 'past_due', 'canceled', 'expired'],
+  orders: ['pending', 'paid', 'canceled', 'refunded', 'failed'],
+  invoices: ['pending', 'issued', 'voided'],
+}
+const statusTranslationKeys: Record<string, string> = {
+  trialing: 'trialing', active: 'active', past_due: 'pastDue', canceled: 'canceled', expired: 'expired',
+  inactive: 'inactive', pending: 'pending', paid: 'paid', refunded: 'refunded', failed: 'failed',
+  issued: 'issued', voided: 'voided',
+}
+const billingCycleTranslationKeys: Record<string, string> = { monthly: 'monthly', yearly: 'yearly' }
+const orderTypeTranslationKeys: Record<string, string> = {
+  subscription: 'subscriptionOrder', renewal: 'renewalOrder', upgrade: 'upgradeOrder', recharge: 'rechargeOrder', adjustment: 'adjustmentOrder',
+}
 
 function useDebouncedValue(value: string, delay = 360) {
   const [debounced, setDebounced] = useState(value)
@@ -83,6 +98,18 @@ function useDebouncedValue(value: string, delay = 360) {
 
 function money(value: number, currency = 'CNY') {
   return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(value || 0)
+}
+
+function statusLabel(t: ReturnType<typeof useTranslations>, status: string) {
+  return t(statusTranslationKeys[status] || 'unknownStatus')
+}
+
+function billingCycleLabel(t: ReturnType<typeof useTranslations>, cycle: string) {
+  return t(billingCycleTranslationKeys[cycle] || 'unknownBillingCycle')
+}
+
+function orderTypeLabel(t: ReturnType<typeof useTranslations>, type: string) {
+  return t(orderTypeTranslationKeys[type] || 'unknownOrderType')
 }
 
 export default function PlatformBillingPage() {
@@ -112,7 +139,7 @@ export default function PlatformBillingPage() {
   const [editingPlan, setEditingPlan] = useState<PricingPlan | null>(null)
   const [planForm, setPlanForm] = useState({ code: '', name: '', price: '0', billingCycle: 'monthly', status: 'active', sortOrder: '0', description: '', memberLimit: '10', monthlyCredits: '1000', modelAccess: 'standard', taskTypes: 'image,video', overagePolicy: 'block' })
   const [savingPlan, setSavingPlan] = useState(false)
-  const [subscriptionForm, setSubscriptionForm] = useState({ organizationId: '', planId: '', seats: '1', status: 'active', autoRenew: true })
+  const [subscriptionForm, setSubscriptionForm] = useState({ organizationId: '', planId: '', seats: '1', status: 'active', autoRenew: false })
   const [creatingSubscription, setCreatingSubscription] = useState(false)
   const [confirmAction, setConfirmAction] = useState<{ title: string; message: string; onConfirm: () => void; type?: 'danger' | 'warning' | 'info' } | null>(null)
 
@@ -279,7 +306,7 @@ export default function PlatformBillingPage() {
     })
   }
 
-  const createSubscription = async () => {
+  const submitSubscription = async () => {
     if (!subscriptionForm.organizationId || !subscriptionForm.planId) {
       showToast(t('subscriptionRequired'), 'warning')
       return
@@ -288,7 +315,7 @@ export default function PlatformBillingPage() {
     try {
       await apiVoid('/api/platform/subscriptions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...subscriptionForm, seats: Number(subscriptionForm.seats) }) })
       showToast(t('subscriptionCreated'), 'success')
-      setSubscriptionForm({ organizationId: '', planId: '', seats: '1', status: 'active', autoRenew: true })
+      setSubscriptionForm({ organizationId: '', planId: '', seats: '1', status: 'active', autoRenew: false })
       setActiveTab('subscriptions')
       await Promise.all([fetchTab(1, 'subscriptions'), loadOrganizations()])
     } catch (error) {
@@ -296,6 +323,23 @@ export default function PlatformBillingPage() {
     } finally {
       setCreatingSubscription(false)
     }
+  }
+
+  const createSubscription = () => {
+    const organization = organizations.find((item) => item.id === subscriptionForm.organizationId)
+    if (organization?.currentSubscription) {
+      setConfirmAction({
+        title: t('replaceSubscription'),
+        message: t('replaceSubscriptionConfirm', { name: organization.name, plan: organization.currentSubscription.plan?.name || statusLabel(t, organization.currentSubscription.status) }),
+        type: 'warning',
+        onConfirm: () => {
+          setConfirmAction(null)
+          void submitSubscription()
+        },
+      })
+      return
+    }
+    void submitSubscription()
   }
 
   if (status === 'loading' || !session || platformAdminLoading) return <div className="min-h-screen bg-[var(--glass-bg-root)]"><Navbar /><div className="flex h-[calc(100vh-64px)] items-center justify-center text-[var(--glass-text-secondary)]">{t('loading')}</div></div>
@@ -322,7 +366,7 @@ export default function PlatformBillingPage() {
 
         <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
           {tabItems.map((tab) => (
-            <button key={tab.key} onClick={() => { setActiveTab(tab.key); setStatusFilter(''); setSearchInput('') }} aria-pressed={activeTab === tab.key} className={`flex items-center gap-3 rounded-2xl border p-4 text-left transition-all ${activeTab === tab.key ? 'border-[var(--glass-tone-info-fg)]/40 bg-[var(--glass-tone-info-bg)] text-[var(--glass-tone-info-fg)] shadow-[0_10px_30px_-22px_var(--glass-tone-info-fg)]' : 'glass-surface border-transparent hover:brightness-105'}`}>
+            <button key={tab.key} onClick={() => { setActiveTab(tab.key); setStatusFilter(''); setSearchInput(''); setOrganizationFilter('') }} aria-pressed={activeTab === tab.key} className={`flex items-center gap-3 rounded-2xl border p-4 text-left transition-all ${activeTab === tab.key ? 'border-[var(--glass-tone-info-fg)]/40 bg-[var(--glass-tone-info-bg)] text-[var(--glass-tone-info-fg)] shadow-[0_10px_30px_-22px_var(--glass-tone-info-fg)]' : 'glass-surface border-transparent hover:brightness-105'}`}>
               <span className={`flex h-10 w-10 items-center justify-center rounded-xl ${activeTab === tab.key ? 'bg-[var(--glass-tone-info-fg)]/15' : 'bg-[var(--glass-bg-muted)]'}`}><AppIcon name={tab.icon} className={`h-5 w-5 ${activeTab === tab.key ? 'text-[var(--glass-tone-info-fg)]' : 'text-[var(--glass-text-secondary)]'}`} /></span>
               <span className={`font-semibold ${activeTab === tab.key ? 'text-[var(--glass-tone-info-fg)]' : 'text-[var(--glass-text-primary)]'}`}>{tab.label}</span>
             </button>
@@ -332,7 +376,7 @@ export default function PlatformBillingPage() {
         <div className="glass-surface mb-6 p-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
             {activeTab === 'plans' ? <input value={searchInput} onChange={(e) => setSearchInput(e.target.value)} placeholder={t('searchPlans')} className="glass-input-base w-full px-3 py-2 lg:max-w-sm" /> : <select value={organizationFilter} onChange={(e) => setOrganizationFilter(e.target.value)} className="glass-input-base w-full px-3 py-2 lg:max-w-sm"><option value="">{t('allOrganizations')}</option>{organizations.map((org) => <option key={org.id} value={org.id}>{org.name}</option>)}</select>}
-            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="glass-input-base w-full px-3 py-2 lg:w-48"><option value="">{t('allStatus')}</option><option value="active">{t('active')}</option><option value="inactive">{t('inactive')}</option><option value="pending">{t('pending')}</option><option value="paid">{t('paid')}</option><option value="issued">{t('issued')}</option><option value="canceled">{t('canceled')}</option></select>
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="glass-input-base w-full px-3 py-2 lg:w-48"><option value="">{t('allStatus')}</option>{statusFilterOptions[activeTab].map((value) => <option key={value} value={value}>{statusLabel(t, value)}</option>)}</select>
             <button onClick={() => void fetchTab(1)} disabled={loading} className="glass-btn-base glass-btn-secondary px-4 py-2 disabled:opacity-50"><AppIcon name="refresh" className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />{t('refresh')}</button>
           </div>
         </div>
@@ -361,7 +405,7 @@ export default function PlatformBillingPage() {
           {loadError ? <PlatformPageError title={t('requestFailed')} message={loadError} retryLabel={t('retry')} onRetry={() => void fetchTab(pagination.page || 1)} /> : loading ? <div className="p-10 text-center text-[var(--glass-text-secondary)]">{t('loading')}</div> : (
             <div className="overflow-x-auto">
               {activeTab === 'plans' && <PlansTable plans={plans} t={t} onEdit={openPlanEditor} onToggle={togglePlanStatus} />}
-              {activeTab === 'subscriptions' && <SubscriptionsTable rows={subscriptions} organizationCount={organizationTotal} activePlanCount={availablePlans.length} t={t} onSelectPlans={() => setActiveTab('plans')} />}
+              {activeTab === 'subscriptions' && <SubscriptionsTable rows={subscriptions} total={pagination.total} isFiltered={Boolean(statusFilter || organizationFilter)} organizationCount={organizationTotal} activePlanCount={availablePlans.length} t={t} onSelectPlans={() => setActiveTab('plans')} />}
               {activeTab === 'orders' && <OrdersTable rows={orders} t={t} />}
               {activeTab === 'invoices' && <InvoicesTable rows={invoices} t={t} />}
             </div>
@@ -424,28 +468,29 @@ function SubscriptionEmpty({ state, t, onSelectPlans }: { state: NonNullable<Ret
 
 function PlansTable({ plans, t, onEdit, onToggle }: { plans: PricingPlan[]; t: ReturnType<typeof useTranslations>; onEdit: (plan: PricingPlan) => void; onToggle: (plan: PricingPlan) => void }) {
   if (!plans.length) return <Empty label={t('noPlans')} />
-  return <table className="w-full min-w-[900px]"><thead className="bg-[var(--glass-bg-muted)]"><tr><Th>{t('planName')}</Th><Th>{t('price')}</Th><Th>{t('entitlements')}</Th><Th>{t('subscribers')}</Th><Th>{t('status')}</Th><Th>{t('actions')}</Th></tr></thead><tbody className="divide-y divide-[var(--glass-stroke-base)]">{plans.map((plan) => <tr key={plan.id} className="hover:bg-[var(--glass-bg-muted)]/40"><Td><div className="font-semibold text-[var(--glass-text-primary)]">{plan.name}</div><div className="font-mono text-xs text-[var(--glass-text-tertiary)]">{plan.code}</div></Td><Td>{money(plan.price, plan.currency)} / {plan.billingCycle}</Td><Td><div className="flex flex-wrap gap-1">{(plan.entitlements || []).slice(0, 4).map((item) => <span key={item.key} className="rounded-full bg-[var(--glass-bg-muted)] px-2 py-0.5 text-xs text-[var(--glass-text-secondary)]">{item.key}: {String(item.value)}</span>)}</div></Td><Td>{plan._count?.subscriptions || 0}</Td><Td><StatusBadge status={plan.status} /></Td><Td><div className="flex gap-2"><button onClick={() => onEdit(plan)} className="glass-btn-base glass-btn-secondary px-3 py-1.5 text-xs">{t('edit')}</button><button onClick={() => onToggle(plan)} className="glass-btn-base glass-btn-tone-warning px-3 py-1.5 text-xs">{plan.status === 'active' ? t('disable') : t('enable')}</button></div></Td></tr>)}</tbody></table>
+  return <table className="w-full min-w-[900px]"><thead className="bg-[var(--glass-bg-muted)]"><tr><Th>{t('planName')}</Th><Th>{t('price')}</Th><Th>{t('entitlements')}</Th><Th>{t('subscribers')}</Th><Th>{t('status')}</Th><Th>{t('actions')}</Th></tr></thead><tbody className="divide-y divide-[var(--glass-stroke-base)]">{plans.map((plan) => <tr key={plan.id} className="hover:bg-[var(--glass-bg-muted)]/40"><Td><div className="font-semibold text-[var(--glass-text-primary)]">{plan.name}</div><div className="font-mono text-xs text-[var(--glass-text-tertiary)]">{plan.code}</div></Td><Td>{money(plan.price, plan.currency)} / {billingCycleLabel(t, plan.billingCycle)}</Td><Td><div className="flex flex-wrap gap-1">{(plan.entitlements || []).slice(0, 4).map((item) => <span key={item.key} className="rounded-full bg-[var(--glass-bg-muted)] px-2 py-0.5 text-xs text-[var(--glass-text-secondary)]">{item.key}: {String(item.value)}</span>)}</div></Td><Td>{plan._count?.subscriptions || 0}</Td><Td><StatusBadge status={plan.status} label={statusLabel(t, plan.status)} /></Td><Td><div className="flex gap-2"><button onClick={() => onEdit(plan)} className="glass-btn-base glass-btn-secondary px-3 py-1.5 text-xs">{t('edit')}</button><button onClick={() => onToggle(plan)} className="glass-btn-base glass-btn-tone-warning px-3 py-1.5 text-xs">{plan.status === 'active' ? t('disable') : t('enable')}</button></div></Td></tr>)}</tbody></table>
 }
 
-function SubscriptionsTable({ rows, organizationCount, activePlanCount, t, onSelectPlans }: { rows: Subscription[]; organizationCount: number; activePlanCount: number; t: ReturnType<typeof useTranslations>; onSelectPlans: () => void }) {
-  const emptyState = getSubscriptionEmptyState({ organizationCount, activePlanCount, subscriptionCount: rows.length })
+function SubscriptionsTable({ rows, total, isFiltered, organizationCount, activePlanCount, t, onSelectPlans }: { rows: Subscription[]; total: number; isFiltered: boolean; organizationCount: number; activePlanCount: number; t: ReturnType<typeof useTranslations>; onSelectPlans: () => void }) {
+  if (!rows.length && (isFiltered || total > 0)) return <Empty label={t('noMatchingSubscriptions')} />
+  const emptyState = getSubscriptionEmptyState({ organizationCount, activePlanCount, subscriptionCount: total })
   if (emptyState) return <SubscriptionEmpty state={emptyState} t={t} onSelectPlans={onSelectPlans} />
-  return <table className="w-full min-w-[820px]"><thead className="bg-[var(--glass-bg-muted)]"><tr><Th>{t('organization')}</Th><Th>{t('planName')}</Th><Th>{t('seats')}</Th><Th>{t('periodEnd')}</Th><Th>{t('autoRenew')}</Th><Th>{t('status')}</Th></tr></thead><tbody className="divide-y divide-[var(--glass-stroke-base)]">{rows.map((row) => <tr key={row.id} className="hover:bg-[var(--glass-bg-muted)]/40"><Td>{row.organization?.name || '-'}</Td><Td>{row.plan?.name || '-'}</Td><Td>{row.seats}</Td><Td>{row.currentPeriodEnd ? new Date(row.currentPeriodEnd).toLocaleDateString() : '-'}</Td><Td>{row.autoRenew ? t('yes') : t('no')}</Td><Td><StatusBadge status={row.status} /></Td></tr>)}</tbody></table>
+  return <table className="w-full min-w-[820px]"><thead className="bg-[var(--glass-bg-muted)]"><tr><Th>{t('organization')}</Th><Th>{t('planName')}</Th><Th>{t('seats')}</Th><Th>{t('periodEnd')}</Th><Th>{t('autoRenew')}</Th><Th>{t('status')}</Th></tr></thead><tbody className="divide-y divide-[var(--glass-stroke-base)]">{rows.map((row) => <tr key={row.id} className="hover:bg-[var(--glass-bg-muted)]/40"><Td>{row.organization?.name || '-'}</Td><Td>{row.plan?.name || '-'}</Td><Td>{row.seats}</Td><Td>{row.currentPeriodEnd ? new Date(row.currentPeriodEnd).toLocaleDateString() : '-'}</Td><Td>{row.autoRenew ? t('yes') : t('no')}</Td><Td><StatusBadge status={row.status} label={statusLabel(t, row.status)} /></Td></tr>)}</tbody></table>
 }
 
 function OrdersTable({ rows, t }: { rows: BillingOrder[]; t: ReturnType<typeof useTranslations> }) {
   if (!rows.length) return <Empty label={t('noOrders')} />
-  return <table className="w-full min-w-[900px]"><thead className="bg-[var(--glass-bg-muted)]"><tr><Th>{t('orderNo')}</Th><Th>{t('organization')}</Th><Th>{t('type')}</Th><Th>{t('amount')}</Th><Th>{t('invoice')}</Th><Th>{t('createdAt')}</Th><Th>{t('status')}</Th></tr></thead><tbody className="divide-y divide-[var(--glass-stroke-base)]">{rows.map((row) => <tr key={row.id} className="hover:bg-[var(--glass-bg-muted)]/40"><Td><span className="font-mono">{row.orderNo}</span></Td><Td>{row.organization?.name || '-'}</Td><Td>{row.type}</Td><Td>{money(row.amount, row.currency)}</Td><Td>{row.invoice?.status ? <StatusBadge status={row.invoice.status} /> : '-'}</Td><Td>{new Date(row.createdAt).toLocaleDateString()}</Td><Td><StatusBadge status={row.status} /></Td></tr>)}</tbody></table>
+  return <table className="w-full min-w-[900px]"><thead className="bg-[var(--glass-bg-muted)]"><tr><Th>{t('orderNo')}</Th><Th>{t('organization')}</Th><Th>{t('type')}</Th><Th>{t('amount')}</Th><Th>{t('invoice')}</Th><Th>{t('createdAt')}</Th><Th>{t('status')}</Th></tr></thead><tbody className="divide-y divide-[var(--glass-stroke-base)]">{rows.map((row) => <tr key={row.id} className="hover:bg-[var(--glass-bg-muted)]/40"><Td><span className="font-mono">{row.orderNo}</span></Td><Td>{row.organization?.name || '-'}</Td><Td>{orderTypeLabel(t, row.type)}</Td><Td>{money(row.amount, row.currency)}</Td><Td>{row.invoice?.status ? <StatusBadge status={row.invoice.status} label={statusLabel(t, row.invoice.status)} /> : '-'}</Td><Td>{new Date(row.createdAt).toLocaleDateString()}</Td><Td><StatusBadge status={row.status} label={statusLabel(t, row.status)} /></Td></tr>)}</tbody></table>
 }
 
 function InvoicesTable({ rows, t }: { rows: BillingInvoice[]; t: ReturnType<typeof useTranslations> }) {
   if (!rows.length) return <Empty label={t('noInvoices')} />
-  return <table className="w-full min-w-[860px]"><thead className="bg-[var(--glass-bg-muted)]"><tr><Th>{t('invoiceNo')}</Th><Th>{t('titleField')}</Th><Th>{t('organization')}</Th><Th>{t('orderNo')}</Th><Th>{t('amount')}</Th><Th>{t('createdAt')}</Th><Th>{t('status')}</Th></tr></thead><tbody className="divide-y divide-[var(--glass-stroke-base)]">{rows.map((row) => <tr key={row.id} className="hover:bg-[var(--glass-bg-muted)]/40"><Td><span className="font-mono">{row.invoiceNo}</span></Td><Td>{row.title}</Td><Td>{row.organization?.name || '-'}</Td><Td>{row.order?.orderNo || '-'}</Td><Td>{money(row.amount)}</Td><Td>{new Date(row.createdAt).toLocaleDateString()}</Td><Td><StatusBadge status={row.status} /></Td></tr>)}</tbody></table>
+  return <table className="w-full min-w-[860px]"><thead className="bg-[var(--glass-bg-muted)]"><tr><Th>{t('invoiceNo')}</Th><Th>{t('titleField')}</Th><Th>{t('organization')}</Th><Th>{t('orderNo')}</Th><Th>{t('amount')}</Th><Th>{t('createdAt')}</Th><Th>{t('status')}</Th></tr></thead><tbody className="divide-y divide-[var(--glass-stroke-base)]">{rows.map((row) => <tr key={row.id} className="hover:bg-[var(--glass-bg-muted)]/40"><Td><span className="font-mono">{row.invoiceNo}</span></Td><Td>{row.title}</Td><Td>{row.organization?.name || '-'}</Td><Td>{row.order?.orderNo || '-'}</Td><Td>{money(row.amount)}</Td><Td>{new Date(row.createdAt).toLocaleDateString()}</Td><Td><StatusBadge status={row.status} label={statusLabel(t, row.status)} /></Td></tr>)}</tbody></table>
 }
 
 function Th({ children }: { children: React.ReactNode }) { return <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-[var(--glass-text-secondary)]">{children}</th> }
 function Td({ children }: { children: React.ReactNode }) { return <td className="px-6 py-4 text-sm text-[var(--glass-text-secondary)]">{children}</td> }
-function StatusBadge({ status }: { status: string }) {
-  const tone = ['active', 'paid', 'issued'].includes(status) ? 'bg-[var(--glass-tone-success-bg)] text-[var(--glass-tone-success-fg)]' : ['inactive', 'canceled', 'void'].includes(status) ? 'bg-[var(--glass-tone-danger-bg)] text-[var(--glass-tone-danger-fg)]' : 'bg-[var(--glass-tone-warning-bg)] text-[var(--glass-tone-warning-fg)]'
-  return <span className={`inline-flex rounded-full px-2 py-1 text-xs ${tone}`}>{status}</span>
+function StatusBadge({ status, label }: { status: string; label: string }) {
+  const tone = ['active', 'paid', 'issued'].includes(status) ? 'bg-[var(--glass-tone-success-bg)] text-[var(--glass-tone-success-fg)]' : ['inactive', 'canceled', 'voided', 'expired', 'refunded', 'failed'].includes(status) ? 'bg-[var(--glass-tone-danger-bg)] text-[var(--glass-tone-danger-fg)]' : 'bg-[var(--glass-tone-warning-bg)] text-[var(--glass-tone-warning-fg)]'
+  return <span className={`inline-flex rounded-full px-2 py-1 text-xs ${tone}`}>{label}</span>
 }

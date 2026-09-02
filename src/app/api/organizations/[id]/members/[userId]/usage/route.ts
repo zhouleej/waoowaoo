@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { withPrismaRetry } from '@/lib/prisma-retry'
-import { requireUserAuth, isErrorResponse, forbidden, notFound } from '@/lib/api-auth'
+import { requireUserAuth, isErrorResponse, notFound } from '@/lib/api-auth'
 import { apiHandler } from '@/lib/api-errors'
-import { getMemberUsage, checkOrganizationRole } from '@/lib/billing/organization'
+import { getMemberUsage } from '@/lib/billing/organization'
 import { toMoneyNumber } from '@/lib/billing/money'
+import { requireOrganizationRole } from '@/lib/saas/permissions'
 
 /**
  * GET /api/organizations/[id]/members/[userId]/usage
@@ -23,10 +24,8 @@ export const GET = apiHandler(async (req, ctx) => {
   const { session } = authResult
 
   // 验证权限：仅 owner 或 admin 可查看成员消费记录
-  const hasPermission = await checkOrganizationRole(organizationId, session.user.id, ['owner', 'admin'])
-  if (!hasPermission) {
-    return forbidden('只有组织所有者或管理员可以查看成员消费记录')
-  }
+  const permission = await requireOrganizationRole(organizationId, session.user.id, ['owner', 'admin'])
+  if (permission.error) return permission.error
 
   // 解析查询参数
   const { searchParams } = new URL(req.url)

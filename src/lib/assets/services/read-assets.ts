@@ -11,6 +11,7 @@ import {
   mapProjectPropToAsset,
 } from '@/lib/assets/mappers'
 import type { AssetKind, AssetQueryInput, AssetSummary } from '@/lib/assets/contracts'
+import { logError as _ulogError } from '@/lib/logging/core'
 import {
   listGlobalLocationBackedAssets,
   listProjectLocationBackedAssets,
@@ -88,8 +89,24 @@ async function readGlobalAssets(input: { folderId?: string | null; userId: strin
     }),
   ])
 
-  const [globalCharacters, globalLocations, globalProps, globalVoices] = await Promise.all([
-    Promise.all(characters.map((character) => attachMediaFieldsToGlobalCharacter(character))),
+  const globalCharacters = await Promise.all(characters.map(async (character) => {
+    try {
+      return await attachMediaFieldsToGlobalCharacter(character)
+    } catch (error) {
+      // A legacy malformed appearance must not make every other asset in the
+      // user's picker unavailable. The migration command repairs these rows;
+      // retain the character with no renders until that repair is applied.
+      _ulogError('[assets] skipping malformed global character media fields', {
+        characterId: character.id,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      return {
+        ...character,
+        appearances: [],
+      }
+    }
+  }))
+  const [globalLocations, globalProps, globalVoices] = await Promise.all([
     Promise.all(locations.map((location) => attachMediaFieldsToGlobalLocation(location))),
     Promise.all(props.map((prop) => attachMediaFieldsToGlobalLocation(prop))),
     Promise.all(voices.map((voice) => attachMediaFieldsToGlobalVoice(voice))),

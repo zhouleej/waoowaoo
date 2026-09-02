@@ -68,6 +68,14 @@ export const queueRedis = singleton.queue || (singleton.queue = createQueueRedis
 export function createSubscriber() {
   const client = new Redis({
     ...buildBaseConfig(),
+    // A Pub/Sub connection must only receive subscription commands once it
+    // enters subscriber mode. ioredis normally sends CLIENT SETINFO and an
+    // INFO ready check during connection setup; on a reconnect racing with
+    // auto-resubscribe, those regular commands can be rejected by Redis as
+    // "only subscriber commands may be used". The SSE subscriber does not
+    // need either capability, so keep this connection Pub/Sub-only.
+    disableClientInfo: true,
+    enableReadyCheck: false,
     maxRetriesPerRequest: null,
   })
   onConnectLog('sub', client)

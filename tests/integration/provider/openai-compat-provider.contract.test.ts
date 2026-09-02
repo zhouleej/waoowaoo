@@ -187,6 +187,7 @@ describe('provider contract - openai compatible media template', () => {
         modelId: 'doubao-seedance-2.0',
         duration: 5,
         aspectRatio: '16:9',
+        resolution: '1080p',
         generateAudio: true,
         watermark: false,
         lastFrameImageUrl: 'https://media.example.com/last.png',
@@ -213,6 +214,7 @@ describe('provider contract - openai compatible media template', () => {
       reference_audios: [],
       duration: 5,
       ratio: '16:9',
+      resolution: '1080p',
       generate_audio: true,
       watermark: false,
     })

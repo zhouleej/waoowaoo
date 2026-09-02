@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePlatformAdmin } from '@/lib/platform-admin'
 import { apiHandler } from '@/lib/api-errors'
+import { badRequest } from '@/lib/api-auth'
+import { readPlatformPagination, safeParseAuditDetails } from '@/lib/platform/validation'
 
 /**
  * GET /api/platform/audit-logs
@@ -15,8 +17,14 @@ export const GET = apiHandler(async (req) => {
 
   const { searchParams } = new URL(req.url)
 
-  const page = parseInt(searchParams.get('page') || '1')
-  const limit = parseInt(searchParams.get('limit') || '20')
+  let page: number
+  let limit: number
+  let skip: number
+  try {
+    ({ page, limit, skip } = readPlatformPagination(searchParams, { limit: 20 }))
+  } catch (error) {
+    return badRequest(error instanceof Error ? error.message : 'Invalid pagination parameters')
+  }
   const action = searchParams.get('action') || ''
   const adminId = searchParams.get('adminId') || ''
 
@@ -33,7 +41,7 @@ export const GET = apiHandler(async (req) => {
   const [logs, total] = await Promise.all([
     prisma.adminAuditLog.findMany({
       where,
-      skip: (page - 1) * limit,
+      skip,
       take: limit,
       orderBy: { createdAt: 'desc' },
       include: {
@@ -54,7 +62,7 @@ export const GET = apiHandler(async (req) => {
     action: log.action,
     targetType: log.targetType,
     targetId: log.targetId,
-    details: log.details ? JSON.parse(log.details) : null,
+    details: safeParseAuditDetails(log.details),
     ipAddress: log.ipAddress,
     createdAt: log.createdAt,
     admin: {
@@ -76,7 +84,7 @@ export const GET = apiHandler(async (req) => {
       page,
       limit,
       total,
-      totalPages: Math.ceil(total / limit),
+      totalPages: Math.max(1, Math.ceil(total / limit)),
     },
     filters: {
       actions: actions.map((a) => a.action),

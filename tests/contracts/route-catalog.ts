@@ -144,6 +144,7 @@ const ROUTE_FILES = [
   'src/app/api/novel-promotion/[projectId]/voice-generate/route.ts',
   'src/app/api/novel-promotion/[projectId]/voice-lines/route.ts',
   'src/app/api/projects/[projectId]/assets/route.ts',
+  'src/app/api/projects/[projectId]/assets/publish/route.ts',
   'src/app/api/projects/[projectId]/costs/route.ts',
   'src/app/api/projects/[projectId]/data/route.ts',
   'src/app/api/projects/[projectId]/route.ts',

@@ -72,6 +72,7 @@ interface AssetsStageModalsProps {
   handleVoiceDesignSave: (voiceId: string, audioBase64: string) => Promise<void>
   handleCloseCopyPicker: () => void
   handleConfirmCopyFromGlobal: (globalAssetId: string) => Promise<void>
+  handleConfirmCopyFromProject: (projectAssetId: string) => Promise<void>
   handleConfirmProfile: (characterId: string, updatedProfileData?: CharacterProfileData) => Promise<void>
   closeEditingAppearance: () => void
   closeEditingLocation: () => void
@@ -111,6 +112,7 @@ export default function AssetsStageModals({
   handleVoiceDesignSave,
   handleCloseCopyPicker,
   handleConfirmCopyFromGlobal,
+  handleConfirmCopyFromProject,
   handleConfirmProfile,
   closeEditingAppearance,
   closeEditingLocation,
@@ -264,6 +266,8 @@ export default function AssetsStageModals({
           isOpen={!!copyFromGlobalTarget}
           onClose={handleCloseCopyPicker}
           onSelect={handleConfirmCopyFromGlobal}
+          onSelectProjectAsset={handleConfirmCopyFromProject}
+          projectId={projectId}
           type={copyFromGlobalTarget.type}
           loading={isGlobalCopyInFlight}
         />

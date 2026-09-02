@@ -99,6 +99,17 @@ describe('billing/cost', () => {
     expect(cost).toBeCloseTo(4.968, 8)
   })
 
+  it('estimates Mobile Cloud Seedance 2.0 1080p pricing from its output dimensions', () => {
+    const cost = calcVideo('maas-seedance:tenant-local::doubao-seedance-2.0', '1080p', 1, {
+      resolution: '1080p',
+      duration: 5,
+      aspectRatio: '16:9',
+      containsVideoInput: false,
+    })
+
+    expect(cost).toBeCloseTo(22.356, 8)
+  })
+
   it('applies Seedance 2.0 video-input token floor for quoted pricing', () => {
     const cost = calcVideo('doubao-seedance-2-0-fast-260128', '720p', 1, {
       resolution: '720p',

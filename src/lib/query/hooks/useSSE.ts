@@ -1,5 +1,5 @@
 'use client'
-import { logError as _ulogError } from '@/lib/logging/core'
+import { logDebug as _ulogDebug, logError as _ulogError } from '@/lib/logging/core'
 
 import { useEffect, useMemo, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
@@ -206,8 +206,17 @@ export function useSSE({ projectId, episodeId, enabled = true, onEvent }: UseSSE
       source.addEventListener(type, handler)
       listeners.push({ type, handler })
     }
-    source.onerror = (error) => {
-      _ulogError('[useSSE] stream error', error)
+    source.onerror = () => {
+      // EventSource reports a transient disconnect through `error` before it
+      // automatically reconnects. Logging it as an error makes normal retry
+      // behaviour appear as a Next.js console error overlay and loses the
+      // actual server-side reason. A permanently closed stream remains an
+      // error for diagnostics.
+      if (source.readyState === EventSource.CLOSED) {
+        _ulogError('[useSSE] stream closed unexpectedly', { projectId, url })
+        return
+      }
+      _ulogDebug('[useSSE] stream disconnected; EventSource will retry', { projectId, url })
     }
 
     return () => {

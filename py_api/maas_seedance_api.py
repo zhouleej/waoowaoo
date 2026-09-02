@@ -6,7 +6,7 @@ import logging
 import threading
 import urllib.request
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urlparse
 
 from fastapi import FastAPI, Header, HTTPException
@@ -86,6 +86,7 @@ class VideoGenerationRequest(BaseModel):
     reference_audios: list[str] = Field(default_factory=list)
     duration: int | None = None
     ratio: str | None = None
+    resolution: Literal["480p", "720p", "1080p"] | None = None
     generate_audio: bool | None = None
     watermark: bool | None = None
 
@@ -210,6 +211,8 @@ def create_video_generation(
         payload["generate_audio"] = request.generate_audio
     if request.ratio:
         payload["ratio"] = request.ratio
+    if request.resolution is not None:
+        payload["resolution"] = request.resolution
     if request.duration is not None:
         payload["duration"] = request.duration
     if request.watermark is not None:

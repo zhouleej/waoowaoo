@@ -110,9 +110,11 @@ export const GET = apiHandler(async () => {
   const organizations = await withPrismaRetry(() =>
     prisma.organization.findMany({
       where: {
+        status: 'active',
         members: {
           some: {
             userId: session.user.id,
+            status: 'active',
           },
         },
       },
@@ -127,6 +129,7 @@ export const GET = apiHandler(async () => {
         members: {
           where: {
             userId: session.user.id,
+            status: 'active',
           },
           select: {
             role: true,

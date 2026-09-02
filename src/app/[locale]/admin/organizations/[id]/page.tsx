@@ -13,8 +13,28 @@ import { apiFetch } from '@/lib/api-fetch'
 
 interface OrgBalance { id: string; balance: number; frozenAmount: number; totalSpent: number }
 interface Member { user: { id: string; name: string; email: string; image: string | null }; role: string; status: string; quota: number; joinedAt: string }
-interface Organization { id: string; name: string; slug: string; createdAt: string; currentUserRole: string; balance: OrgBalance; members: Member[] }
+interface Organization { id: string; name: string; slug: string; createdAt: string; currentUserRole: string; currentUserStatus: string; balance: OrgBalance; members: Member[] }
 interface UsageRecord { id: string; amount: number; type: string; description: string; createdAt: string }
+
+type UsageTypeTranslationKey =
+  | 'usageTypes.task'
+  | 'usageTypes.asset'
+  | 'usageTypes.storage'
+  | 'usageTypes.recharge'
+  | 'usageTypes.refund'
+  | 'usageTypes.subscription'
+  | 'usageTypes.order'
+  | 'usageTypes.other'
+
+const usageTypeTranslationKeys: Record<string, UsageTypeTranslationKey> = {
+  task: 'usageTypes.task',
+  asset: 'usageTypes.asset',
+  storage: 'usageTypes.storage',
+  recharge: 'usageTypes.recharge',
+  refund: 'usageTypes.refund',
+  subscription: 'usageTypes.subscription',
+  order: 'usageTypes.order',
+}
 
 export default function OrganizationDetailPage() {
   const params = useParams()
@@ -35,6 +55,8 @@ export default function OrganizationDetailPage() {
   const [removingUserId, setRemovingUserId] = useState<string | null>(null)
   const [showRemoveConfirm, setShowRemoveConfirm] = useState<Member | null>(null)
   const [updatingRoleUserId, setUpdatingRoleUserId] = useState<string | null>(null)
+  const [updatingMemberId, setUpdatingMemberId] = useState<string | null>(null)
+  const [memberActionError, setMemberActionError] = useState<string | null>(null)
 
   // 编辑组织名称状态
   const [editingName, setEditingName] = useState(false)
@@ -55,7 +77,7 @@ export default function OrganizationDetailPage() {
   const currentUserId = session?.user?.id
   const isOwner = org?.currentUserRole === 'owner'
   const isAdmin = org?.currentUserRole === 'admin'
-  const canManageMembers = isOwner || isAdmin
+  const canManageMembers = (isOwner || isAdmin) && org?.currentUserStatus === 'active'
 
   useEffect(() => {
     if (status === 'loading') return
@@ -89,6 +111,13 @@ export default function OrganizationDetailPage() {
 
   const formatDate = (d: string) => new Date(new Date(d).getTime() + 8 * 60 * 60 * 1000).toLocaleDateString('zh-CN', { year: 'numeric', month: 'short', day: 'numeric' })
   const formatDateTime = (d: string) => new Date(new Date(d).getTime() + 8 * 60 * 60 * 1000).toLocaleString('zh-CN', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+  const usageTypeLabel = (type: string) => t(usageTypeTranslationKeys[type] ?? 'usageTypes.other')
+  const memberActionErrorMessage = (data: { error?: { message?: unknown }; message?: unknown } | null, fallback: 'updateFailed' | 'removeFailed') => {
+    const message = data?.error?.message ?? data?.message
+    if (message === 'Organization not found') return t('organizationNotFound')
+    if (message === 'Member not found') return t('memberNotFound')
+    return typeof message === 'string' && /[\u4e00-\u9fff]/.test(message) ? message : t(fallback)
+  }
 
   // 邀请成员
   const handleInvite = async (e: React.FormEvent) => {
@@ -114,22 +143,39 @@ export default function OrganizationDetailPage() {
   // 修改成员角色
   const handleRoleChange = async (userId: string, newRole: string) => {
     if (userId === currentUserId) return
-    setUpdatingRoleUserId(userId)
+    await handleMemberUpdate(userId, { role: newRole }, true)
+  }
+
+  const handleMemberUpdate = async (userId: string, update: { role?: string; quota?: number; status?: 'active' | 'frozen' }, isRoleChange = false) => {
+    if (userId === currentUserId) return
+    setMemberActionError(null)
+    if (isRoleChange) setUpdatingRoleUserId(userId)
+    else setUpdatingMemberId(userId)
     try {
       const res = await apiFetch('/api/organizations/' + orgId + '/members/' + userId, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ role: newRole }),
+        body: JSON.stringify(update),
       })
-      if (res.ok) void fetchOrg()
-    } catch {}
-    finally { setUpdatingRoleUserId(null) }
+      if (res.ok) {
+        void fetchOrg()
+      } else {
+        const data = await res.json().catch(() => null)
+        setMemberActionError(memberActionErrorMessage(data, 'updateFailed'))
+      }
+    } catch {
+      setMemberActionError(t('updateFailed'))
+    } finally {
+      if (isRoleChange) setUpdatingRoleUserId(null)
+      else setUpdatingMemberId(null)
+    }
   }
 
   // 移除成员
   const handleRemoveMember = async () => {
     if (!showRemoveConfirm) return
     setRemovingUserId(showRemoveConfirm.user.id)
+    setMemberActionError(null)
     try {
       const res = await apiFetch('/api/organizations/' + orgId + '/members/' + showRemoveConfirm.user.id, {
         method: 'DELETE',
@@ -137,8 +183,11 @@ export default function OrganizationDetailPage() {
       if (res.ok) {
         setShowRemoveConfirm(null)
         void fetchOrg()
+      } else {
+        const data = await res.json().catch(() => null)
+        setMemberActionError(memberActionErrorMessage(data, 'removeFailed'))
       }
-    } catch {}
+    } catch { setMemberActionError(t('removeFailed')) }
     finally { setRemovingUserId(null) }
   }
 
@@ -285,6 +334,7 @@ export default function OrganizationDetailPage() {
                 </button>
               )}
             </div>
+            {memberActionError && <p className="mb-4 text-sm text-[var(--glass-tone-danger-fg)]">{memberActionError}</p>}
             {org.members && org.members.length > 0 ? (
               <div className="glass-surface overflow-hidden">
                 <table className="w-full">
@@ -316,7 +366,7 @@ export default function OrganizationDetailPage() {
                           </div>
                         </td>
                         <td className="px-4 py-3">
-                          {isOwner && m.role !== 'owner' && m.user.id !== currentUserId ? (
+                          {m.role !== 'owner' && m.user.id !== currentUserId && (isOwner || (isAdmin && m.role === 'member')) ? (
                             <select
                               value={m.role}
                               onChange={e => void handleRoleChange(m.user.id, e.target.value)}
@@ -336,13 +386,46 @@ export default function OrganizationDetailPage() {
                         <td className="px-4 py-3 text-sm text-[var(--glass-text-primary)]">¥{m.quota.toFixed(2)}</td>
                         {canManageMembers && (
                           <td className="px-4 py-3 text-right">
-                            {m.role !== 'owner' && m.user.id !== currentUserId && (
-                              <button
-                                onClick={() => setShowRemoveConfirm(m)}
-                                className="text-[var(--glass-tone-danger-fg)] hover:bg-[var(--glass-tone-danger-bg)] px-2 py-1 rounded text-sm transition-colors"
-                              >
-                                {t('remove')}
-                              </button>
+                            {m.role !== 'owner' && m.user.id !== currentUserId && (isOwner || m.role === 'member') && (
+                              <div className="flex items-center justify-end gap-2">
+                                {m.role === 'member' && (
+                                  <button
+                                    onClick={() => void handleRoleChange(m.user.id, 'admin')}
+                                    disabled={updatingRoleUserId === m.user.id || updatingMemberId === m.user.id}
+                                    className="glass-btn-base glass-btn-tone-info px-2 py-1 text-xs disabled:opacity-50"
+                                  >
+                                    {t('promoteToAdmin')}
+                                  </button>
+                                )}
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  defaultValue={m.quota}
+                                  aria-label={t('quota')}
+                                  disabled={updatingMemberId === m.user.id}
+                                  onBlur={(event) => {
+                                    const quota = Number(event.target.value)
+                                    if (Number.isFinite(quota) && quota >= 0 && quota !== m.quota) {
+                                      void handleMemberUpdate(m.user.id, { quota })
+                                    }
+                                  }}
+                                  className="glass-input-base w-20 px-2 py-1 text-xs disabled:opacity-50"
+                                />
+                                <button
+                                  onClick={() => void handleMemberUpdate(m.user.id, { status: m.status === 'active' ? 'frozen' : 'active' })}
+                                  disabled={updatingMemberId === m.user.id}
+                                  className="text-[var(--glass-tone-warning-fg)] hover:bg-[var(--glass-tone-warning-bg)] px-2 py-1 rounded text-sm transition-colors disabled:opacity-50"
+                                >
+                                  {m.status === 'active' ? t('freezeMember') : t('unfreezeMember')}
+                                </button>
+                                <button
+                                  onClick={() => setShowRemoveConfirm(m)}
+                                  className="text-[var(--glass-tone-danger-fg)] hover:bg-[var(--glass-tone-danger-bg)] px-2 py-1 rounded text-sm transition-colors"
+                                >
+                                  {t('remove')}
+                                </button>
+                              </div>
                             )}
                           </td>
                         )}
@@ -428,7 +511,7 @@ export default function OrganizationDetailPage() {
                       <tr key={record.id} className="hover:bg-[var(--glass-bg-muted)]/50">
                         <td className="px-4 py-3">
                           <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-[var(--glass-bg-muted)] text-[var(--glass-text-secondary)]">
-                            {record.type}
+                            {usageTypeLabel(record.type)}
                           </span>
                         </td>
                         <td className="px-4 py-3 text-sm font-medium text-[var(--glass-tone-danger-fg)]">-¥{Math.abs(record.amount).toFixed(2)}</td>
@@ -470,7 +553,7 @@ export default function OrganizationDetailPage() {
                   className="glass-input-base w-full px-3 py-2"
                 >
                   <option value="member">{t('roles.member')}</option>
-                  <option value="admin">{t('roles.admin')}</option>
+                  {isOwner && <option value="admin">{t('roles.admin')}</option>}
                 </select>
               </div>
               <div className="flex justify-end gap-3">

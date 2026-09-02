@@ -194,6 +194,10 @@
         "saveIntroduction": "Save Introduction"
     },
     "toolbar": {
+        "publishConfirmed": "Save confirmed assets",
+        "publishConfirmedHint": "Save confirmed characters, locations, props, and voices from this project to your Asset Hub",
+        "publishConfirmedResult": "Saved {published}; already saved {existing}; skipped {skipped} unfinished assets",
+        "publishConfirmedFailed": "Could not save assets. Please try again.",
         "filter": "Filter",
         "viewAll": "View All",
         "showGenerated": "Generated",

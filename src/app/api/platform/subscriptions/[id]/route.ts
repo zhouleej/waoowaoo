@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { requirePlatformAdmin, createAdminAuditLog } from '@/lib/platform-admin'
 import { apiHandler } from '@/lib/api-errors'
 import { badRequest, notFound } from '@/lib/api-auth'
-import { readNumber, readString } from '@/lib/saas/validation'
+import { readBoolean, readNumber, readString } from '@/lib/saas/validation'
 import { parseSubscriptionStatus } from '@/lib/saas/billing-status'
 import { syncOrganizationSubscriptionState } from '@/lib/saas/billing-state'
 
@@ -43,7 +43,7 @@ export const PATCH = apiHandler<{ id: string }>(async (req, { params }) => {
           ...(planId ? { planId } : {}),
           ...(status ? { status } : {}),
           ...(body.currentPeriodEnd !== undefined ? { currentPeriodEnd: body.currentPeriodEnd ? new Date(body.currentPeriodEnd) : null } : {}),
-          ...(body.autoRenew !== undefined ? { autoRenew: Boolean(body.autoRenew) } : {}),
+          ...(body.autoRenew !== undefined ? { autoRenew: readBoolean(body.autoRenew, '自动续费') } : {}),
           ...(body.seats !== undefined ? { seats: readNumber(body.seats, '席位数', { min: 1, integer: true }) } : {}),
           ...(status === 'canceled' ? { canceledAt: new Date(), autoRenew: false } : {}),
         },

@@ -20,6 +20,7 @@ import { Character, CharacterAppearance, NovelPromotionClip } from '@/types/proj
 import { resolveTaskPresentationState } from '@/lib/task/presentation'
 import {
   useAssetActions,
+  usePublishProjectAssets,
   useGenerateProjectCharacterImage,
   useGenerateProjectLocationImage,
   useAssets,
@@ -93,6 +94,8 @@ export default function AssetsStage({
   // 🔥 使用 React Query 刷新，替代 onRefresh prop
   const refreshAssets = useRefreshProjectAssets(projectId)
   const onRefresh = useCallback(() => { refreshAssets() }, [refreshAssets])
+  const publishProjectAssets = usePublishProjectAssets(projectId)
+  const [isPublishingAssets, setIsPublishingAssets] = useState(false)
 
   // 🔥 V6.6 重构：使用 mutation hooks 替代 onGenerateImage prop
   const generateCharacterImage = useGenerateProjectCharacterImage(projectId)
@@ -199,6 +202,23 @@ export default function AssetsStage({
     setTimeout(() => setToast(null), duration)
   }, [])
 
+  const handlePublishConfirmedAssets = useCallback(async () => {
+    if (isPublishingAssets) return
+    setIsPublishingAssets(true)
+    try {
+      const result = await publishProjectAssets()
+      showToast(t('toolbar.publishConfirmedResult', {
+        published: result.published ?? 0,
+        existing: result.alreadyPublished ?? 0,
+        skipped: result.skipped ?? 0,
+      }), 'success', 6000)
+    } catch {
+      showToast(t('toolbar.publishConfirmedFailed'), 'error')
+    } finally {
+      setIsPublishingAssets(false)
+    }
+  }, [isPublishingAssets, publishProjectAssets, showToast, t])
+
   // === 使用提取的 Hooks ===
 
   // 🔥 V6.5 重构：hooks 现在内部订阅 useProjectAssets，不再需要传 characters/locations
@@ -235,6 +255,7 @@ export default function AssetsStage({
     handleCopyPropFromGlobal,
     handleVoiceSelectFromHub,
     handleConfirmCopyFromGlobal,
+    handleConfirmCopyFromProject,
     handleCloseCopyPicker,
   } = useAssetsCopyFromHub({
     projectId,
@@ -388,6 +409,8 @@ export default function AssetsStage({
         isAnalyzingAssets={isAnalyzingAssets}
         isGlobalAnalyzing={isGlobalAnalyzing}
         onGlobalAnalyze={handleGlobalAnalyze}
+        isPublishing={isPublishingAssets}
+        onPublishConfirmed={handlePublishConfirmedAssets}
         episodeId={episodeFilter}
         onEpisodeChange={setEpisodeFilter}
         episodes={episodeOptions}
@@ -507,6 +530,7 @@ export default function AssetsStage({
         handleVoiceDesignSave={handleVoiceDesignSave}
         handleCloseCopyPicker={handleCloseCopyPicker}
         handleConfirmCopyFromGlobal={handleConfirmCopyFromGlobal}
+        handleConfirmCopyFromProject={handleConfirmCopyFromProject}
         handleConfirmProfile={handleConfirmProfile}
         closeEditingAppearance={closeEditingAppearance}
         closeEditingLocation={closeEditingLocation}

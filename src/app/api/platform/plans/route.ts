@@ -4,29 +4,25 @@ import { prisma } from '@/lib/prisma'
 import { requirePlatformAdmin, createAdminAuditLog } from '@/lib/platform-admin'
 import { apiHandler } from '@/lib/api-errors'
 import { badRequest } from '@/lib/api-auth'
-import { nextOrderNo, parsePagination, readJsonObject, readNumber, readString } from '@/lib/saas/validation'
+import { nextOrderNo, parsePagination, readBoolean, readJsonObject, readNumber, readString } from '@/lib/saas/validation'
 import { serializePlan } from '@/lib/saas/serializers'
 import type { Prisma } from '@prisma/client'
 
 export const GET = apiHandler(async (req) => {
   const auth = await requirePlatformAdmin()
   if (auth instanceof NextResponse) return auth
-  try {
-    const { searchParams } = new URL(req.url)
-    const { page, limit, skip } = parsePagination(searchParams)
-    const search = searchParams.get('search')?.trim()
-    const status = searchParams.get('status')?.trim()
-    const where: any = {}
-    if (search) where.OR = [{ name: { contains: search } }, { code: { contains: search } }]
-    if (status) where.status = status
-    const [plans, total] = await Promise.all([
-      prisma.pricingPlan.findMany({ where, skip, take: limit, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }], include: { entitlements: true, _count: { select: { subscriptions: true } } } }),
-      prisma.pricingPlan.count({ where }),
-    ])
-    return NextResponse.json({ data: plans.map(serializePlan), pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } })
-  } catch (error) {
-    return NextResponse.json({ data: [], pagination: { page: 1, limit: 10, total: 0, totalPages: 1 }, unavailable: true, error: error instanceof Error ? error.message : 'Plans unavailable' })
-  }
+  const { searchParams } = new URL(req.url)
+  const { page, limit, skip } = parsePagination(searchParams)
+  const search = searchParams.get('search')?.trim()
+  const status = searchParams.get('status')?.trim()
+  const where: any = {}
+  if (search) where.OR = [{ name: { contains: search } }, { code: { contains: search } }]
+  if (status) where.status = status
+  const [plans, total] = await Promise.all([
+    prisma.pricingPlan.findMany({ where, skip, take: limit, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }], include: { entitlements: true, _count: { select: { subscriptions: true } } } }),
+    prisma.pricingPlan.count({ where }),
+  ])
+  return NextResponse.json({ data: plans.map(serializePlan), pagination: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) } })
 })
 
 export const POST = apiHandler(async (req) => {
@@ -49,7 +45,7 @@ export const POST = apiHandler(async (req) => {
           status: readString(body.status ?? 'active', '状态', { max: 32 }),
           currency: readString(body.currency ?? 'CNY', '币种', { max: 8 }),
           sortOrder: readNumber(body.sortOrder ?? 0, '排序', { integer: true }) || 0,
-          isPublic: body.isPublic !== false,
+          isPublic: body.isPublic === undefined ? true : readBoolean(body.isPublic, '是否公开')!,
           metadata: readJsonObject(body.metadata, '扩展信息') as Prisma.InputJsonValue | undefined,
         },
       })

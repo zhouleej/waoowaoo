@@ -434,11 +434,20 @@ export async function checkOrganizationManagePermission(
                     userId,
                 },
             },
+            include: { organization: true },
         })
     )
 
     if (!membership) {
         return { error: forbidden('您不是该组织成员'), membership: null }
+    }
+
+    if (membership.organization.status !== 'active') {
+        return { error: forbidden('组织已被禁用'), membership }
+    }
+
+    if (membership.status !== 'active') {
+        return { error: forbidden('成员已被禁用'), membership }
     }
 
     if (membership.role !== 'owner' && membership.role !== 'admin') {

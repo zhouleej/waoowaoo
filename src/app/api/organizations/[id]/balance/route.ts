@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { withPrismaRetry } from '@/lib/prisma-retry'
-import { requireUserAuth, isErrorResponse, forbidden, notFound } from '@/lib/api-auth'
+import { requireUserAuth, isErrorResponse, notFound } from '@/lib/api-auth'
 import { apiHandler } from '@/lib/api-errors'
+import { requireOrganizationRole } from '@/lib/saas/permissions'
 import { BILLING_CURRENCY } from '@/lib/billing/currency'
 import {
   getOrganizationBalance,
@@ -33,21 +34,8 @@ export const GET = apiHandler(async (_req, ctx) => {
     return notFound('Organization')
   }
 
-  // 检查用户是否为组织成员
-  const isMember = await withPrismaRetry(() =>
-    prisma.organizationMember.findUnique({
-      where: {
-        organizationId_userId: {
-          organizationId,
-          userId: session.user.id,
-        },
-      },
-    })
-  )
-
-  if (!isMember) {
-    return forbidden('您不是该组织成员')
-  }
+  const permission = await requireOrganizationRole(organizationId, session.user.id, ['owner', 'admin', 'member'])
+  if (permission.error) return permission.error
 
   // 获取余额
   const balance = await getOrganizationBalance(organizationId)

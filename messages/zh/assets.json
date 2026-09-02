@@ -194,6 +194,10 @@
         "saveIntroduction": "保存介绍"
     },
     "toolbar": {
+        "publishConfirmed": "收录已确认素材",
+        "publishConfirmedHint": "将当前项目已确认的角色、场景、道具和音色收录到个人资产中心",
+        "publishConfirmedResult": "已收录 {published} 项；已有 {existing} 项；跳过 {skipped} 项未完成素材",
+        "publishConfirmedFailed": "收录素材失败，请稍后重试",
         "filter": "筛选",
         "viewAll": "查看全部",
         "showGenerated": "已生成",

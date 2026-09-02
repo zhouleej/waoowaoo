@@ -46,6 +46,13 @@ interface Member {
   user: { id: string; name: string | null; email: string; image: string | null }
 }
 
+interface UserAccountOption {
+  id: string
+  name: string
+  email: string | null
+  isGlobalLocked: boolean
+}
+
 export default function PlatformOrganizationsPage() {
   const { data: session, status } = useSession()
   const t = useTranslations('platform')
@@ -74,7 +81,18 @@ export default function PlatformOrganizationsPage() {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [createName, setCreateName] = useState('')
   const [createSlug, setCreateSlug] = useState('')
+  const [createOwnerSearch, setCreateOwnerSearch] = useState('')
+  const [createOwnerId, setCreateOwnerId] = useState('')
+  const [createOwnerCandidates, setCreateOwnerCandidates] = useState<UserAccountOption[]>([])
+  const [searchingCreateOwner, setSearchingCreateOwner] = useState(false)
   const [creating, setCreating] = useState(false)
+
+  // Organization administrator assignment state
+  const [adminAccountSearch, setAdminAccountSearch] = useState('')
+  const [adminAccountId, setAdminAccountId] = useState('')
+  const [adminAccountCandidates, setAdminAccountCandidates] = useState<UserAccountOption[]>([])
+  const [searchingAdminAccount, setSearchingAdminAccount] = useState(false)
+  const [settingOrganizationAdmin, setSettingOrganizationAdmin] = useState(false)
 
   // Delete state
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
@@ -190,6 +208,9 @@ export default function PlatformOrganizationsPage() {
     setMembersError(null)
     setDetailBalance(null)
     setRechargeAmount('')
+    setAdminAccountSearch('')
+    setAdminAccountId('')
+    setAdminAccountCandidates([])
   }
 
   const handleRecharge = async () => {
@@ -221,6 +242,9 @@ export default function PlatformOrganizationsPage() {
   const openCreateModal = () => {
     setCreateName('')
     setCreateSlug('')
+    setCreateOwnerSearch('')
+    setCreateOwnerId('')
+    setCreateOwnerCandidates([])
     setShowCreateModal(true)
   }
 
@@ -228,11 +252,48 @@ export default function PlatformOrganizationsPage() {
     setShowCreateModal(false)
     setCreateName('')
     setCreateSlug('')
+    setCreateOwnerSearch('')
+    setCreateOwnerId('')
+    setCreateOwnerCandidates([])
+  }
+
+  const searchAccounts = async (query: string) => {
+    const normalizedQuery = query.trim()
+    if (!normalizedQuery) return []
+    const res = await apiFetch(`/api/platform/users?limit=20&search=${encodeURIComponent(normalizedQuery)}`)
+    await throwIfNotOk(res, t('loadFailed'))
+    const payload: unknown = await res.json()
+    if (!payload || typeof payload !== 'object' || !Array.isArray((payload as { data?: unknown }).data)) {
+      throw new Error(t('invalidResponse'))
+    }
+    return (payload as { data: UserAccountOption[] }).data.filter((account) => !account.isGlobalLocked)
+  }
+
+  const searchCreateOwner = async () => {
+    if (!createOwnerSearch.trim()) {
+      showToast(t('ownerAccountRequired'), 'warning')
+      return
+    }
+    setSearchingCreateOwner(true)
+    try {
+      const accounts = await searchAccounts(createOwnerSearch)
+      setCreateOwnerCandidates(accounts)
+      setCreateOwnerId('')
+      if (!accounts.length) showToast(t('noMatchingUsers'), 'warning')
+    } catch (error) {
+      showToast(getPlatformErrorMessage(error, t('loadFailed')), 'error')
+    } finally {
+      setSearchingCreateOwner(false)
+    }
   }
 
   const handleCreate = async () => {
     if (!createName.trim() || !createSlug.trim()) {
       showToast(t('organizationRequired'), 'warning')
+      return
+    }
+    if (!createOwnerId) {
+      showToast(t('ownerAccountRequired'), 'warning')
       return
     }
     if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(createSlug)) {
@@ -244,7 +305,7 @@ export default function PlatformOrganizationsPage() {
       await apiVoid('/api/platform/organizations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: createName.trim(), slug: createSlug.trim() }),
+        body: JSON.stringify({ name: createName.trim(), slug: createSlug.trim(), ownerId: createOwnerId }),
       })
       showToast(t('createSuccess'), 'success')
       closeCreateModal()
@@ -253,6 +314,48 @@ export default function PlatformOrganizationsPage() {
       showToast(getPlatformErrorMessage(error, t('createFailed')), 'error')
     } finally {
       setCreating(false)
+    }
+  }
+
+  const searchAdminAccount = async () => {
+    if (!adminAccountSearch.trim()) {
+      showToast(t('organizationAdminAccountRequired'), 'warning')
+      return
+    }
+    setSearchingAdminAccount(true)
+    try {
+      const accounts = await searchAccounts(adminAccountSearch)
+      setAdminAccountCandidates(accounts)
+      setAdminAccountId('')
+      if (!accounts.length) showToast(t('noMatchingUsers'), 'warning')
+    } catch (error) {
+      showToast(getPlatformErrorMessage(error, t('loadFailed')), 'error')
+    } finally {
+      setSearchingAdminAccount(false)
+    }
+  }
+
+  const handleSetOrganizationAdmin = async () => {
+    if (!selectedOrg || !adminAccountId) {
+      showToast(t('organizationAdminAccountRequired'), 'warning')
+      return
+    }
+    setSettingOrganizationAdmin(true)
+    try {
+      await apiVoid(`/api/platform/organizations/${selectedOrg.id}/members`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: adminAccountId }),
+      })
+      showToast(t('organizationAdminSetSuccess'), 'success')
+      setAdminAccountSearch('')
+      setAdminAccountId('')
+      setAdminAccountCandidates([])
+      await loadMembers(selectedOrg)
+    } catch (error) {
+      showToast(getPlatformErrorMessage(error, t('organizationAdminSetFailed')), 'error')
+    } finally {
+      setSettingOrganizationAdmin(false)
     }
   }
 
@@ -552,6 +655,33 @@ export default function PlatformOrganizationsPage() {
               {/* Members List */}
               {activeDetailTab === 'members' && <div>
                 <h3 className="text-sm font-semibold text-[var(--glass-text-primary)] mb-3">{t('members')}</h3>
+                <div className="mb-4 rounded-xl border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-muted)]/30 p-4">
+                  <p className="mb-3 text-sm font-medium text-[var(--glass-text-primary)]">{t('setOrganizationAdmin')}</p>
+                  <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
+                    <input
+                      type="search"
+                      value={adminAccountSearch}
+                      onChange={(event) => { setAdminAccountSearch(event.target.value); setAdminAccountId('') }}
+                      onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void searchAdminAccount() } }}
+                      placeholder={t('organizationAdminAccountPlaceholder')}
+                      className="glass-input-base w-full px-3 py-2"
+                    />
+                    <button onClick={() => void searchAdminAccount()} disabled={searchingAdminAccount} className="glass-btn-base glass-btn-secondary px-4 py-2 disabled:opacity-50">
+                      {searchingAdminAccount ? t('loading') : t('search')}
+                    </button>
+                  </div>
+                  {adminAccountCandidates.length > 0 && (
+                    <div className="mt-3 flex flex-col gap-3 sm:flex-row">
+                      <select value={adminAccountId} onChange={(event) => setAdminAccountId(event.target.value)} className="glass-input-base min-w-0 flex-1 px-3 py-2">
+                        <option value="">{t('selectOrganizationAdminAccount')}</option>
+                        {adminAccountCandidates.map((account) => <option key={account.id} value={account.id}>{account.name}{account.email ? ` (${account.email})` : ''}</option>)}
+                      </select>
+                      <button onClick={() => void handleSetOrganizationAdmin()} disabled={settingOrganizationAdmin || !adminAccountId} className="glass-btn-base glass-btn-primary px-4 py-2 disabled:opacity-50">
+                        {settingOrganizationAdmin ? t('saving') : t('setOrganizationAdmin')}
+                      </button>
+                    </div>
+                  )}
+                </div>
                 {membersError ? (
                   <PlatformPageError title={t('requestFailed')} message={membersError} retryLabel={t('retry')} onRetry={() => loadMembers(selectedOrg)} />
                 ) : membersLoading ? (
@@ -665,6 +795,28 @@ export default function PlatformOrganizationsPage() {
                     placeholder={t('organizationSlugPlaceholder')}
                     className="glass-input-base w-full px-3 py-2"
                   />
+                </div>
+                <div>
+                  <label className="block text-sm text-[var(--glass-text-secondary)] mb-1">{t('organizationOwnerAccount')} *</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="search"
+                      value={createOwnerSearch}
+                      onChange={(event) => { setCreateOwnerSearch(event.target.value); setCreateOwnerId('') }}
+                      onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void searchCreateOwner() } }}
+                      placeholder={t('organizationOwnerAccountPlaceholder')}
+                      className="glass-input-base min-w-0 flex-1 px-3 py-2"
+                    />
+                    <button onClick={() => void searchCreateOwner()} disabled={searchingCreateOwner} className="glass-btn-base glass-btn-secondary px-4 py-2 disabled:opacity-50">
+                      {searchingCreateOwner ? t('loading') : t('search')}
+                    </button>
+                  </div>
+                  {createOwnerCandidates.length > 0 && (
+                    <select value={createOwnerId} onChange={(event) => setCreateOwnerId(event.target.value)} className="glass-input-base mt-2 w-full px-3 py-2">
+                      <option value="">{t('selectOrganizationOwnerAccount')}</option>
+                      {createOwnerCandidates.map((account) => <option key={account.id} value={account.id}>{account.name}{account.email ? ` (${account.email})` : ''}</option>)}
+                    </select>
+                  )}
                 </div>
               </div>
               <div className="flex items-center justify-end gap-3 px-5 py-4 sm:px-6 border-t border-[var(--glass-stroke-base)]">

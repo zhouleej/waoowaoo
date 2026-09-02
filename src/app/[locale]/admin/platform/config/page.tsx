@@ -11,6 +11,7 @@ import { getPlatformErrorMessage } from '@/components/platform/errors'
 import { PlatformAccessDenied, PlatformPageError } from '@/components/platform/PlatformPageState'
 import { apiJson } from '@/lib/api-fetch'
 import { usePlatformAdminCheck } from '@/hooks/common/usePlatformAdminCheck'
+import { isSensitiveConfigKey, maskConfigValue } from '@/lib/platform/validation'
 
 export default function PlatformConfigPage() {
   const { data: session, status } = useSession()
@@ -26,6 +27,7 @@ export default function PlatformConfigPage() {
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [revealedSensitiveKeys, setRevealedSensitiveKeys] = useState<Set<string>>(() => new Set())
 
   const {
     isPlatformAdmin,
@@ -174,19 +176,24 @@ export default function PlatformConfigPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--glass-stroke-base)]">
-                {configs.map((config) => (
+                {configs.map((config) => {
+                  const sensitive = isSensitiveConfigKey(config.key)
+                  const revealed = revealedSensitiveKeys.has(config.key)
+                  return (
                   <tr key={config.id} className="hover:bg-[var(--glass-bg-muted)]/50">
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-[var(--glass-text-primary)]">{config.key}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-[var(--glass-text-secondary)]">
                       {editingKey === config.key ? (
                         <input
-                          type="text"
+                          type={sensitive && !revealed ? 'password' : 'text'}
                           value={editValue}
                           onChange={(e) => setEditValue(e.target.value)}
                           className="glass-input w-full"
                         />
                       ) : (
-                        <span className="max-w-xs truncate block">{config.value}</span>
+                        <span className="max-w-xs truncate block" title={sensitive && !revealed ? undefined : config.value}>
+                          {sensitive && !revealed ? maskConfigValue(config.value) : config.value}
+                        </span>
                       )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-[var(--glass-text-secondary)]">{config.description || '-'}</td>
@@ -217,6 +224,19 @@ export default function PlatformConfigPage() {
                           >
                             {t('edit')}
                           </button>
+                          {sensitive && (
+                            <button
+                              onClick={() => setRevealedSensitiveKeys((keys) => {
+                                const next = new Set(keys)
+                                if (next.has(config.key)) next.delete(config.key)
+                                else next.add(config.key)
+                                return next
+                              })}
+                              className="text-sm text-[var(--glass-tone-warning-fg)] hover:underline"
+                            >
+                              {t(revealed ? 'hideValue' : 'showValue')}
+                            </button>
+                          )}
                           <button
                             onClick={() => setDeleteTargetId(config.id)}
                             className="text-sm text-[var(--glass-tone-danger-fg)] hover:underline"
@@ -227,7 +247,8 @@ export default function PlatformConfigPage() {
                       )}
                     </td>
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           )}

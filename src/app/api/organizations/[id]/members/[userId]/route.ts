@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { withPrismaRetry } from '@/lib/prisma-retry'
-import { requireUserAuth, isErrorResponse, forbidden, notFound, badRequest, checkOrganizationManagePermission } from '@/lib/api-auth'
+import { requireUserAuth, isErrorResponse, forbidden, notFound, badRequest } from '@/lib/api-auth'
 import { apiHandler } from '@/lib/api-errors'
-import { writeEnterpriseAudit } from '@/lib/saas/permissions'
+import { requireOrganizationRole, writeEnterpriseAudit } from '@/lib/saas/permissions'
 
 /**
  * PATCH /api/organizations/[id]/members/[userId]
@@ -25,6 +25,11 @@ export const PATCH = apiHandler(async (req, ctx) => {
     return badRequest('不能修改自己的成员信息')
   }
 
+  const permResult = await requireOrganizationRole(organizationId, session.user.id, ['owner', 'admin'])
+  if (permResult.error) return permResult.error
+
+  const { membership: currentUser } = permResult
+
   // 检查目标成员是否存在
   const targetMember = await withPrismaRetry(() =>
     prisma.organizationMember.findUnique({
@@ -40,12 +45,6 @@ export const PATCH = apiHandler(async (req, ctx) => {
   if (!targetMember) {
     return notFound('Member')
   }
-
-  // 验证权限
-  const permResult = await checkOrganizationManagePermission(organizationId, session.user.id)
-  if (permResult.error) return permResult.error
-
-  const { membership: currentUser } = permResult
 
   // admin 不能修改 owner 或其他 admin
   if (currentUser?.role === 'admin') {
@@ -68,10 +67,6 @@ export const PATCH = apiHandler(async (req, ctx) => {
       return forbidden('不能修改所有者的角色')
     }
 
-    // admin 不能将其他用户设为 owner
-    if (currentUser?.role === 'admin' && role === 'admin') {
-      return forbidden('管理员不能将其他用户设为管理员')
-    }
   }
 
   // 验证 status
@@ -138,6 +133,11 @@ export const DELETE = apiHandler(async (_req, ctx) => {
     return badRequest('不能移除自己')
   }
 
+  const permResult = await requireOrganizationRole(organizationId, session.user.id, ['owner', 'admin'])
+  if (permResult.error) return permResult.error
+
+  const { membership: currentUser } = permResult
+
   // 检查目标成员是否存在
   const targetMember = await withPrismaRetry(() =>
     prisma.organizationMember.findUnique({
@@ -158,12 +158,6 @@ export const DELETE = apiHandler(async (_req, ctx) => {
   if (targetMember.role === 'owner') {
     return forbidden('不能移除组织所有者')
   }
-
-  // 验证权限
-  const permResult = await checkOrganizationManagePermission(organizationId, session.user.id)
-  if (permResult.error) return permResult.error
-
-  const { membership: currentUser } = permResult
 
   // admin 不能移除其他 admin
   if (currentUser?.role === 'admin' && targetMember.role === 'admin') {
