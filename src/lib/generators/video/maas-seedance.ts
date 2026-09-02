@@ -101,6 +101,29 @@ function normalizeBaseUrl(value: string | undefined): string {
   return trimmed.replace(/\/+$/, '')
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
+function createGenerationError(status: number, payload: Record<string, unknown>, statusText: string): Error {
+  const detail = payload.detail
+  if (isRecord(detail)) {
+    const code = typeof detail.code === 'string' ? detail.code : ''
+    const message = typeof detail.message === 'string' ? detail.message.trim() : ''
+    if (code === 'SENSITIVE_CONTENT' && message) {
+      const error = new Error(message) as Error & { code?: string, retryable?: boolean }
+      error.code = code
+      error.retryable = false
+      return error
+    }
+    if (code && message) {
+      return new Error(`MAAS_SEEDANCE_CREATE_FAILED: ${status} ${code}: ${message}`)
+    }
+  }
+  const message = typeof detail === 'string' ? detail : statusText
+  return new Error(`MAAS_SEEDANCE_CREATE_FAILED: ${status} ${message}`)
+}
+
 export class MaasSeedanceVideoGenerator extends BaseVideoGenerator {
   protected async doGenerate(params: VideoGenerateParams): Promise<GenerateResult> {
     const { userId, imageUrl, prompt = '', options = {} } = params
@@ -153,8 +176,7 @@ export class MaasSeedanceVideoGenerator extends BaseVideoGenerator {
     })
     const payload = await response.json().catch(() => ({})) as Record<string, unknown>
     if (!response.ok) {
-      const detail = typeof payload.detail === 'string' ? payload.detail : response.statusText
-      throw new Error(`MAAS_SEEDANCE_CREATE_FAILED: ${response.status} ${detail}`)
+      throw createGenerationError(response.status, payload, response.statusText)
     }
 
     const taskId = typeof payload.id === 'string' ? payload.id.trim() : ''

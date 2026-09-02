@@ -191,6 +191,86 @@ if ENABLE_VIDEO_ENCRYPT:
         private_key_path=PRIVATE_KEY_PATH,
     )
 
+
+# The vendored SDK logs a non-200 response and returns an empty task id. Keep
+# its request/encryption implementation intact, but retain the response for
+# this request so the API can return an actionable error to callers.
+_sdk_create_task_response = threading.local()
+
+
+def _is_sdk_create_task_url(value: Any) -> bool:
+    return isinstance(value, str) and urlparse(value).path.rstrip("/").endswith("/contents/generations/tasks")
+
+
+def _install_sdk_create_task_response_capture() -> None:
+    http_client = getattr(client, "secure_http_client", None)
+    original_post = getattr(http_client, "post", None)
+    if not callable(original_post):
+        return
+
+    def capture_post(*args: Any, **kwargs: Any) -> Any:
+        response = original_post(*args, **kwargs)
+        request_url = args[0] if args else kwargs.get("url")
+        if _is_sdk_create_task_url(request_url):
+            _sdk_create_task_response.response = response
+        return response
+
+    http_client.post = capture_post
+
+
+def _clear_sdk_create_task_response() -> None:
+    if hasattr(_sdk_create_task_response, "response"):
+        del _sdk_create_task_response.response
+
+
+def _raise_sdk_create_task_error() -> None:
+    response = getattr(_sdk_create_task_response, "response", None)
+    raw_status = getattr(response, "status_code", None)
+    try:
+        status_code = int(raw_status)
+    except (TypeError, ValueError):
+        status_code = 502
+
+    body: Any = None
+    if response is not None:
+        try:
+            body = response.json()
+        except Exception:
+            body = None
+
+    upstream_error = body.get("error") if isinstance(body, dict) else None
+    upstream_code = upstream_error.get("code") if isinstance(upstream_error, dict) else None
+    if isinstance(upstream_code, str) and upstream_code.startswith("InputImageSensitiveContentDetected"):
+        logger.warning(
+            "Maas Seedance rejected an input image during content safety review: status=%s code=%s",
+            status_code,
+            upstream_code,
+        )
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "SENSITIVE_CONTENT",
+                "message": "输入图片审核未通过：图片可能包含真实人物或可识别的个人信息。请更换为不含真人的图片后重试。",
+            },
+        )
+
+    logger.error(
+        "Maas Seedance create task returned no task id: status=%s upstream_code=%s",
+        status_code,
+        upstream_code,
+    )
+    raise HTTPException(
+        status_code=status_code if 400 <= status_code < 500 else 502,
+        detail={
+            "code": "MAAS_SEEDANCE_UPSTREAM_ERROR",
+            "message": "移动云视频生成请求失败，请稍后重试。",
+        },
+    )
+
+
+_install_sdk_create_task_response_capture()
+
+
 app = FastAPI(title="Maas Seedance Adapter")
 
 
@@ -233,9 +313,10 @@ def create_video_generation(
     ])
     # #endregion
 
+    _clear_sdk_create_task_response()
     task_id = client.create_video_generation_task(payload)
     if not task_id:
-        raise HTTPException(status_code=502, detail="Maas Seedance did not return task id")
+        _raise_sdk_create_task_error()
     return {"id": str(task_id), "status": "processing"}
 
 

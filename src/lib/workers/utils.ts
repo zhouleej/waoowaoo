@@ -499,7 +499,17 @@ export async function resolveVideoSourceFromGeneration(
     }),
   )
   if (!result.success) {
-    throw new Error(result.error || 'Video generation failed')
+    const error = new Error(result.error || 'Video generation failed') as Error & {
+      code?: string
+      retryable?: boolean
+    }
+    if (typeof result.errorCode === 'string' && result.errorCode.trim()) {
+      error.code = result.errorCode.trim()
+    }
+    if (typeof result.errorRetryable === 'boolean') {
+      error.retryable = result.errorRetryable
+    }
+    throw error
   }
 
   if (result.videoUrl) {

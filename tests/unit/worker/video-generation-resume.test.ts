@@ -114,4 +114,28 @@ describe('worker utils video generation resume', () => {
     expect(asyncPollMock.pollAsyncTask).not.toHaveBeenCalled()
     expect(generatorApiMock.generateImage).toHaveBeenCalledTimes(1)
   })
+
+  it('preserves a non-retryable video generation error code for task lifecycle handling', async () => {
+    prismaMock.task.findUnique.mockReset()
+    generatorApiMock.generateVideo.mockResolvedValueOnce({
+      success: false,
+      error: '输入图片审核未通过：图片可能包含真实人物或可识别的个人信息。请更换为不含真人的图片后重试。',
+      errorCode: 'SENSITIVE_CONTENT',
+      errorRetryable: false,
+    })
+
+    const generation = resolveVideoSourceFromGeneration(buildJob(), {
+      userId: 'user-1',
+      modelId: 'maas-seedance::doubao-seedance-2.0',
+      imageUrl: 'https://media.example.com/first.png',
+      options: { prompt: 'animate this frame' },
+    })
+
+    await expect(generation).rejects.toMatchObject({
+      code: 'SENSITIVE_CONTENT',
+      message: '输入图片审核未通过：图片可能包含真实人物或可识别的个人信息。请更换为不含真人的图片后重试。',
+      retryable: false,
+    })
+    expect(generatorApiMock.generateVideo).toHaveBeenCalledTimes(1)
+  })
 })

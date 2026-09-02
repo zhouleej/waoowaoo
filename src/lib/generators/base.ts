@@ -26,6 +26,8 @@ export interface GenerateResult {
     videoUrl?: string         // 视频 URL
     audioUrl?: string         // 音频 URL
     error?: string           // 错误信息
+    errorCode?: string       // 统一错误码（可选）
+    errorRetryable?: boolean // 错误是否可重试（可选）
     requestId?: string       // 异步任务 ID（原始格式，向后兼容）
     async?: boolean          // 是否为异步任务
     endpoint?: string        // 异步任务端点（向后兼容）
@@ -140,15 +142,28 @@ export abstract class BaseVideoGenerator implements VideoGenerator {
             } catch (error: unknown) {
                 lastError = error
                 const message = error instanceof Error ? error.message : String(error)
+                const retryable = !(
+                    error instanceof Error
+                    && (error as Error & { retryable?: unknown }).retryable === false
+                )
                 _ulogWarn(`[Video Generator] 尝试 ${attempt}/${maxRetries} 失败: ${message}`)
-                if (attempt === maxRetries) break
+                if (attempt === maxRetries || !retryable) break
                 await new Promise(resolve => setTimeout(resolve, 1000 * attempt))
             }
         }
 
+        const errorMetadata = lastError instanceof Error
+            ? lastError as Error & { code?: unknown, retryable?: unknown }
+            : null
         return {
             success: false,
-            error: lastError instanceof Error ? lastError.message : '视频生成失败'
+            error: lastError instanceof Error ? lastError.message : '视频生成失败',
+            ...(typeof errorMetadata?.code === 'string' && errorMetadata.code.trim()
+                ? { errorCode: errorMetadata.code.trim() }
+                : {}),
+            ...(typeof errorMetadata?.retryable === 'boolean'
+                ? { errorRetryable: errorMetadata.retryable }
+                : {}),
         }
     }
 

@@ -220,6 +220,42 @@ describe('provider contract - openai compatible media template', () => {
     })
   })
 
+  it('preserves the MAAS input-safety rejection instead of replacing it with an URL validation error', async () => {
+    getProviderConfigMock.mockResolvedValue({
+      id: 'maas-seedance',
+      apiKey: 'maas-local-key',
+      baseUrl: server!.baseUrl,
+    })
+    server!.defineScenario({
+      method: 'POST',
+      path: '/v1/videos/generations',
+      mode: 'fatal_error',
+      submitResponse: {
+        status: 422,
+        body: {
+          detail: {
+            code: 'SENSITIVE_CONTENT',
+            message: '输入图片审核未通过：图片可能包含真实人物或可识别的个人信息。请更换为不含真人的图片后重试。',
+          },
+        },
+      },
+    })
+
+    const generator = new MaasSeedanceVideoGenerator()
+    await expect(generator.generate({
+      userId: 'user-local',
+      imageUrl: 'https://media.example.com/first.png',
+      prompt: 'animate the product',
+      options: { provider: 'maas-seedance' },
+    })).resolves.toEqual({
+      success: false,
+      error: '输入图片审核未通过：图片可能包含真实人物或可识别的个人信息。请更换为不含真人的图片后重试。',
+      errorCode: 'SENSITIVE_CONTENT',
+      errorRetryable: false,
+    })
+    expect(server!.getRequests('POST', '/v1/videos/generations')).toHaveLength(1)
+  })
+
   it('passes trusted asset URIs through to the MAAS adapter without treating them as public URLs', async () => {
     getProviderConfigMock.mockResolvedValue({
       id: 'maas-seedance',
