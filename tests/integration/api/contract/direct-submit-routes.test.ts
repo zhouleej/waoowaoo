@@ -630,6 +630,42 @@ describe('api contract - direct submit routes (behavior)', () => {
     expect(buildDefaultTaskBillingInfoMock).toHaveBeenLastCalledWith(TASK_TYPE.VIDEO_PANEL, videoBody)
   })
 
+  it('generate-video injects the project resolution into validation, billing, and the queued task when a panel has no override', async () => {
+    prismaMock.novelPromotionProject.findUnique.mockResolvedValueOnce({
+      id: 'project-data-1',
+      videoResolution: '1080p',
+    } as never)
+    const routeFile = 'src/app/api/novel-promotion/[projectId]/generate-video/route.ts'
+    const body = {
+      videoModel: 'maas-seedance:tenant-1::doubao-seedance-2.0',
+      storyboardId: 'storyboard-1',
+      panelIndex: 0,
+      generationOptions: { duration: 4 },
+    }
+
+    const response = await invokePostRoute({
+      routeFile,
+      body,
+      params: { projectId: 'project-1' },
+      expectedTaskType: TASK_TYPE.VIDEO_PANEL,
+      expectedTargetType: 'NovelPromotionPanel',
+      expectedProjectId: 'project-1',
+    })
+
+    expect(response.status).toBe(200)
+    expect(buildDefaultTaskBillingInfoMock).toHaveBeenLastCalledWith(
+      TASK_TYPE.VIDEO_PANEL,
+      expect.objectContaining({
+        generationOptions: expect.objectContaining({ duration: 4, resolution: '1080p' }),
+      }),
+    )
+    expect(submitTaskMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      payload: expect.objectContaining({
+        generationOptions: expect.objectContaining({ duration: 4, resolution: '1080p' }),
+      }),
+    }))
+  })
+
   it('keeps expected coverage size', () => {
     expect(DIRECT_CASES.length).toBe(20)
   })

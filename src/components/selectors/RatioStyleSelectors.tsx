@@ -181,6 +181,81 @@ export function RatioSelector({
   )
 }
 
+export function ResolutionSelector({
+  value,
+  onChange,
+  options,
+}: {
+  value: string
+  onChange: (value: string) => void
+  options: { value: string; label: string }[]
+}) {
+  const [isOpen, setIsOpen] = useState(false)
+  const { triggerRef, panelRef, panelStyle } = useFloatingDropdown(isOpen, 180)
+  const selectedOption = options.find((option) => option.value === value) ?? options[0]
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      const target = event.target as Node
+      if (triggerRef.current?.contains(target) || panelRef.current?.contains(target)) return
+      if (isOpen) setIsOpen(false)
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [isOpen, panelRef, triggerRef])
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className={`${TRIGGER_CLASSNAME} cursor-pointer`}
+        title="Video resolution"
+      >
+        <div className="flex min-w-0 items-center gap-2">
+          <AppIcon name="clapperboard" className="h-4 w-4 shrink-0 text-[var(--glass-accent-from)]" />
+          <span className={`${TRIGGER_TEXT_CLASSNAME} truncate`}>{selectedOption?.label || value}</span>
+        </div>
+        <AppIcon name="chevronDown" className={`h-4 w-4 text-[var(--glass-text-tertiary)] transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+
+      {isOpen && typeof document !== 'undefined' && createPortal(
+        <div
+          ref={panelRef}
+          className="glass-surface-modal z-[9999] p-2.5"
+          style={panelStyle}
+        >
+          <div className="flex flex-col gap-2">
+            {options.map((option) => {
+              const isSelected = option.value === value
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => {
+                    onChange(option.value)
+                    setIsOpen(false)
+                  }}
+                  className={`flex items-center justify-between rounded-xl border px-3 py-2.5 text-left text-sm transition-all ${
+                    isSelected
+                      ? 'border-[var(--glass-accent-from)] bg-[var(--glass-accent-from)]/5 font-semibold text-[var(--glass-accent-from)] shadow-sm'
+                      : 'border-[var(--glass-stroke-soft)] text-[var(--glass-text-secondary)] hover:border-[var(--glass-stroke-strong)]'
+                  }`}
+                >
+                  {option.label}
+                  {isSelected && <AppIcon name="check" className="h-4 w-4" />}
+                </button>
+              )
+            })}
+          </div>
+        </div>,
+        document.body,
+      )}
+    </>
+  )
+}
+
 export function StyleSelector({
   value,
   onChange,

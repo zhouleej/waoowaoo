@@ -106,6 +106,7 @@ export interface ProjectModelConfig {
   videoModel: string | null
   audioModel: string | null
   videoRatio: string | null
+  videoResolution: string | null
   artStyle: string | null
   capabilityDefaults: CapabilitySelections
   capabilityOverrides: CapabilitySelections
@@ -162,6 +163,7 @@ export async function getProjectModelConfig(
     videoModel: extractModelKey(projectData?.videoModel) || null,
     audioModel: extractModelKey(projectData?.audioModel) || extractModelKey(userPref?.audioModel) || null,
     videoRatio: projectData?.videoRatio || '16:9',
+    videoResolution: projectData?.videoResolution || '720p',
     artStyle: projectData?.artStyle || null,
     capabilityDefaults: parseCapabilitySelections(userPref?.capabilityDefaults),
     capabilityOverrides: parseCapabilitySelections(projectData?.capabilityOverrides),

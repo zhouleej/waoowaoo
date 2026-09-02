@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl'
 import {
     ART_STYLES,
     VIDEO_RATIOS,
+    VIDEO_RESOLUTIONS,
 } from '@/lib/constants'
 import type {
     CapabilitySelections,
@@ -52,6 +53,7 @@ interface SettingsModalProps {
     videoModel?: string
     audioModel?: string
     videoRatio?: string
+    videoResolution?: string
     capabilityOverrides?: CapabilitySelections
     ttsRate?: string
     onArtStyleChange?: (value: string) => void
@@ -64,6 +66,7 @@ interface SettingsModalProps {
     onVideoModelChange?: (value: string) => void
     onAudioModelChange?: (value: string) => void
     onVideoRatioChange?: (value: string) => void
+    onVideoResolutionChange?: (value: string) => void
     onCapabilityOverridesChange?: (value: CapabilitySelections) => void
     onTTSRateChange?: (value: string) => void
 }
@@ -136,6 +139,7 @@ export function SettingsModal({
     videoModel,
     audioModel,
     videoRatio = '9:16',
+    videoResolution = '720p',
     capabilityOverrides,
     ttsRate,
     onArtStyleChange,
@@ -147,6 +151,7 @@ export function SettingsModal({
     onVideoModelChange,
     onAudioModelChange,
     onVideoRatioChange,
+    onVideoResolutionChange,
     onCapabilityOverridesChange,
     onTTSRateChange,
 }: SettingsModalProps) {
@@ -367,7 +372,7 @@ export function SettingsModal({
                 <div className="space-y-5 flex-1 min-h-0 overflow-y-auto app-scrollbar">
                     <div className="glass-surface-soft p-5 sm:p-6 space-y-4">
                         <h3 className="text-sm font-semibold text-[var(--glass-text-tertiary)]">{t('visualSettings')}</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                             <div className="space-y-2">
                                 <label className="text-sm font-medium text-[var(--glass-text-secondary)]">{t('visualStyle')}</label>
                                 <StyleSelector
@@ -382,6 +387,14 @@ export function SettingsModal({
                                     value={videoRatio}
                                     onChange={(value) => { handleChange(onVideoRatioChange)(value) }}
                                     options={VIDEO_RATIOS}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-[var(--glass-text-secondary)]">{t('videoResolution')}</label>
+                                <StyleSelector
+                                    value={videoResolution}
+                                    onChange={(value) => { handleChange(onVideoResolutionChange)(value) }}
+                                    options={VIDEO_RESOLUTIONS}
                                 />
                             </div>
                         </div>

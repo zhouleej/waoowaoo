@@ -9,6 +9,7 @@ vi.mock('@/components/selectors/RatioStyleSelectors', () => ({
     getUsage: _getUsage,
     ...props
   }: Record<string, unknown> & { getUsage?: unknown }) => createElement('div', props, 'RatioSelector'),
+  ResolutionSelector: (props: Record<string, unknown>) => createElement('div', props, 'ResolutionSelector'),
   StyleSelector: (props: Record<string, unknown>) => createElement('div', props, 'StyleSelector'),
   StylePresetSelector: (props: Record<string, unknown>) => createElement('div', props, 'StylePresetSelector'),
 }))
@@ -26,6 +27,9 @@ describe('StoryInputComposer', () => {
         videoRatio: '9:16',
         onVideoRatioChange: () => undefined,
         ratioOptions: [{ value: '9:16', label: '9:16' }],
+        videoResolution: '720p',
+        onVideoResolutionChange: () => undefined,
+        resolutionOptions: [{ value: '720p', label: '720p' }],
         artStyle: 'realistic',
         onArtStyleChange: () => undefined,
         styleOptions: [{ value: 'realistic', label: '真人风格' }],
@@ -41,6 +45,7 @@ describe('StoryInputComposer', () => {
 
     expect(html).toContain('rows="8"')
     expect(html).toContain('RatioSelector')
+    expect(html).toContain('ResolutionSelector')
     expect(html).toContain('StyleSelector')
     expect(html).toContain('StylePresetSelector')
     expect(html).toContain('字数：4')
@@ -72,6 +77,7 @@ describe('StoryInputComposer', () => {
     )
 
     expect(html).toContain('RatioSelector')
+    expect(html).not.toContain('ResolutionSelector')
     expect(html).toContain('StyleSelector')
     expect(html).not.toContain('StylePresetSelector')
   })

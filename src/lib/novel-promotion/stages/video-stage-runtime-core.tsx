@@ -71,6 +71,7 @@ export function useVideoStageRuntime({
   defaultVideoModel,
   capabilityOverrides,
   videoRatio = '16:9',
+  videoResolution,
   userVideoModels,
   onGenerateVideo,
   onGenerateAllVideos,
@@ -229,10 +230,13 @@ export function useVideoStageRuntime({
       return normalizeVideoGenerationSelections({
         definitions: batchCapabilityDefinitions,
         pricingTiers: batchPricingTiers,
-        selection: previous,
+        selection: {
+          ...(videoResolution ? { resolution: videoResolution } : {}),
+          ...previous,
+        },
       })
     })
-  }, [batchCapabilityDefinitions, batchPricingTiers])
+  }, [batchCapabilityDefinitions, batchPricingTiers, videoResolution])
 
   const batchEffectiveCapabilityFields = useMemo(
     () => resolveEffectiveVideoCapabilityFields({
@@ -402,6 +406,7 @@ export function useVideoStageRuntime({
     allPanels,
     linkedPanels,
     videoModelOptions: allVideoModelOptions,
+    videoResolution,
     onGenerateVideo: handleGenerateVideoWithImmediateLock,
     t: (key) => t(key as never),
   })
@@ -540,6 +545,7 @@ export function useVideoStageRuntime({
         highlightedPanelKey={highlightedPanelKey}
         panelRefs={panelRefs}
         videoRatio={videoRatio}
+        videoResolution={videoResolution}
         defaultVideoModel={defaultVideoModel}
         capabilityOverrides={capabilityOverrides}
         userVideoModels={normalVideoModelOptions}

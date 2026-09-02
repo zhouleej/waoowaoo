@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, type CompositionEvent, type ReactNode } from 'react'
-import { RatioSelector, StylePresetSelector, StyleSelector } from '@/components/selectors/RatioStyleSelectors'
+import { RatioSelector, ResolutionSelector, StylePresetSelector, StyleSelector } from '@/components/selectors/RatioStyleSelectors'
 import { resolveTextareaTargetHeight } from '@/lib/ui/textarea-height'
 
 interface StoryInputComposerOption {
@@ -31,6 +31,9 @@ interface StoryInputComposerProps {
   onVideoRatioChange: (value: string) => void
   ratioOptions: StoryInputComposerOption[]
   getRatioUsage?: (ratio: string) => string
+  videoResolution?: string
+  onVideoResolutionChange?: (value: string) => void
+  resolutionOptions?: StoryInputComposerOption[]
   artStyle: string
   onArtStyleChange: (value: string) => void
   styleOptions: StoryInputComposerOption[]
@@ -57,6 +60,9 @@ export default function StoryInputComposer({
   onVideoRatioChange,
   ratioOptions,
   getRatioUsage,
+  videoResolution = '720p',
+  onVideoResolutionChange,
+  resolutionOptions = [],
   artStyle,
   onArtStyleChange,
   styleOptions,
@@ -139,6 +145,15 @@ export default function StoryInputComposer({
               getUsage={getRatioUsage}
             />
           </div>
+          {resolutionOptions.length > 0 ? (
+            <div className="w-[118px] flex-shrink-0">
+              <ResolutionSelector
+                value={videoResolution}
+                onChange={(value) => onVideoResolutionChange?.(value)}
+                options={resolutionOptions}
+              />
+            </div>
+          ) : null}
           <div className="w-[132px] flex-shrink-0">
             <StyleSelector
               value={artStyle}

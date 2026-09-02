@@ -7,6 +7,7 @@
     "visualStyle": "Art Style",
     "modelParams": "Model Parameters",
     "aspectRatio": "Aspect Ratio",
+    "videoResolution": "Video Resolution",
     "ttsSettings": "TTS Settings",
     "loadingModels": "Loading model list...",
     "analysisModel": "Analysis Model",

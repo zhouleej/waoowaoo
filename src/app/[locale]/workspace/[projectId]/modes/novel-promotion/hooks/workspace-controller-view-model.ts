@@ -28,6 +28,7 @@ interface ProjectSnapshotInput {
   videoModel: string | undefined
   audioModel: string | undefined
   videoRatio: string | undefined
+  videoResolution: string | undefined
   capabilityOverrides: CapabilitySelections
   ttsRate: string | number | undefined
   artStyle: string | undefined

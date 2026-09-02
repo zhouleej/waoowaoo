@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { logProjectAction } from '@/lib/logging/semantic'
 import { requireProjectAuthLight, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
-import { isArtStyleValue } from '@/lib/constants'
+import { isArtStyleValue, VIDEO_RESOLUTIONS } from '@/lib/constants'
 import { attachMediaFieldsToProject } from '@/lib/media/attach'
 import {
   parseModelKeyStrict,
@@ -130,6 +130,25 @@ function validateArtStyleField(value: unknown): string {
     })
   }
   return artStyle
+}
+
+function validateVideoResolutionField(value: unknown): string {
+  if (typeof value !== 'string') {
+    throw new ApiError('INVALID_PARAMS', {
+      code: 'INVALID_VIDEO_RESOLUTION',
+      field: 'videoResolution',
+      message: 'videoResolution must be a supported value',
+    })
+  }
+  const videoResolution = value.trim()
+  if (!VIDEO_RESOLUTIONS.some((option) => option.value === videoResolution)) {
+    throw new ApiError('INVALID_PARAMS', {
+      code: 'INVALID_VIDEO_RESOLUTION',
+      field: 'videoResolution',
+      message: 'videoResolution must be a supported value',
+    })
+  }
+  return videoResolution
 }
 
 function getNextProjectModelMap(
@@ -293,7 +312,7 @@ export const PATCH = apiHandler(async (
 
   const allowedProjectFields = [
     'analysisModel', 'characterModel', 'locationModel', 'storyboardModel',
-    'editModel', 'videoModel', 'audioModel', 'videoRatio', 'artStyle',
+    'editModel', 'videoModel', 'audioModel', 'videoRatio', 'videoResolution', 'artStyle',
     'ttsRate', 'lipSyncEnabled', 'lipSyncMode', 'capabilityOverrides',
   ] as const
 
@@ -307,6 +326,11 @@ export const PATCH = apiHandler(async (
 
     if (field === 'artStyle') {
       updateData[field] = validateArtStyleField(body[field])
+      continue
+    }
+
+    if (field === 'videoResolution') {
+      updateData[field] = validateVideoResolutionField(body[field])
       continue
     }
 

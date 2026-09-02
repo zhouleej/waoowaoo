@@ -11,7 +11,19 @@ import { projectVideoPricingTiersByFixedSelections } from '@/lib/model-pricing/v
 interface UsePanelVideoModelParams {
   defaultVideoModel: string
   capabilityOverrides?: CapabilitySelections
+  videoResolution?: string
   userVideoModels?: VideoModelOption[]
+}
+
+function withProjectVideoResolution(
+  selection: VideoGenerationOptions,
+  videoResolution: string | undefined,
+): VideoGenerationOptions {
+  if (!videoResolution) return selection
+  return {
+    ...selection,
+    resolution: videoResolution,
+  }
 }
 
 interface CapabilityField {
@@ -66,11 +78,15 @@ function readSelectionForModel(
 export function usePanelVideoModel({
   defaultVideoModel,
   capabilityOverrides,
+  videoResolution,
   userVideoModels,
 }: UsePanelVideoModelParams) {
   const [selectedModel, setSelectedModel] = useState(defaultVideoModel || '')
   const [generationOptions, setGenerationOptions] = useState<VideoGenerationOptions>(() =>
-    readSelectionForModel(capabilityOverrides, defaultVideoModel || ''),
+    withProjectVideoResolution(
+      readSelectionForModel(capabilityOverrides, defaultVideoModel || ''),
+      videoResolution,
+    ),
   )
   const videoModelOptions = useMemo(() => userVideoModels ?? [], [userVideoModels])
   const selectedOption = videoModelOptions.find((option) => option.value === selectedModel)
@@ -108,8 +124,11 @@ export function usePanelVideoModel({
   )
 
   const selectedModelOverrides = useMemo(
-    () => readSelectionForModel(capabilityOverrides, selectedModel),
-    [capabilityOverrides, selectedModel],
+    () => withProjectVideoResolution(
+      readSelectionForModel(capabilityOverrides, selectedModel),
+      videoResolution,
+    ),
+    [capabilityOverrides, selectedModel, videoResolution],
   )
   const selectedModelOverridesSignature = useMemo(
     () => JSON.stringify(selectedModelOverrides),

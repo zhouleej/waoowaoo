@@ -25,7 +25,7 @@ const withTaskLifecycleMock = vi.hoisted(() =>
 
 const utilsMock = vi.hoisted(() => ({
   assertTaskActive: vi.fn(async () => undefined),
-  getProjectModels: vi.fn(async () => ({ videoRatio: '16:9' })),
+  getProjectModels: vi.fn(async () => ({ videoRatio: '16:9', videoResolution: '720p' })),
   resolveLipSyncVideoSource: vi.fn(async () => 'https://provider.example/lipsync.mp4'),
   resolveVideoSourceFromGeneration: vi.fn<(...args: unknown[]) => Promise<{ url: string; actualVideoTokens?: number; downloadHeaders?: Record<string, string> }>>(async () => ({ url: 'https://provider.example/video.mp4' })),
   toSignedUrlIfCos: vi.fn((url: string | null) => (url ? `https://signed.example/${url}` : null)),
@@ -374,5 +374,37 @@ describe('worker video processor behavior', () => {
     })
 
     await expect(processor!(unsupportedJob)).rejects.toThrow('Unsupported video task type')
+  })
+
+  it('VIDEO_PANEL: falls back to the global resolution and preserves a panel override', async () => {
+    const processor = workerState.processor
+    expect(processor).toBeTruthy()
+
+    await processor!(buildJob({
+      type: TASK_TYPE.VIDEO_PANEL,
+      payload: { videoModel: 'maas-seedance::doubao-seedance-2.0' },
+    }))
+
+    expect(utilsMock.resolveVideoSourceFromGeneration).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        options: expect.objectContaining({ resolution: '720p' }),
+      }),
+    )
+
+    await processor!(buildJob({
+      type: TASK_TYPE.VIDEO_PANEL,
+      payload: {
+        videoModel: 'maas-seedance::doubao-seedance-2.0',
+        generationOptions: { resolution: '1080p' },
+      },
+    }))
+
+    expect(utilsMock.resolveVideoSourceFromGeneration).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        options: expect.objectContaining({ resolution: '1080p' }),
+      }),
+    )
   })
 })

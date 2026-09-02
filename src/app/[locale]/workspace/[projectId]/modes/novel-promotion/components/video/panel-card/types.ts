@@ -7,6 +7,7 @@ export interface VideoPanelCardShellProps {
   defaultVideoModel: string
   capabilityOverrides: CapabilitySelections
   videoRatio?: string
+  videoResolution?: string
   userVideoModels?: VideoModelOption[]
   projectId: string
   episodeId?: string

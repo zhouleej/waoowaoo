@@ -119,4 +119,38 @@ describe('api specific - novel promotion project art style validation', () => {
     )
     expect(prismaMock.userPreference.upsert).not.toHaveBeenCalled()
   })
+
+  it('accepts supported project videoResolution values', async () => {
+    const mod = await import('@/app/api/novel-promotion/[projectId]/route')
+    const req = buildMockRequest({
+      path: '/api/novel-promotion/project-1',
+      method: 'PATCH',
+      body: { videoResolution: '1080p' },
+    })
+
+    const res = await mod.PATCH(req, { params: Promise.resolve({ projectId: 'project-1' }) })
+
+    expect(res.status).toBe(200)
+    expect(prismaMock.novelPromotionProject.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ videoResolution: '1080p' }),
+      }),
+    )
+  })
+
+  it('rejects unsupported project videoResolution values', async () => {
+    const mod = await import('@/app/api/novel-promotion/[projectId]/route')
+    const req = buildMockRequest({
+      path: '/api/novel-promotion/project-1',
+      method: 'PATCH',
+      body: { videoResolution: '2k' },
+    })
+
+    const res = await mod.PATCH(req, { params: Promise.resolve({ projectId: 'project-1' }) })
+    const body = await res.json()
+
+    expect(res.status).toBe(400)
+    expect(body.error.code).toBe('INVALID_PARAMS')
+    expect(prismaMock.novelPromotionProject.update).not.toHaveBeenCalled()
+  })
 })

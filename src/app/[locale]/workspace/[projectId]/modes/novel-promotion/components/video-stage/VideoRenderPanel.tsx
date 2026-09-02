@@ -10,6 +10,7 @@ interface VideoRenderPanelProps {
   highlightedPanelKey: string | null
   panelRefs: MutableRefObject<Map<string, HTMLDivElement>>
   videoRatio: string
+  videoResolution?: string
   defaultVideoModel: string
   capabilityOverrides: CapabilitySelections
   userVideoModels?: VideoModelOption[]
@@ -77,6 +78,7 @@ export default function VideoRenderPanel({
   highlightedPanelKey,
   panelRefs,
   videoRatio,
+  videoResolution,
   defaultVideoModel,
   capabilityOverrides,
   userVideoModels,
@@ -152,6 +154,7 @@ export default function VideoRenderPanel({
                 defaultVideoModel={defaultVideoModel}
                 capabilityOverrides={capabilityOverrides}
                 videoRatio={videoRatio}
+                videoResolution={videoResolution}
                 userVideoModels={userVideoModels}
                 projectId={projectId}
                 episodeId={episodeId}

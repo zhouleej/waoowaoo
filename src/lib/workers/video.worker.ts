@@ -201,7 +201,13 @@ async function handleVideoPanelTask(job: Job<TaskJobData>) {
 
   const panel = await getPanelForVideoTask(job)
 
-  const generationOptions = extractGenerationOptions(payload)
+  const taskGenerationOptions = extractGenerationOptions(payload)
+  // A per-panel request takes precedence. Older queued tasks and callers that
+  // do not expose a resolution control inherit the project's persisted default.
+  const generationOptions: VideoOptionMap = {
+    ...(projectModels.videoResolution ? { resolution: projectModels.videoResolution } : {}),
+    ...taskGenerationOptions,
+  }
 
   await reportTaskProgress(job, 10, {
     stage: 'generate_panel_video',

@@ -42,6 +42,28 @@ function resolveVideoGenerationMode(payload: unknown): 'normal' | 'firstlastfram
   return isRecord(payload.firstLastFrame) ? 'firstlastframe' : 'normal'
 }
 
+function applyProjectVideoResolution(
+  payload: unknown,
+  projectVideoResolution: string | null | undefined,
+): Record<string, unknown> {
+  const normalizedPayload = isRecord(payload) ? payload : {}
+  if (!projectVideoResolution) return normalizedPayload
+
+  const rawGenerationOptions = normalizedPayload.generationOptions
+  const generationOptions = isRecord(rawGenerationOptions) ? rawGenerationOptions : {}
+  if (typeof generationOptions.resolution === 'string' && generationOptions.resolution.trim()) {
+    return normalizedPayload
+  }
+
+  return {
+    ...normalizedPayload,
+    generationOptions: {
+      ...generationOptions,
+      resolution: projectVideoResolution,
+    },
+  }
+}
+
 function resolveVideoModelKeyFromPayload(payload: Record<string, unknown>): string | null {
   const firstLast = isRecord(payload.firstLastFrame) ? payload.firstLastFrame : null
   if (firstLast && typeof firstLast.flModel === 'string' && parseModelKeyStrict(firstLast.flModel)) {
@@ -186,10 +208,15 @@ export const POST = apiHandler(async (
   if (isErrorResponse(authResult)) return authResult
   const { session } = authResult
 
-  const body = await request.json()
+  const requestBody = await request.json()
+  const projectConfig = await prisma.novelPromotionProject.findUnique({
+    where: { projectId },
+    select: { videoResolution: true },
+  })
+  const body = applyProjectVideoResolution(requestBody, projectConfig?.videoResolution)
   requireVideoModelKeyFromPayload(body)
   const locale = resolveRequiredTaskLocale(request, body)
-  const isBatch = body?.all === true
+  const isBatch = body.all === true
 
   validateFirstLastFrameModel(body?.firstLastFrame)
   await validateVideoCapabilityCombination({
@@ -199,7 +226,7 @@ export const POST = apiHandler(async (
   })
 
   if (isBatch) {
-    const episodeId = body?.episodeId
+    const episodeId = typeof body.episodeId === 'string' ? body.episodeId : null
     if (!episodeId) {
       throw new ApiError('INVALID_PARAMS')
     }
@@ -250,8 +277,8 @@ export const POST = apiHandler(async (
     return NextResponse.json({ tasks: results, total: panels.length })
   }
 
-  const storyboardId = body?.storyboardId
-  const panelIndex = body?.panelIndex
+  const storyboardId = typeof body.storyboardId === 'string' ? body.storyboardId : null
+  const panelIndex = body.panelIndex
   if (!storyboardId || panelIndex === undefined) {
     throw new ApiError('INVALID_PARAMS')
   }

@@ -11,7 +11,7 @@ import '@/styles/animations.css'
 import AiWriteModal from '@/components/home/AiWriteModal'
 import LongTextDetectionPrompt from '@/components/story-input/LongTextDetectionPrompt'
 import StoryInputComposer from '@/components/story-input/StoryInputComposer'
-import { ART_STYLES, VIDEO_RATIOS } from '@/lib/constants'
+import { ART_STYLES, VIDEO_RATIOS, VIDEO_RESOLUTIONS } from '@/lib/constants'
 import TaskStatusInline from '@/components/task/TaskStatusInline'
 import { resolveTaskPresentationState } from '@/lib/task/presentation'
 import { AppIcon } from '@/components/ui/icons'
@@ -43,8 +43,10 @@ interface NovelInputStageProps {
   onEnableNarrationChange?: (enabled: boolean) => void
   // 配置项 - 比例与风格
   videoRatio?: string
+  videoResolution?: string
   artStyle?: string
   onVideoRatioChange?: (value: string) => void
+  onVideoResolutionChange?: (value: string) => void
   onArtStyleChange?: (value: string) => void
 }
 
@@ -59,8 +61,10 @@ export default function NovelInputStage({
   enableNarration = false,
   onEnableNarrationChange,
   videoRatio = '9:16',
+  videoResolution = '720p',
   artStyle = 'american-comic',
   onVideoRatioChange,
+  onVideoResolutionChange,
   onArtStyleChange
 }: NovelInputStageProps) {
   const t = useTranslations('novelPromotion')
@@ -189,6 +193,9 @@ export default function NovelInputStage({
             recommended: option.value === '9:16'
           }))}
           getRatioUsage={getRatioUsageTag}
+          videoResolution={videoResolution}
+          onVideoResolutionChange={(value) => onVideoResolutionChange?.(value)}
+          resolutionOptions={VIDEO_RESOLUTIONS}
           artStyle={artStyle}
           onArtStyleChange={(value) => onArtStyleChange?.(value)}
           styleOptions={ART_STYLES.map((option) => ({

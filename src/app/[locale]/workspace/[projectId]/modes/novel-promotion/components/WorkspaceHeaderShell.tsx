@@ -50,6 +50,7 @@ interface WorkspaceHeaderShellProps {
   audioModel: string | null | undefined
   capabilityOverrides: CapabilitySelections
   videoRatio: string | null | undefined
+  videoResolution: string | null | undefined
   ttsRate: string | null | undefined
   onUpdateConfig: (key: string, value: unknown) => Promise<void>
   globalAssetText: string
@@ -97,6 +98,7 @@ export default function WorkspaceHeaderShell({
   audioModel,
   capabilityOverrides,
   videoRatio,
+  videoResolution,
   ttsRate,
   onUpdateConfig,
   globalAssetText,
@@ -135,6 +137,7 @@ export default function WorkspaceHeaderShell({
         videoModel={videoModel ?? undefined}
         audioModel={audioModel ?? undefined}
         videoRatio={videoRatio ?? undefined}
+        videoResolution={videoResolution ?? undefined}
         capabilityOverrides={capabilityOverrides}
         ttsRate={ttsRate ?? undefined}
         onArtStyleChange={(value) => { onUpdateConfig('artStyle', value) }}
@@ -146,6 +149,7 @@ export default function WorkspaceHeaderShell({
         onVideoModelChange={(value) => { onUpdateConfig('videoModel', value) }}
         onAudioModelChange={(value) => { onUpdateConfig('audioModel', value) }}
         onVideoRatioChange={(value) => { onUpdateConfig('videoRatio', value) }}
+        onVideoResolutionChange={(value) => { onUpdateConfig('videoResolution', value) }}
         onCapabilityOverridesChange={(value) => { onUpdateConfig('capabilityOverrides', value) }}
         onTTSRateChange={(value) => { onUpdateConfig('ttsRate', value) }}
       />

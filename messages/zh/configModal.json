@@ -7,6 +7,7 @@
     "visualStyle": "画面风格",
     "modelParams": "模型参数",
     "aspectRatio": "画面比例",
+    "videoResolution": "视频分辨率",
     "ttsSettings": "旁白配置",
     "loadingModels": "加载模型列表...",
     "analysisModel": "分析模型",

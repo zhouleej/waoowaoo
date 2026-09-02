@@ -41,6 +41,7 @@ interface UseVideoFirstLastFrameFlowParams {
   allPanels: VideoPanel[]
   linkedPanels: Map<string, boolean>
   videoModelOptions: VideoModelOption[]
+  videoResolution?: string
   onGenerateVideo: (
     storyboardId: string,
     panelIndex: number,
@@ -61,6 +62,7 @@ export function useVideoFirstLastFrameFlow({
   allPanels,
   linkedPanels,
   videoModelOptions,
+  videoResolution,
   onGenerateVideo,
   t,
 }: UseVideoFirstLastFrameFlowParams) {
@@ -129,10 +131,13 @@ export function useVideoFirstLastFrameFlow({
       return normalizeVideoGenerationSelections({
         definitions: flCapabilityDefinitions,
         pricingTiers: flPricingTiers,
-        selection: previous,
+        selection: {
+          ...(videoResolution ? { resolution: videoResolution } : {}),
+          ...previous,
+        },
       })
     })
-  }, [flCapabilityDefinitions, flPricingTiers])
+  }, [flCapabilityDefinitions, flPricingTiers, videoResolution])
 
   const flEffectiveCapabilityFields = useMemo(
     () => resolveEffectiveVideoCapabilityFields({

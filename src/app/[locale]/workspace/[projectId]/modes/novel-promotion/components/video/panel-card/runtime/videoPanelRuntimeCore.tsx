@@ -16,6 +16,7 @@ export function useVideoPanelActions({
   defaultVideoModel,
   capabilityOverrides,
   videoRatio = '16:9',
+  videoResolution,
   userVideoModels,
   projectId,
   episodeId,
@@ -70,6 +71,7 @@ export function useVideoPanelActions({
   const videoModel = usePanelVideoModel({
     defaultVideoModel,
     capabilityOverrides,
+    videoResolution,
     userVideoModels,
   })
 
