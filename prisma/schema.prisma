@@ -204,6 +204,11 @@ model NovelPromotionPanel {
   imageUrl          String?                   @db.Text
   imageMediaId      String?
   imageMedia        MediaObject?              @relation("NovelPromotionPanelImageMedia", fields: [imageMediaId], references: [id], onDelete: SetNull)
+  mobileCloudAssetId String?
+  mobileCloudAssetSourceUrl String?            @db.Text
+  mobileCloudAssetGroupId String?
+  mobileCloudAssetStatus String?
+  mobileCloudAssetSyncedAt DateTime?
   imageHistory      String?                   @db.Text
   videoPrompt       String?                   @db.Text
   firstLastFramePrompt String?                @db.Text
@@ -234,6 +239,7 @@ model NovelPromotionPanel {
   @@unique([storyboardId, panelIndex])
   @@index([storyboardId])
   @@index([imageMediaId])
+  @@index([mobileCloudAssetId])
   @@index([videoMediaId])
   @@index([lipSyncVideoMediaId])
   @@index([sketchImageMediaId])

@@ -192,9 +192,9 @@ if ENABLE_VIDEO_ENCRYPT:
     )
 
 
-# The vendored SDK logs a non-200 response and returns an empty task id. Keep
-# its request/encryption implementation intact, but retain the response for
-# this request so the API can return an actionable error to callers.
+# SDK 1.0 returns an empty task id for a non-200 create response. SDK 1.1
+# retains the response but then raises AICCException. Capture that response in
+# both SDK object layouts so either behavior can produce the same API error.
 _sdk_create_task_response = threading.local()
 
 
@@ -202,20 +202,36 @@ def _is_sdk_create_task_url(value: Any) -> bool:
     return isinstance(value, str) and urlparse(value).path.rstrip("/").endswith("/contents/generations/tasks")
 
 
+def _sdk_create_task_http_clients() -> list[Any]:
+    # SDK 1.0 exposed secure_http_client on the public client. SDK 1.1 wraps
+    # it in volc_client; preserve support for both versions while upgrading.
+    candidates = [
+        getattr(client, "secure_http_client", None),
+        getattr(getattr(client, "volc_client", None), "secure_http_client", None),
+    ]
+    http_clients: list[Any] = []
+    seen: set[int] = set()
+    for http_client in candidates:
+        if http_client is not None and id(http_client) not in seen:
+            http_clients.append(http_client)
+            seen.add(id(http_client))
+    return http_clients
+
+
 def _install_sdk_create_task_response_capture() -> None:
-    http_client = getattr(client, "secure_http_client", None)
-    original_post = getattr(http_client, "post", None)
-    if not callable(original_post):
-        return
+    for http_client in _sdk_create_task_http_clients():
+        original_post = getattr(http_client, "post", None)
+        if not callable(original_post):
+            continue
 
-    def capture_post(*args: Any, **kwargs: Any) -> Any:
-        response = original_post(*args, **kwargs)
-        request_url = args[0] if args else kwargs.get("url")
-        if _is_sdk_create_task_url(request_url):
-            _sdk_create_task_response.response = response
-        return response
+        def capture_post(*args: Any, __original_post: Any = original_post, **kwargs: Any) -> Any:
+            response = __original_post(*args, **kwargs)
+            request_url = args[0] if args else kwargs.get("url")
+            if _is_sdk_create_task_url(request_url):
+                _sdk_create_task_response.response = response
+            return response
 
-    http_client.post = capture_post
+        http_client.post = capture_post
 
 
 def _clear_sdk_create_task_response() -> None:
@@ -223,7 +239,22 @@ def _clear_sdk_create_task_response() -> None:
         del _sdk_create_task_response.response
 
 
-def _raise_sdk_create_task_error() -> None:
+def _body_from_sdk_create_task_exception(error: Exception | None) -> dict[str, Any] | None:
+    """Extract the JSON body embedded in SDK 1.1's AICCException message."""
+    if error is None:
+        return None
+    message = str(error).strip()
+    json_start = message.find("{")
+    if json_start < 0:
+        return None
+    try:
+        body, _ = json.JSONDecoder().raw_decode(message[json_start:])
+    except (TypeError, ValueError):
+        return None
+    return body if isinstance(body, dict) else None
+
+
+def _raise_sdk_create_task_error(sdk_error: Exception | None = None) -> None:
     response = getattr(_sdk_create_task_response, "response", None)
     raw_status = getattr(response, "status_code", None)
     try:
@@ -237,6 +268,8 @@ def _raise_sdk_create_task_error() -> None:
             body = response.json()
         except Exception:
             body = None
+    if not isinstance(body, dict):
+        body = _body_from_sdk_create_task_exception(sdk_error)
 
     upstream_error = body.get("error") if isinstance(body, dict) else None
     upstream_code = upstream_error.get("code") if isinstance(upstream_error, dict) else None
@@ -255,9 +288,10 @@ def _raise_sdk_create_task_error() -> None:
         )
 
     logger.error(
-        "Maas Seedance create task returned no task id: status=%s upstream_code=%s",
+        "Maas Seedance create task failed: status=%s upstream_code=%s sdk_error_type=%s",
         status_code,
         upstream_code,
+        type(sdk_error).__name__ if sdk_error is not None else None,
     )
     raise HTTPException(
         status_code=status_code if 400 <= status_code < 500 else 502,
@@ -314,7 +348,13 @@ def create_video_generation(
     # #endregion
 
     _clear_sdk_create_task_response()
-    task_id = client.create_video_generation_task(payload)
+    try:
+        task_id = client.create_video_generation_task(payload)
+    except Exception as error:
+        # SDK 1.1 raises AICCException after its secure HTTP client returns a
+        # non-200 response. The captured response is converted below instead
+        # of leaking an internal exception as HTTP 500.
+        _raise_sdk_create_task_error(error)
     if not task_id:
         _raise_sdk_create_task_error()
     return {"id": str(task_id), "status": "processing"}

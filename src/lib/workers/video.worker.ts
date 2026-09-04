@@ -21,12 +21,17 @@ import { resolveBuiltinCapabilitiesByModelKey } from '@/lib/model-capabilities/l
 import { parseModelKeyStrict } from '@/lib/model-config-contract'
 import { getProviderConfig } from '@/lib/api-config'
 import { getSignedUrl } from '@/lib/storage'
+import { mobileCloudMaasAssetClient } from '@/lib/mobile-cloud-maas/asset-client'
 
 type AnyObj = Record<string, unknown>
 type VideoOptionValue = string | number | boolean
 type VideoOptionMap = Record<string, VideoOptionValue>
 type VideoGenerationMode = 'normal' | 'firstlastframe'
 type PanelRecord = NonNullable<Awaited<ReturnType<typeof prisma.novelPromotionPanel.findUnique>>>
+
+function isTrustedAssetUri(value: unknown): value is string {
+  return typeof value === 'string' && /^asset:\/\/[A-Za-z0-9._:-]+$/.test(value.trim())
+}
 
 function toDurationMs(value: number | null | undefined): number | undefined {
   if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return undefined
@@ -56,6 +61,41 @@ async function fetchPanelByStoryboardIndex(storyboardId: string, panelIndex: num
       panelIndex,
     },
   })
+}
+
+async function resolveActiveMobileCloudPanelAssetUri(panel: PanelRecord): Promise<string | null> {
+  const assetId = panel.mobileCloudAssetId?.trim() || ''
+  const sourceImageUrl = panel.mobileCloudAssetSourceUrl?.trim() || ''
+  if (!assetId || !panel.imageUrl || sourceImageUrl !== panel.imageUrl) return null
+
+  const assetUri = `asset://${assetId}`
+  if (!isTrustedAssetUri(assetUri)) return null
+
+  let remoteAsset: Awaited<ReturnType<typeof mobileCloudMaasAssetClient.getAsset>>
+  try {
+    remoteAsset = await mobileCloudMaasAssetClient.getAsset(assetId)
+  } catch {
+    throw new Error('MOBILE_CLOUD_PANEL_ASSET_STATUS_UNAVAILABLE')
+  }
+
+  await prisma.novelPromotionPanel.update({
+    where: { id: panel.id },
+    data: {
+      mobileCloudAssetStatus: remoteAsset.status,
+      mobileCloudAssetSyncedAt: new Date(),
+    },
+  })
+
+  if (remoteAsset.assetType !== 'Image') {
+    throw new Error('MOBILE_CLOUD_PANEL_ASSET_TYPE_INVALID')
+  }
+  if (remoteAsset.status === 'FAILED') {
+    throw new Error('MOBILE_CLOUD_PANEL_ASSET_FAILED')
+  }
+  if (remoteAsset.status !== 'ACTIVE') {
+    throw new Error('MOBILE_CLOUD_PANEL_ASSET_PROCESSING')
+  }
+  return assetUri
 }
 
 async function getPanelForVideoTask(job: Job<TaskJobData>) {
@@ -128,9 +168,12 @@ async function generateVideoForPanel(
   const parsedVideoModel = parseModelKeyStrict(model)
   const usePublicMediaUrl = getProviderKey(parsedVideoModel?.provider).toLowerCase() === 'maas-seedance'
   const publicMediaOptions = { absoluteBaseUrl: getPublicBaseUrl() }
-  const sourceImageForGeneration = usePublicMediaUrl
+  const sourceAssetUri = usePublicMediaUrl
+    ? await resolveActiveMobileCloudPanelAssetUri(panel)
+    : null
+  const sourceImageForGeneration = sourceAssetUri || (usePublicMediaUrl
     ? await normalizeToOriginalMediaUrl(sourceImageUrl, publicMediaOptions)
-    : await normalizeToBase64ForGeneration(sourceImageUrl)
+    : await normalizeToBase64ForGeneration(sourceImageUrl))
 
   let lastFrameImageForGeneration: string | undefined
   if (
@@ -144,11 +187,18 @@ async function generateVideoForPanel(
       Number(firstLastFramePayload.lastFramePanelIndex),
     )
     if (lastPanel?.imageUrl) {
-      const lastFrameUrl = toSignedUrlIfCos(lastPanel.imageUrl, 3600)
-      if (lastFrameUrl) {
-        lastFrameImageForGeneration = usePublicMediaUrl
-          ? await normalizeToOriginalMediaUrl(lastFrameUrl, publicMediaOptions)
-          : await normalizeToBase64ForGeneration(lastFrameUrl)
+      const lastFrameAssetUri = usePublicMediaUrl
+        ? await resolveActiveMobileCloudPanelAssetUri(lastPanel)
+        : null
+      if (lastFrameAssetUri) {
+        lastFrameImageForGeneration = lastFrameAssetUri
+      } else {
+        const lastFrameUrl = toSignedUrlIfCos(lastPanel.imageUrl, 3600)
+        if (lastFrameUrl) {
+          lastFrameImageForGeneration = usePublicMediaUrl
+            ? await normalizeToOriginalMediaUrl(lastFrameUrl, publicMediaOptions)
+            : await normalizeToBase64ForGeneration(lastFrameUrl)
+        }
       }
     }
   }
@@ -306,10 +356,6 @@ async function handleLipSyncTask(job: Job<TaskJobData>) {
     voiceLineId,
     lipSyncVideoUrl: cosKey,
   }
-}
-
-function isTrustedAssetUri(value: unknown): value is string {
-  return typeof value === 'string' && /^asset:\/\/[A-Za-z0-9._:-]+$/.test(value.trim())
 }
 
 async function handleVirtualHumanTrialTask(job: Job<TaskJobData>) {

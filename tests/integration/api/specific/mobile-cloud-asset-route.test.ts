@@ -37,6 +37,21 @@ const { assetClientMock, MobileCloudMaasOpenApiError } = vi.hoisted(() => {
   }
 })
 
+const prismaMock = vi.hoisted(() => ({
+  novelPromotionEpisode: {
+    findFirst: vi.fn(),
+    findUnique: vi.fn(),
+  },
+  novelPromotionPanel: {
+    findMany: vi.fn(),
+    update: vi.fn(),
+  },
+}))
+
+const outboundImageMock = vi.hoisted(() => ({
+  normalizeToOriginalMediaUrl: vi.fn(),
+}))
+
 vi.mock('@/lib/mobile-cloud-maas/asset-client', () => ({
   mobileCloudMaasAssetClient: assetClientMock,
   MobileCloudMaasOpenApiError,
@@ -51,11 +66,25 @@ vi.mock('@/lib/logging/core', () => ({
   }),
 }))
 
+vi.mock('@/lib/prisma', () => ({ prisma: prismaMock }))
+vi.mock('@/lib/media/outbound-image', () => outboundImageMock)
+
 describe('api specific - Mobile Cloud asset route', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.resetModules()
     resetAuthMockState()
+    prismaMock.novelPromotionEpisode.findFirst.mockResolvedValue({
+      id: 'episode-1',
+      novelPromotionProjectId: 'novel-project-1',
+    })
+    prismaMock.novelPromotionEpisode.findUnique.mockResolvedValue({
+      name: 'Episode 1',
+      episodeNumber: 1,
+    })
+    prismaMock.novelPromotionPanel.findMany.mockResolvedValue([])
+    prismaMock.novelPromotionPanel.update.mockResolvedValue(undefined)
+    outboundImageMock.normalizeToOriginalMediaUrl.mockImplementation(async (url: string) => `https://public.example/${url}`)
   })
 
   it('protects the direct asset API behind application authentication', async () => {
@@ -139,6 +168,150 @@ describe('api specific - Mobile Cloud asset route', () => {
     }), { params: Promise.resolve({}) })
     expect(response.status).toBe(201)
     expect(assetClientMock.createGroup).toHaveBeenCalledWith({ groupType: 'AIGC', groupName: 'x'.repeat(64), description: 'd'.repeat(300) })
+  })
+
+  it('registers authorized storyboard images as virtual-human materials and persists their asset mapping', async () => {
+    installAuthMocks()
+    mockAuthenticated('user-a')
+    prismaMock.novelPromotionPanel.findMany.mockResolvedValueOnce([
+      {
+        id: 'panel-1',
+        panelIndex: 0,
+        panelNumber: 1,
+        imageUrl: 'cos/episode-1/panel-1.png',
+      },
+    ])
+    assetClientMock.createAsset.mockResolvedValueOnce({ assetId: 'asset-face-1' })
+    const mod = await import('@/app/api/asset-hub/mobile-cloud/route')
+
+    const response = await mod.POST(buildMockRequest({
+      path: '/api/asset-hub/mobile-cloud',
+      method: 'POST',
+      body: {
+        resource: 'storyboard-panel-assets',
+        projectId: 'project-1',
+        episodeId: 'episode-1',
+        groupId: 'group-virtual-human',
+        panelIds: ['panel-1'],
+      },
+    }), { params: Promise.resolve({}) })
+
+    expect(response.status).toBe(201)
+    expect(outboundImageMock.normalizeToOriginalMediaUrl).toHaveBeenCalledWith(
+      'cos/episode-1/panel-1.png',
+      expect.objectContaining({ absoluteBaseUrl: expect.any(String) }),
+    )
+    expect(assetClientMock.createAsset).toHaveBeenCalledWith(expect.objectContaining({
+      groupId: 'group-virtual-human',
+      assetType: 'Image',
+      assetUrl: 'https://public.example/cos/episode-1/panel-1.png',
+      assetName: expect.stringMatching(/^Episode 1·E1·S1·Ppanel1·V/),
+    }))
+    expect(prismaMock.novelPromotionPanel.update).toHaveBeenCalledWith({
+      where: { id: 'panel-1' },
+      data: {
+        mobileCloudAssetId: 'asset-face-1',
+        mobileCloudAssetSourceUrl: 'cos/episode-1/panel-1.png',
+        mobileCloudAssetGroupId: 'group-virtual-human',
+        mobileCloudAssetStatus: 'PROCESSING',
+        mobileCloudAssetSyncedAt: expect.any(Date),
+      },
+    })
+    await expect(response.json()).resolves.toMatchObject({
+      success: true,
+      data: { uploaded: [{ panelId: 'panel-1', assetId: 'asset-face-1', status: 'PROCESSING', reused: false }] },
+    })
+  })
+
+  it('uses unique names for panels with the same display number in one asset group', async () => {
+    installAuthMocks()
+    mockAuthenticated('user-a')
+    prismaMock.novelPromotionPanel.findMany.mockResolvedValueOnce([
+      {
+        id: 'panel-storyboard-a-1',
+        panelIndex: 0,
+        panelNumber: 1,
+        imageUrl: 'cos/episode-1/storyboard-a/panel-1.png',
+        mobileCloudAssetId: null,
+        mobileCloudAssetSourceUrl: null,
+        mobileCloudAssetGroupId: null,
+        mobileCloudAssetStatus: null,
+      },
+      {
+        id: 'panel-storyboard-b-1',
+        panelIndex: 0,
+        panelNumber: 1,
+        imageUrl: 'cos/episode-1/storyboard-b/panel-1.png',
+        mobileCloudAssetId: null,
+        mobileCloudAssetSourceUrl: null,
+        mobileCloudAssetGroupId: null,
+        mobileCloudAssetStatus: null,
+      },
+    ])
+    assetClientMock.createAsset
+      .mockResolvedValueOnce({ assetId: 'asset-panel-a' })
+      .mockResolvedValueOnce({ assetId: 'asset-panel-b' })
+    const mod = await import('@/app/api/asset-hub/mobile-cloud/route')
+
+    const response = await mod.POST(buildMockRequest({
+      path: '/api/asset-hub/mobile-cloud',
+      method: 'POST',
+      body: {
+        resource: 'storyboard-panel-assets',
+        projectId: 'project-1',
+        episodeId: 'episode-1',
+        groupId: 'group-virtual-human',
+        panelIds: ['panel-storyboard-a-1', 'panel-storyboard-b-1'],
+      },
+    }), { params: Promise.resolve({}) })
+
+    expect(response.status).toBe(201)
+    const createdNames = assetClientMock.createAsset.mock.calls.map((call) => {
+      return (call[0] as { assetName: string }).assetName
+    })
+    expect(createdNames).toHaveLength(2)
+    expect(new Set(createdNames).size).toBe(2)
+    expect(createdNames.every((name) => name.length <= 64)).toBe(true)
+    expect(createdNames.every((name) => /·P[A-Za-z0-9]+·V[a-z0-9]+/.test(name))).toBe(true)
+  })
+
+  it('reuses a matching registered panel material instead of creating a duplicate', async () => {
+    installAuthMocks()
+    mockAuthenticated('user-a')
+    prismaMock.novelPromotionPanel.findMany.mockResolvedValueOnce([
+      {
+        id: 'panel-1',
+        panelIndex: 0,
+        panelNumber: 1,
+        imageUrl: 'cos/episode-1/panel-1.png',
+        mobileCloudAssetId: 'asset-existing-1',
+        mobileCloudAssetSourceUrl: 'cos/episode-1/panel-1.png',
+        mobileCloudAssetGroupId: 'group-virtual-human',
+        mobileCloudAssetStatus: 'ACTIVE',
+      },
+    ])
+    const mod = await import('@/app/api/asset-hub/mobile-cloud/route')
+
+    const response = await mod.POST(buildMockRequest({
+      path: '/api/asset-hub/mobile-cloud',
+      method: 'POST',
+      body: {
+        resource: 'storyboard-panel-assets',
+        projectId: 'project-1',
+        episodeId: 'episode-1',
+        groupId: 'group-virtual-human',
+        panelIds: ['panel-1'],
+      },
+    }), { params: Promise.resolve({}) })
+
+    expect(response.status).toBe(201)
+    expect(assetClientMock.createAsset).not.toHaveBeenCalled()
+    expect(outboundImageMock.normalizeToOriginalMediaUrl).not.toHaveBeenCalled()
+    expect(prismaMock.novelPromotionPanel.update).not.toHaveBeenCalled()
+    await expect(response.json()).resolves.toMatchObject({
+      success: true,
+      data: { uploaded: [{ panelId: 'panel-1', assetId: 'asset-existing-1', status: 'ACTIVE', reused: true }] },
+    })
   })
 
   it('rejects asset update with empty assetName', async () => {

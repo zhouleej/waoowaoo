@@ -27,6 +27,17 @@ describe('Mobile Cloud asset route contract', () => {
     })
   })
 
+  it('keeps storyboard panel material registration on the authenticated Mobile Cloud endpoint', () => {
+    const entry = ROUTE_CATALOG.find((item) => item.routeFile === 'src/app/api/asset-hub/mobile-cloud/route.ts')
+
+    // Contract: project storyboard images extend the established authenticated
+    // Asset Hub endpoint rather than creating a separate public endpoint.
+    expect(entry).toMatchObject({
+      category: 'asset-hub',
+      contractGroup: 'crud-asset-hub-routes',
+    })
+  })
+
   it('documents the error diagnostics contract for non-config OpenAPI failures', () => {
     // Contract: when the Mobile Cloud OpenAPI returns a non-config error
     // (network / upstream / invalid-response), the route must include a

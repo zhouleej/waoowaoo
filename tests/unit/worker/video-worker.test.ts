@@ -8,6 +8,9 @@ type PanelRow = {
   id: string
   videoUrl: string | null
   imageUrl: string | null
+  mobileCloudAssetId?: string | null
+  mobileCloudAssetSourceUrl?: string | null
+  mobileCloudAssetStatus?: string | null
   videoPrompt: string | null
   description: string | null
   firstLastFramePrompt: string | null
@@ -66,6 +69,9 @@ const prismaMock = vi.hoisted(() => ({
 const storageMock = vi.hoisted(() => ({
   getSignedUrl: vi.fn((key: string) => `/api/storage/sign?key=${encodeURIComponent(key)}`),
 }))
+const mobileCloudAssetClientMock = vi.hoisted(() => ({
+  getAsset: vi.fn(),
+}))
 
 vi.mock('bullmq', () => ({
   Queue: class {
@@ -98,6 +104,9 @@ vi.mock('@/lib/workers/utils', () => utilsMock)
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock }))
 vi.mock('@/lib/storage', () => storageMock)
 vi.mock('@/lib/media/outbound-image', () => outboundImageMock)
+vi.mock('@/lib/mobile-cloud-maas/asset-client', () => ({
+  mobileCloudMaasAssetClient: mobileCloudAssetClientMock,
+}))
 vi.mock('@/lib/model-capabilities/lookup', () => ({
   resolveBuiltinCapabilitiesByModelKey: vi.fn(() => ({ video: { firstlastframe: true } })),
 }))
@@ -155,6 +164,14 @@ describe('worker video processor behavior', () => {
       id: 'line-1',
       audioUrl: 'cos/line-1.mp3',
       audioDuration: 1200,
+    })
+    mobileCloudAssetClientMock.getAsset.mockResolvedValue({
+      assetId: 'asset-panel-1',
+      assetName: 'panel material',
+      assetType: 'Image',
+      status: 'ACTIVE',
+      groupId: 'group-1',
+      assetUrl: 'https://mobile-cloud.example/asset.png',
     })
 
     const mod = await import('@/lib/workers/video.worker')
@@ -374,6 +391,69 @@ describe('worker video processor behavior', () => {
     })
 
     await expect(processor!(unsupportedJob)).rejects.toThrow('Unsupported video task type')
+  })
+
+  it('VIDEO_PANEL: MAAS sends a registered active storyboard material as an asset URI', async () => {
+    const processor = workerState.processor
+    expect(processor).toBeTruthy()
+    modelContractMock.parseModelKeyStrict.mockReturnValue({ provider: 'maas-seedance' })
+    prismaMock.novelPromotionPanel.findUnique.mockResolvedValueOnce(buildPanel({
+      imageUrl: 'cos/face-panel.png',
+      mobileCloudAssetId: 'asset-face-1',
+      mobileCloudAssetSourceUrl: 'cos/face-panel.png',
+    }))
+    mobileCloudAssetClientMock.getAsset.mockResolvedValueOnce({
+      assetId: 'asset-face-1',
+      assetName: 'face panel',
+      assetType: 'Image',
+      status: 'ACTIVE',
+      groupId: 'group-1',
+      assetUrl: 'https://mobile-cloud.example/face.png',
+    })
+
+    await processor!(buildJob({
+      type: TASK_TYPE.VIDEO_PANEL,
+      payload: { videoModel: 'maas-seedance::doubao-seedance-2.0' },
+    }))
+
+    expect(mobileCloudAssetClientMock.getAsset).toHaveBeenCalledWith('asset-face-1')
+    expect(utilsMock.resolveVideoSourceFromGeneration).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ imageUrl: 'asset://asset-face-1' }),
+    )
+    expect(outboundImageMock.normalizeToOriginalMediaUrl).not.toHaveBeenCalled()
+    expect(prismaMock.novelPromotionPanel.update).toHaveBeenCalledWith({
+      where: { id: 'panel-1' },
+      data: expect.objectContaining({
+        mobileCloudAssetStatus: 'ACTIVE',
+        mobileCloudAssetSyncedAt: expect.any(Date),
+      }),
+    })
+  })
+
+  it('VIDEO_PANEL: MAAS waits for a registered storyboard material to become active', async () => {
+    const processor = workerState.processor
+    expect(processor).toBeTruthy()
+    modelContractMock.parseModelKeyStrict.mockReturnValue({ provider: 'maas-seedance' })
+    prismaMock.novelPromotionPanel.findUnique.mockResolvedValueOnce(buildPanel({
+      imageUrl: 'cos/face-panel.png',
+      mobileCloudAssetId: 'asset-face-1',
+      mobileCloudAssetSourceUrl: 'cos/face-panel.png',
+    }))
+    mobileCloudAssetClientMock.getAsset.mockResolvedValueOnce({
+      assetId: 'asset-face-1',
+      assetName: 'face panel',
+      assetType: 'Image',
+      status: 'PROCESSING',
+      groupId: 'group-1',
+      assetUrl: 'https://mobile-cloud.example/face.png',
+    })
+
+    await expect(processor!(buildJob({
+      type: TASK_TYPE.VIDEO_PANEL,
+      payload: { videoModel: 'maas-seedance::doubao-seedance-2.0' },
+    }))).rejects.toThrow('MOBILE_CLOUD_PANEL_ASSET_PROCESSING')
+    expect(utilsMock.resolveVideoSourceFromGeneration).not.toHaveBeenCalled()
   })
 
   it('VIDEO_PANEL: falls back to the global resolution and preserves a panel override', async () => {

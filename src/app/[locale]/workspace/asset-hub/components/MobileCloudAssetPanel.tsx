@@ -6,6 +6,7 @@ import { apiFetch } from '@/lib/api-fetch'
 import { AppIcon } from '@/components/ui/icons'
 import { MediaImageWithLoading } from '@/components/media/MediaImageWithLoading'
 import ImagePreviewModal from '@/components/ui/ImagePreviewModal'
+import { StoryboardPanelAssetUploader } from './StoryboardPanelAssetPicker'
 import type {
   CharacterAssetSummary,
   LocationAssetSummary,
@@ -425,6 +426,9 @@ export default function MobileCloudAssetPanel({ docsUrl = 'https://ecloud.10086.
                         {kind === 'character' ? t('pickCharacter') : kind === 'location' ? t('pickLocation') : t('pickProp')}
                       </button>
                     ))}
+                    {groupType === 'AIGC' && (
+                      <StoryboardPanelAssetUploader groupId={selectedGroupId} onUploaded={refresh} />
+                    )}
                   </div>
                   <div className="mb-3 grid gap-2 sm:grid-cols-[1fr_1.5fr_auto_auto]">
                     <input value={assetName} onChange={(event) => setAssetName(event.target.value)} placeholder={t('assetName')} className="glass-input text-xs" />

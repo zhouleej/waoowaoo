@@ -55,13 +55,13 @@ const mustIncludeRules: Rule[] = [
   },
   {
     file: 'src/lib/workers/video.worker.ts',
-    pattern: /const\s+sourceImageBase64\s*=\s*await\s+normalizeToBase64ForGeneration\(sourceImageUrl\)/,
-    message: 'video.worker.ts must normalize source frame to base64',
+    pattern: /normalizeToBase64ForGeneration\(sourceImageUrl\)/,
+    message: 'video.worker.ts must preserve a normalized source-frame path when no trusted asset URI is available',
   },
   {
     file: 'src/lib/workers/video.worker.ts',
-    pattern: /lastFrameImageBase64\s*=\s*await\s+normalizeToBase64ForGeneration\(lastFrameUrl\)/,
-    message: 'video.worker.ts must normalize last frame to base64',
+    pattern: /normalizeToBase64ForGeneration\(lastFrameUrl\)/,
+    message: 'video.worker.ts must preserve a normalized last-frame path when no trusted asset URI is available',
   },
   {
     file: 'src/app/api/novel-promotion/[projectId]/modify-asset-image/route.ts',
