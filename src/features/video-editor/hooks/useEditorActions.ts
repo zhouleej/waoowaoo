@@ -1,82 +1,11 @@
 'use client'
 
 import { useCallback } from 'react'
-import { VideoClip, VideoEditorProject } from '../types/editor.types'
+import type { VideoEditorProject } from '../types/editor.types'
 import { apiFetch } from '@/lib/api-fetch'
+export { assembleEditorProject as createProjectFromPanels } from '../utils/assemble-project'
 
-interface UseEditorActionsProps {
-    projectId: string
-    episodeId: string
-}
-
-/**
- * 面板数据类型（灵活接受各种格式）
- */
-interface PanelData {
-    id?: string
-    panelIndex?: number
-    storyboardId: string
-    videoUrl?: string
-    description?: string
-    duration?: number
-}
-
-/**
- * 从已生成的视频面板创建编辑器项目
- */
-export function createProjectFromPanels(
-    episodeId: string,
-    panels: PanelData[],
-    voiceLines?: Array<{ id: string; speaker: string; content: string; audioUrl?: string | null }>
-): VideoEditorProject {
-    // 过滤出有视频的面板
-    const videoPanels = panels.filter(p => p.videoUrl)
-
-    // 创建视频片段
-    const timeline: VideoClip[] = videoPanels.map((panel, index) => {
-        // 查找匹配的配音（简单匹配：按索引）
-        const matchedVoice = voiceLines?.[index]
-
-        return {
-            id: `clip_${panel.id || panel.storyboardId}_${panel.panelIndex ?? index}`,
-            src: panel.videoUrl!,
-            durationInFrames: Math.round((panel.duration || 3) * 30), // 默认 3 秒，30fps
-            attachment: {
-                audio: matchedVoice?.audioUrl ? {
-                    src: matchedVoice.audioUrl,
-                    volume: 1,
-                    voiceLineId: matchedVoice.id
-                } : undefined,
-                subtitle: matchedVoice ? {
-                    text: matchedVoice.content,
-                    style: 'default' as const
-                } : undefined
-            },
-            transition: index < videoPanels.length - 1 ? {
-                type: 'dissolve' as const,
-                durationInFrames: 15 // 0.5s @ 30fps
-            } : undefined,
-            metadata: {
-                panelId: panel.id || `${panel.storyboardId}-${panel.panelIndex ?? index}`,
-                storyboardId: panel.storyboardId,
-                description: panel.description || undefined
-            }
-        }
-    })
-
-    return {
-        id: `editor_${episodeId}_${Date.now()}`,
-        episodeId,
-        schemaVersion: '1.0',
-        config: {
-            fps: 30,
-            width: 1920,
-            height: 1080
-        },
-        timeline,
-        bgmTrack: []
-    }
-}
+interface UseEditorActionsProps { projectId: string; episodeId: string }
 
 export function useEditorActions({ projectId, episodeId }: UseEditorActionsProps) {
     /**
@@ -86,7 +15,7 @@ export function useEditorActions({ projectId, episodeId }: UseEditorActionsProps
         const response = await apiFetch(`/api/novel-promotion/${projectId}/editor`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ projectData: project })
+            body: JSON.stringify({ episodeId, projectData: project })
         })
 
         if (!response.ok) {
@@ -94,7 +23,7 @@ export function useEditorActions({ projectId, episodeId }: UseEditorActionsProps
         }
 
         return response.json()
-    }, [projectId])
+    }, [projectId, episodeId])
 
     /**
      * 加载项目

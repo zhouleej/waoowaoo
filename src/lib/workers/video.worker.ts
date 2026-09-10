@@ -416,6 +416,8 @@ async function processVideoTask(job: Job<TaskJobData>) {
   await reportTaskProgress(job, 5, { stage: 'received' })
 
   switch (job.data.type) {
+    case TASK_TYPE.EDITOR_RENDER:
+      return await (await import('./handlers/editor-render')).handleEditorRenderTask(job)
     case TASK_TYPE.VIDEO_PANEL:
       if (job.data.targetType === 'InspirationVideoCreation') {
         return await handleInspirationVideoTask(job)

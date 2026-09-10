@@ -142,7 +142,8 @@
       "saveSuccess": "保存成功",
       "saveFailed": "保存失败",
       "exportStarted": "导出任务已开始，请稍候...",
-      "exportFailed": "导出失败"
+      "exportFailed": "导出失败",
+      "loadFailed": "加载剪辑失败，请刷新重试"
     },
     "toolbar": {
       "back": "← 返回",
@@ -183,7 +184,11 @@
         "fade": "淡入淡出",
         "slide": "滑动"
       }
-    }
+    },
+    "loading": "正在加载剪辑…",
+    "rendering": "正在保存或合成视频，请稍候…",
+    "download": "下载成片",
+    "unsaved": "剪辑尚未保存，确定离开？"
   },
   "errors": {
     "unknownError": "未知错误"

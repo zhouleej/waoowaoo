@@ -2,7 +2,7 @@
 import { logError as _ulogError } from '@/lib/logging/core'
 import { useTranslations } from 'next-intl'
 
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { AppIcon } from '@/components/ui/icons'
 import { useEditorState } from '../hooks/useEditorState'
 import { useEditorActions } from '../hooks/useEditorActions'
@@ -56,30 +56,70 @@ export function VideoEditorStage({
         markSaved
     } = useEditorState({ episodeId, initialProject })
 
-    const { saveProject, startRender } = useEditorActions({ projectId, episodeId })
+    const { saveProject, startRender, getRenderStatus } = useEditorActions({ projectId, episodeId })
+    const [editorId, setEditorId] = useState(initialProject?.id || '')
+    const [renderStatus, setRenderStatus] = useState('idle')
+    const [outputUrl, setOutputUrl] = useState<string | null>(null)
+    const [notice, setNotice] = useState('')
+    const [saving, setSaving] = useState(false)
+    const busy = saving || ['queued', 'processing', 'settling'].includes(renderStatus)
+    useEffect(() => {
+        if (!editorId || editorId.startsWith('editor_')) return
+        let active = true
+        let timer: ReturnType<typeof setTimeout>
+        const check = async () => {
+            try {
+                const status = await getRenderStatus(editorId)
+                if (!active) return
+                setRenderStatus(status.status)
+                setOutputUrl(status.outputUrl)
+                if (status.error) setNotice(status.error)
+                if (['queued', 'processing', 'settling'].includes(status.status)) timer = setTimeout(check, 2000)
+            } catch (error) { if (active) setNotice(error instanceof Error ? error.message : String(error)) }
+        }
+        void check()
+        return () => { active = false; clearTimeout(timer) }
+    }, [editorId, getRenderStatus, renderStatus])
+    useEffect(() => {
+        const warn = (event: BeforeUnloadEvent) => { if (isDirty) { event.preventDefault(); event.returnValue = '' } }
+        window.addEventListener('beforeunload', warn)
+        return () => window.removeEventListener('beforeunload', warn)
+    }, [isDirty])
 
     const totalDuration = calculateTimelineDuration(project.timeline)
     const totalTime = framesToTime(totalDuration, project.config.fps)
     const currentTime = framesToTime(timelineState.currentFrame, project.config.fps)
 
     const handleSave = async () => {
+        setSaving(true)
         try {
-            await saveProject(project)
+            const saved = await saveProject(project)
+            setEditorId(saved.id)
             markSaved()
             alert(t('editor.alert.saveSuccess'))
         } catch (error) {
             _ulogError('Save failed:', error)
             alert(t('editor.alert.saveFailed'))
+        } finally {
+            setSaving(false)
         }
     }
 
     const handleExport = async () => {
+        setSaving(true)
         try {
-            await startRender(project.id)
-            alert(t('editor.alert.exportStarted'))
+            const saved = await saveProject(project)
+            markSaved()
+            const task = await startRender(saved.id)
+            setEditorId(saved.id)
+            setRenderStatus(task.status || 'queued')
+            setOutputUrl(null)
+            setNotice(t('editor.alert.exportStarted'))
         } catch (error) {
             _ulogError('Export failed:', error)
             alert(t('editor.alert.exportFailed'))
+        } finally {
+            setSaving(false)
         }
     }
 
@@ -103,7 +143,7 @@ export function VideoEditorStage({
                 background: 'var(--glass-bg-surface)'
             }}>
                 <button
-                    onClick={onBack}
+                    onClick={() => { if (!isDirty || confirm(t('editor.unsaved'))) onBack?.() }}
                     className="glass-btn-base glass-btn-secondary px-4 py-2"
                 >
                     {t('editor.toolbar.back')}
@@ -117,6 +157,7 @@ export function VideoEditorStage({
 
                 <button
                     onClick={handleSave}
+                    disabled={busy}
                     className={`glass-btn-base px-4 py-2 ${isDirty ? 'glass-btn-primary text-white' : 'glass-btn-secondary'}`}
                 >
                     {isDirty ? t('editor.toolbar.saveDirty') : t('editor.toolbar.saved')}
@@ -124,11 +165,14 @@ export function VideoEditorStage({
 
                 <button
                     onClick={handleExport}
+                    disabled={busy || !project.timeline.length}
                     className="glass-btn-base glass-btn-tone-success px-4 py-2"
                 >
                     {t('editor.toolbar.export')}
                 </button>
+                {outputUrl && <a href={outputUrl} download className="glass-btn-base px-4 py-2">{t('editor.download')}</a>}
             </div>
+            <div role="status" className="px-4 py-2 text-sm">{busy ? t('editor.rendering') : notice}</div>
 
             {/* Main Content */}
             <div style={{

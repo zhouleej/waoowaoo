@@ -1,5 +1,8 @@
 # ==================== Stage 1: Dependencies ====================
-FROM node:20-alpine AS deps
+FROM node:20-bookworm-slim AS base
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+
+FROM base AS deps
 WORKDIR /app
 
 COPY package.json package-lock.json ./
@@ -7,7 +10,7 @@ COPY prisma ./prisma
 RUN npm ci
 
 # ==================== Stage 2: Build ====================
-FROM node:20-alpine AS builder
+FROM base AS builder
 WORKDIR /app
 
 COPY --from=deps /app/node_modules ./node_modules
@@ -17,13 +20,14 @@ COPY . .
 RUN npm run build
 
 # ==================== Stage 3: Production ====================
-FROM node:20-alpine AS runner
+FROM base AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
 
 # Install tini for proper signal handling
-RUN apk add --no-cache tini
+RUN apt-get update && apt-get install -y --no-install-recommends tini chromium fonts-noto-cjk && rm -rf /var/lib/apt/lists/*
+ENV REMOTION_BROWSER_EXECUTABLE=/usr/bin/chromium
 
 # node_modules（含 devDeps，因为 npm run start 需要 concurrently + tsx）
 COPY --from=builder /app/node_modules ./node_modules
@@ -56,5 +60,5 @@ RUN mkdir -p /app/logs && touch /app/.env
 
 EXPOSE 3000 3010
 
-ENTRYPOINT ["/sbin/tini", "--"]
+ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["npm", "run", "start"]

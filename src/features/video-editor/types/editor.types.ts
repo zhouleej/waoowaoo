@@ -45,6 +45,7 @@ export interface VideoClip {
 
     // 附属内容 - 跟随视频移动
     attachment?: ClipAttachment
+    dialogue?: Array<{ from: number; durationInFrames: number; audio?: ClipAttachment['audio']; subtitle?: ClipAttachment['subtitle'] }>
 
     // 转场 (与下一个片段的过渡)
     transition?: ClipTransition

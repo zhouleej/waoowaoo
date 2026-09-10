@@ -1,9 +1,9 @@
 import React from 'react'
-import { AbsoluteFill, Sequence, Video, Audio, useCurrentFrame, interpolate } from 'remotion'
+import { AbsoluteFill, Sequence, OffthreadVideo, Audio, useCurrentFrame, interpolate } from 'remotion'
 import { VideoClip, BgmClip, EditorConfig } from '../types/editor.types'
 import { computeClipPositions } from '../utils/time-utils'
 
-interface VideoCompositionProps {
+export type VideoCompositionProps = {
     clips: VideoClip[]
     bgmTrack: BgmClip[]
     config: EditorConfig
@@ -162,9 +162,10 @@ const ClipRenderer: React.FC<ClipRendererProps> = ({
     return (
         <AbsoluteFill style={{ opacity, transform }}>
             {/* 视频 */}
-            <Video
+            <OffthreadVideo
                 src={clip.src}
                 startFrom={clip.trim?.from || 0}
+                muted={!!clip.attachment?.audio || !!clip.dialogue?.some((line) => line.audio)}
                 style={{
                     width: '100%',
                     height: '100%',
@@ -173,6 +174,12 @@ const ClipRenderer: React.FC<ClipRendererProps> = ({
             />
 
             {/* 附属配音 */}
+            {clip.dialogue?.map((line, index) => (
+                <Sequence key={index} from={line.from} durationInFrames={line.durationInFrames}>
+                    {line.audio && <Audio src={line.audio.src} volume={line.audio.volume} />}
+                    {line.subtitle && <SubtitleOverlay text={line.subtitle.text} style={line.subtitle.style} />}
+                </Sequence>
+            ))}
             {clip.attachment?.audio && (
                 <Audio
                     src={clip.attachment.audio.src}

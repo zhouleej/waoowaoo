@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { requireProjectAuthLight, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
 import { requireNovelPromotionEpisodeInProject } from '@/lib/saas/novel-promotion-resource-access'
+import { editorProjectSchema } from '@/features/video-editor/utils/project-schema'
 
 /**
  * GET /api/novel-promotion/[projectId]/editor
@@ -60,7 +61,12 @@ export const PUT = apiHandler(async (
     if (isErrorResponse(authResult)) return authResult
 
     const body = await request.json()
-    const { episodeId, projectData } = body
+    const { episodeId } = body
+    const parsed = editorProjectSchema.safeParse(body.projectData)
+    if (!parsed.success || parsed.data.episodeId !== episodeId) {
+        throw new ApiError('INVALID_PARAMS', { message: '剪辑项目格式无效或剧集不匹配' })
+    }
+    const projectData = parsed.data
 
     if (!episodeId || !projectData) {
         throw new ApiError('INVALID_PARAMS')

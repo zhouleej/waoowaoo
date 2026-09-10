@@ -123,6 +123,14 @@ npm run dev
 
 ## 🔧 API 配置
 
+### 剪辑与成片导出
+
+生成镜头视频后，进入「剪辑」调整顺序与转场，保存并导出 MP4。导出在视频任务队列执行，需同时运行网页服务和 Worker；重新打开剪辑页面可查看当前导出状态。新建时间轴继承项目画幅，并按镜头绑定配音与字幕。修改源素材后，旧剪辑引用可能需要重新整理，导出会拒绝失效或跨项目的媒体引用。
+
+本地首次导出需要浏览器运行环境，可执行 `npx remotion browser ensure`，或通过 `REMOTION_BROWSER_EXECUTABLE` 指定 Chromium。Dockerfile 已配置 Chromium 和中文字体，并按 [Remotion 部署说明](https://www.remotion.dev/docs/docker) 使用 Debian 基础镜像。
+
+删除项目后，媒体文件暂时保留，待回收清单位于 `data/media-retention`。回收前必须确认没有全局资产、其他项目或历史记录引用；当前不会自动执行物理回收。请将 `data` 目录纳入持久化与备份。
+
 启动后进入**设置中心**配置 AI 服务的 API Key，内置配置教程。
 
 > 💡 **注意**：目前仅推荐使用各服务商官方 API，第三方兼容格式（OpenAI Compatible）尚不完善，后续版本会持续优化。

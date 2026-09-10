@@ -10,6 +10,7 @@ export type TaskTypeBehaviorMatrixEntry = {
 }
 
 function resolveChainTestByTaskType(taskType: TaskType): string {
+  if (taskType === 'editor_render') return 'tests/unit/worker/editor-render.test.ts'
   if (taskType === 'video_panel' || taskType === 'lip_sync') {
     return 'tests/integration/chain/video.chain.test.ts'
   }
@@ -46,6 +47,7 @@ function resolveChainTestByTaskType(taskType: TaskType): string {
 }
 
 function resolveApiContractByTaskType(taskType: TaskType): string {
+  if (taskType === 'editor_render') return 'tests/integration/api/contract/editor-render-route.test.ts'
   if (
     taskType === 'analyze_novel'
     || taskType === 'story_to_script_run'

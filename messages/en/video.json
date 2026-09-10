@@ -142,7 +142,8 @@
       "saveSuccess": "Saved successfully",
       "saveFailed": "Save failed",
       "exportStarted": "Export has started. Please wait...",
-      "exportFailed": "Export failed"
+      "exportFailed": "Export failed",
+      "loadFailed": "Unable to load editor. Please reload."
     },
     "toolbar": {
       "back": "← Back",
@@ -183,7 +184,11 @@
         "fade": "Fade",
         "slide": "Slide"
       }
-    }
+    },
+    "loading": "Loading editor…",
+    "rendering": "Saving or rendering video…",
+    "download": "Download video",
+    "unsaved": "You have unsaved edits. Leave?"
   },
   "errors": {
     "unknownError": "Unknown error"

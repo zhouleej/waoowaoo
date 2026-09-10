@@ -39,6 +39,7 @@ export const TASK_LIFECYCLE_EVENT_TYPES = [
 export type TaskLifecycleEventType = (typeof TASK_LIFECYCLE_EVENT_TYPES)[number]
 
 export const TASK_TYPE = {
+  EDITOR_RENDER: 'editor_render',
   IMAGE_PANEL: 'image_panel',
   IMAGE_CHARACTER: 'image_character',
   IMAGE_LOCATION: 'image_location',
