@@ -91,8 +91,18 @@ export async function publishProjectAsset(input: PublishAccess & { assetId: stri
     })
     if (!character) throw new ApiError('NOT_FOUND')
     if (character.sourceGlobalCharacterId) {
-      const global = await prisma.globalCharacter.findFirst({ where: { id: character.sourceGlobalCharacterId, userId: input.userId }, select: { id: true } })
-      if (global) return { kind: 'character', status: 'already-published', globalAssetId: global.id }
+      const global = await prisma.globalCharacter.findFirst({ where: { id: character.sourceGlobalCharacterId, userId: input.userId }, include: { appearances: { orderBy: { appearanceIndex: 'asc' } } } })
+      const currentImages = character.appearances.filter((item) => selectedCharacterImage(item))
+      const same = global && global.name === character.name && global.aliases === character.aliases
+        && global.profileData === character.profileData && global.voiceId === character.voiceId
+        && global.customVoiceUrl === character.customVoiceUrl
+        && global.appearances.length === currentImages.length
+        && currentImages.every((appearance, index) => {
+          const saved = global.appearances[index]
+          return saved.appearanceIndex === appearance.appearanceIndex && saved.imageUrl === selectedCharacterImage(appearance)
+            && saved.description === appearance.description && saved.descriptions === appearance.descriptions
+        })
+      if (global && same) return { kind: 'character', status: 'already-published', globalAssetId: global.id }
     }
     const appearances = character.appearances
       .map((appearance) => ({ appearance, imageUrl: selectedCharacterImage(appearance) }))
@@ -136,11 +146,15 @@ export async function publishProjectAsset(input: PublishAccess & { assetId: stri
     include: { images: { orderBy: { imageIndex: 'asc' } } },
   })
   if (!location) throw new ApiError('NOT_FOUND')
-  if (location.sourceGlobalLocationId) {
-    const global = await prisma.globalLocation.findFirst({ where: { id: location.sourceGlobalLocationId, userId: input.userId }, select: { id: true } })
-    if (global) return { kind: input.kind, status: 'already-published', globalAssetId: global.id }
-  }
   const image = location.images.find((item) => item.isSelected && item.imageUrl) || location.images.find((item) => item.imageUrl)
+  if (location.sourceGlobalLocationId) {
+    const global = await prisma.globalLocation.findFirst({ where: { id: location.sourceGlobalLocationId, userId: input.userId }, include: { images: true } })
+    const saved = global?.images.find((item) => item.isSelected) || global?.images[0]
+    if (global && global.name === location.name && global.summary === location.summary && saved?.imageUrl === image?.imageUrl
+      && saved?.description === image?.description && saved?.availableSlots === image?.availableSlots) {
+      return { kind: input.kind, status: 'already-published', globalAssetId: global.id }
+    }
+  }
   if (!image?.imageUrl) return { kind: input.kind, status: 'skipped', reason: 'NO_SELECTED_RENDER' }
   const global = await prisma.globalLocation.create({
     data: {

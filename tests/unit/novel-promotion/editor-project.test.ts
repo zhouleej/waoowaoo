@@ -5,13 +5,14 @@ import { editorProjectSchema } from '@/features/video-editor/utils/project-schem
 describe('editor assembly', () => {
   it('binds multiple voice lines by panel identity and inherits portrait ratio', () => {
     const project = assembleEditorProject('ep', [
-      { id: 'missing', storyboardId: 's' }, { id: 'second', storyboardId: 's', videoUrl: 'second.mp4' },
+      { id: 'missing', storyboardId: 's' }, { id: 'second', storyboardId: 's', videoUrl: 'second.mp4', lipSyncVideoUrl: 'single-line.mp4' },
     ], [
       { id: 'a', matchedPanelId: 'missing', content: 'Not for second', audioUrl: 'a.wav' },
       { id: 'b', matchedPanelId: 'second', content: 'First', lineIndex: 2, audioDuration: 2000, audioUrl: 'b.wav' },
       { id: 'c', matchedPanelId: 'second', content: 'Second', lineIndex: 3, audioDuration: 2000, audioUrl: 'c.wav' },
     ], '9:16')
     expect(project.config).toEqual({ fps: 30, width: 1080, height: 1920 })
+    expect(project.timeline[0].src).toBe('second.mp4')
     expect(project.timeline[0].dialogue?.map((line) => line.audio?.voiceLineId)).toEqual(['b', 'c'])
     expect(project.timeline[0].durationInFrames).toBe(120)
     expect(editorProjectSchema.safeParse(project).success).toBe(true)

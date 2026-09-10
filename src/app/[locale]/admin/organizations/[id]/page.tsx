@@ -123,20 +123,24 @@ export default function OrganizationDetailPage() {
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!inviteEmail.trim()) return
-    setInviting(true)
+      setInviting(true)
+      setMemberActionError(null)
     try {
       const res = await apiFetch('/api/organizations/' + orgId + '/members', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: inviteEmail, role: inviteRole }),
+          body: JSON.stringify({ account: inviteEmail, role: inviteRole }),
       })
       if (res.ok) {
         setShowInviteModal(false)
         setInviteEmail('')
         setInviteRole('member')
-        void fetchOrg()
-      }
-    } catch {}
+          void fetchOrg()
+        } else {
+          const failure = await res.json()
+          setMemberActionError(typeof failure.error === 'string' ? failure.error : memberActionErrorMessage(failure, 'updateFailed'))
+        }
+      } catch (error) { setMemberActionError(error instanceof Error ? error.message : String(error)) }
     finally { setInviting(false) }
   }
 
@@ -534,10 +538,11 @@ export default function OrganizationDetailPage() {
           <div className="glass-surface-modal p-6 w-full max-w-md mx-4">
             <h2 className="text-xl font-bold text-[var(--glass-text-primary)] mb-4">{t('inviteMember')}</h2>
             <form onSubmit={handleInvite}>
+              {memberActionError && <p role="alert" className="mb-4 text-sm text-[var(--glass-tone-danger-fg)]">{memberActionError}</p>}
               <div className="mb-4">
                 <label className="block mb-2 text-sm font-medium text-[var(--glass-text-secondary)]">{t('inviteEmail')}</label>
                 <input
-                  type="email"
+                  type="text"
                   value={inviteEmail}
                   onChange={e => setInviteEmail(e.target.value)}
                   placeholder={t('inviteEmailPlaceholder')}

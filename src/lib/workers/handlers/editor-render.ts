@@ -60,6 +60,7 @@ export async function handleEditorRenderTask(job: Job<TaskJobData>) {
     await renderEditorVideo(renderProject, output, () => assertTaskActive(job, 'editor_render'))
     await assertTaskActive(job, 'editor_upload')
     const outputUrl = await uploadObject(await readFile(output), `editor/${job.data.projectId}/${randomUUID()}.mp4`, 3, 'video/mp4')
+    await assertTaskActive(job, 'editor_persist')
     await prisma.videoEditorProject.update({ where: { id: job.data.targetId }, data: { outputUrl, renderStatus: 'completed' } })
     return { outputUrl }
   } finally {

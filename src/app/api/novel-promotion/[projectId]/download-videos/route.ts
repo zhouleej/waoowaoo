@@ -192,6 +192,7 @@ export const POST = apiHandler(async (
     chunks.push(chunk)
   })
 
+  const failedVideos: number[] = []
   // 处理视频并打包
   for (const video of indexedVideos) {
     try {
@@ -225,6 +226,7 @@ export const POST = apiHandler(async (
       _ulogInfo(`Added ${fileName} to archive`)
     } catch (error) {
       _ulogError(`Failed to download video ${video.index}:`, error)
+      failedVideos.push(video.index)
     }
   }
 
@@ -234,6 +236,11 @@ export const POST = apiHandler(async (
 
   // 等待归档完成
   await archiveFinished
+  if (failedVideos.length > 0) {
+    throw new ApiError('EXTERNAL_ERROR', {
+      message: `视频下载不完整：${indexedVideos.length - failedVideos.length}/${indexedVideos.length}，失败镜头：${failedVideos.join(', ')}`,
+    })
+  }
 
   // 合并所有数据块
   const totalLength = chunks.reduce((acc, chunk) => acc + chunk.length, 0)

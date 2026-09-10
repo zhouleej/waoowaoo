@@ -26,10 +26,11 @@ export const POST = apiHandler(async (req, ctx) => {
   const { membership: currentUser } = permResult
 
   const body = await req.json()
-  const { email, role = 'member' } = body
+  const { role = 'member' } = body
+  const email = body.account ?? body.email
 
   if (!email || typeof email !== 'string' || !email.trim()) {
-    return badRequest('邮箱不能为空')
+    return badRequest('账号或邮箱不能为空')
   }
 
   // 验证 role
@@ -46,14 +47,15 @@ export const POST = apiHandler(async (req, ctx) => {
   // 查找被邀请的用户 (使用 findFirst 因为 email 不是唯一索引)
   const invitee = await withPrismaRetry(() =>
     prisma.user.findFirst({
-      where: { email: email.trim() },
+      where: email.includes('@') ? { email: email.trim().toLowerCase() } : { name: email.trim() },
     })
   )
 
   if (!invitee) {
     // 如果用户不存在，返回友好提示（实际生产中可能需要发送邀请邮件）
-    return badRequest('找不到该邮箱对应的用户')
+    return badRequest('找不到该账号或邮箱对应的用户，请先完成注册')
   }
+  if (invitee.isGlobalLocked) return forbidden('该账号已被禁用')
 
   // 获取组织信息
   const organization = await withPrismaRetry(() =>

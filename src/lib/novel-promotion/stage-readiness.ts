@@ -4,6 +4,7 @@ export type StageArtifactReadiness = {
   hasStoryboard: boolean
   hasVideo: boolean
   hasVoice: boolean
+  completion?: { script: boolean; storyboard: boolean; video: boolean; voice: boolean }
 }
 
 type EpisodeClipLike = {
@@ -64,11 +65,21 @@ export function hasVideoArtifacts(storyboards: unknown[] | null | undefined) {
 }
 
 export function resolveEpisodeStageArtifacts(episode: EpisodeLike | null | undefined): StageArtifactReadiness {
+  const clips = Array.isArray(episode?.clips) ? episode.clips : []
+  const storyboards = Array.isArray(episode?.storyboards) ? episode.storyboards : []
+  const panels = storyboards.flatMap((item) => isStoryboardLike(item) && Array.isArray(item.panels) ? item.panels : [])
+  const voiceLines = Array.isArray(episode?.voiceLines) ? episode.voiceLines : []
   return {
     hasStory: hasNonEmptyText(episode?.novelText),
     hasScript: hasScriptArtifacts(episode?.clips),
     hasStoryboard: hasStoryboardArtifacts(episode?.storyboards),
     hasVideo: hasVideoArtifacts(episode?.storyboards),
     hasVoice: Array.isArray(episode?.voiceLines) && episode.voiceLines.length > 0,
+    completion: {
+      script: clips.length > 0 && clips.every((clip) => isEpisodeClipLike(clip) && hasNonEmptyText(clip.screenplay)),
+      storyboard: clips.length > 0 && storyboards.length >= clips.length && storyboards.every((item) => isStoryboardLike(item) && !!item.panels?.length),
+      video: panels.length > 0 && panels.every((panel) => hasNonEmptyText(panel.videoUrl)),
+      voice: voiceLines.length > 0 && voiceLines.every((line) => !!line && typeof line === 'object' && hasNonEmptyText((line as { audioUrl?: string }).audioUrl)),
+    },
   }
 }

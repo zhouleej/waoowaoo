@@ -19,11 +19,14 @@ export function assembleEditorProject(episodeId: string, panels: Panel[], voices
             subtitle: { text: line.content, style: 'default' as const },
           }
         })
+      // One lip-sync output is based on one selected line. For multi-line shots,
+      // use the base clip and lay out all dialogue instead of dropping later lines.
+      const useLipSync = !!panel.lipSyncVideoUrl && (dialogue.length <= 1 || !panel.videoUrl)
       return {
-        id: `clip_${panel.id}`, src: panel.lipSyncVideoUrl || panel.videoUrl!,
+        id: `clip_${panel.id}`, src: useLipSync ? panel.lipSyncVideoUrl! : panel.videoUrl!,
         durationInFrames: Math.max(Math.round((panel.duration || 3) * 30), cursor),
         // Lip-sync output already contains audio. Do not overlay it a second time.
-        dialogue: panel.lipSyncVideoUrl ? dialogue.map((line) => ({ ...line, audio: undefined })) : dialogue,
+        dialogue: useLipSync ? dialogue.map((line) => ({ ...line, audio: undefined })) : dialogue,
         metadata: { panelId: panel.id, storyboardId: panel.storyboardId, description: panel.description || undefined },
       }
     }),

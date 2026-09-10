@@ -76,6 +76,17 @@ describe('stage readiness', () => {
       hasStoryboard: true,
       hasVideo: true,
       hasVoice: true,
+      completion: { script: true, storyboard: true, video: true, voice: false },
     })
+  })
+
+  it('distinguishes partial production from completed stages', () => {
+    const state = resolveEpisodeStageArtifacts({
+      clips: [{ screenplay: '{}' }, { screenplay: null }],
+      storyboards: [{ panels: [{ videoUrl: 'one.mp4' }, { videoUrl: null }] }],
+      voiceLines: [{ audioUrl: null }],
+    })
+    expect(state.hasVideo).toBe(true)
+    expect(state.completion).toEqual({ script: false, storyboard: false, video: false, voice: false })
   })
 })

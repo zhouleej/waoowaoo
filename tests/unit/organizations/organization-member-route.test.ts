@@ -98,6 +98,23 @@ describe('organization member management routes', () => {
     }))
   })
 
+  it('adds a self-registered account without requiring an email address', async () => {
+    prismaMock.user.findFirst.mockResolvedValue({ id: 'member-2', name: '13800138000', email: null })
+    prismaMock.organization.findUnique
+      .mockResolvedValueOnce({ members: [] })
+      .mockResolvedValueOnce({ currentPlan: null, _count: { members: 1 } })
+    prismaMock.organizationMember.create.mockResolvedValue({ id: 'membership-2' })
+    const { POST } = await import('@/app/api/organizations/[id]/members/route')
+    const response = await POST(buildMockRequest({ path: '/api/organizations/org-1/members', method: 'POST',
+      body: { account: '13800138000', role: 'member' },
+    }), routeContext)
+    expect(response.status).toBe(201)
+    expect(prismaMock.user.findFirst).toHaveBeenCalledWith({ where: { name: '13800138000' } })
+    expect(prismaMock.organizationMember.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ userId: 'member-2' }),
+    }))
+  })
+
   it('allows an active organization admin to promote an ordinary member to administrator', async () => {
     prismaMock.organizationMember.findUnique.mockResolvedValue({
       id: 'membership-2', organizationId: 'org-1', userId: 'member-2', role: 'member', status: 'active',

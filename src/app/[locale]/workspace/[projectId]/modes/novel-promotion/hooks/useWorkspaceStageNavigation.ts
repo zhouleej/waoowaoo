@@ -29,14 +29,14 @@ export function useWorkspaceStageNavigation({
       case 'config':
         return stageArtifacts.hasStory ? 'ready' : 'active'
       case 'assets':
-        return stageArtifacts.hasScript ? 'ready' : 'empty'
+        return stageArtifacts.hasScript ? (stageArtifacts.completion?.script === false ? 'active' : 'ready') : 'empty'
       case 'storyboard':
-        return stageArtifacts.hasStoryboard ? 'ready' : 'empty'
+        return stageArtifacts.hasStoryboard ? (stageArtifacts.completion?.storyboard === false ? 'active' : 'ready') : 'empty'
       case 'videos':
       case 'editor':
-        return stageArtifacts.hasVideo ? 'ready' : 'empty'
+        return stageArtifacts.hasVideo ? (stageArtifacts.completion?.video === false ? 'active' : 'ready') : 'empty'
       case 'voice':
-        return stageArtifacts.hasVoice ? 'ready' : 'empty'
+        return stageArtifacts.hasVoice ? (stageArtifacts.completion?.voice === false ? 'active' : 'ready') : 'empty'
       default:
         return 'empty'
     }
