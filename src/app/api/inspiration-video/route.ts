@@ -1,11 +1,20 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUserAuth, isErrorResponse } from '@/lib/api-auth'
-import { apiHandler } from '@/lib/api-errors'
+import { apiHandler, ApiError } from '@/lib/api-errors'
 import { getSignedUrl } from '@/lib/storage'
 import { resolveInspirationVideoWorkspace } from '@/lib/inspiration-video/workspace'
+import { actOnCreation } from '@/lib/inspiration-video/actions'
 
-export const GET = apiHandler(async () => {
+export const POST = apiHandler(async (request: NextRequest) => {
+  const auth = await requireUserAuth()
+  if (isErrorResponse(auth)) return auth
+  const resolved = await resolveInspirationVideoWorkspace(auth.session.user.id)
+  if ('error' in resolved) return resolved.error
+  return actOnCreation(request, auth.session.user.id, resolved.workspace)
+})
+
+export const GET = apiHandler(async (request: NextRequest) => {
   const authResult = await requireUserAuth()
   if (isErrorResponse(authResult)) return authResult
   const { session } = authResult
@@ -13,6 +22,10 @@ export const GET = apiHandler(async () => {
   const resolved = await resolveInspirationVideoWorkspace(session.user.id)
   if ('error' in resolved) return resolved.error
   const { workspace } = resolved
+  const cursor = request.nextUrl.searchParams.get('cursor')
+  if (cursor && !await prisma.inspirationVideoCreation.findFirst({ where: { id: cursor, workspaceId: workspace.id }, select: { id: true } })) {
+    throw new ApiError('INVALID_PARAMS', { field: 'cursor' })
+  }
 
   const [preference, creations] = await Promise.all([
     prisma.userPreference.findUnique({
@@ -25,8 +38,9 @@ export const GET = apiHandler(async () => {
     }),
     prisma.inspirationVideoCreation.findMany({
       where: { workspaceId: workspace.id },
-      orderBy: { createdAt: 'desc' },
-      take: 60,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: 21,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
       include: {
         assets: {
           orderBy: [{ kind: 'asc' }, { sortOrder: 'asc' }],
@@ -35,7 +49,8 @@ export const GET = apiHandler(async () => {
     }),
   ])
 
-  const creationIds = creations.map((creation) => creation.id)
+  const page = creations.slice(0, 20)
+  const creationIds = page.map((creation) => creation.id)
   const tasks = creationIds.length > 0
     ? await prisma.task.findMany({
       where: {
@@ -51,6 +66,7 @@ export const GET = apiHandler(async () => {
         progress: true,
         errorCode: true,
         errorMessage: true,
+        result: true,
       },
     })
     : []
@@ -68,21 +84,24 @@ export const GET = apiHandler(async () => {
       aspectRatio: preference?.videoRatio || '16:9',
       resolution: preference?.videoResolution || '720p',
     },
-    creations: creations.map((creation) => {
+    nextCursor: creations.length > 20 ? page[page.length - 1].id : null,
+    creations: page.map((creation) => {
       const task = taskByCreationId.get(creation.id)
       const primaryImage = creation.assets.find((asset) => asset.kind === 'primary_image')
       const referenceImages = creation.assets.filter((asset) => asset.kind === 'reference_image')
       const referenceAudios = creation.assets.filter((asset) => asset.kind === 'reference_audio')
       return {
         id: creation.id,
+        taskId: task?.id || null,
         prompt: creation.prompt,
         modelKey: creation.modelKey,
         aspectRatio: creation.aspectRatio,
         resolution: creation.resolution,
         duration: creation.duration,
+        actualMetadata: task?.result && typeof task.result === 'object' && !Array.isArray(task.result) ? task.result.metadata : null,
         generateAudio: creation.generateAudio,
         createdAt: creation.createdAt.toISOString(),
-        status: task?.status || (creation.outputVideoKey ? 'completed' : 'queued'),
+        status: task?.status || (creation.outputVideoKey ? 'completed' : 'failed'),
         progress: task?.progress || (creation.outputVideoKey ? 100 : 0),
         errorCode: task?.errorCode || null,
         errorMessage: task?.errorMessage || null,

@@ -1,3 +1,4 @@
+vi.mock('@/lib/media/video-metadata', () => ({ inspectGeneratedVideo: async () => ({ durationMs: 5000, width: 1280, height: 720, fps: 30 }) }))
 import type { Job } from 'bullmq'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { TASK_TYPE, type TaskJobData } from '@/lib/task/types'

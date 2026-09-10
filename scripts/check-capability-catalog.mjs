@@ -7,6 +7,8 @@ const CAPABILITY_NAMESPACE_ALLOWED_FIELDS = {
   llm: new Set(['reasoningEffortOptions', 'fieldI18n']),
   image: new Set(['resolutionOptions', 'fieldI18n']),
   video: new Set([
+    'textToVideo',
+    'aspectRatios',
     'generationModeOptions',
     'generateAudioOptions',
     'durationOptions',

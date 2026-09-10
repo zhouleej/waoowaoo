@@ -35,6 +35,8 @@ export interface ImageCapabilities {
 }
 
 export interface VideoCapabilities {
+  textToVideo?: boolean
+  aspectRatios?: string[]
   generationModeOptions?: string[]
   generateAudioOptions?: boolean[]
   durationOptions?: number[]
@@ -89,6 +91,8 @@ const IMAGE_ALLOWED_FIELDS = new Set<keyof ImageCapabilities>([
 ])
 
 const VIDEO_ALLOWED_FIELDS = new Set<keyof VideoCapabilities>([
+  'textToVideo',
+  'aspectRatios',
   'generationModeOptions',
   'generateAudioOptions',
   'durationOptions',
@@ -296,6 +300,8 @@ function validateImageCapabilities(issues: CapabilityValidationIssue[], raw: unk
 function validateVideoCapabilities(issues: CapabilityValidationIssue[], raw: unknown) {
   if (!isRecord(raw)) return
 
+  if (raw.textToVideo !== undefined && typeof raw.textToVideo !== 'boolean') issues.push({ code: 'CAPABILITY_FIELD_INVALID', field: 'capabilities.video.textToVideo', message: 'textToVideo must be boolean' })
+  if (raw.aspectRatios !== undefined && !isStringArray(raw.aspectRatios)) issues.push({ code: 'CAPABILITY_FIELD_INVALID', field: 'capabilities.video.aspectRatios', message: 'aspectRatios must be a non-empty string array' })
   const generationModeOptions = raw.generationModeOptions
   if (generationModeOptions !== undefined && !isStringArray(generationModeOptions)) {
     issues.push({

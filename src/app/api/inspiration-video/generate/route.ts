@@ -16,6 +16,7 @@ import { deleteObjects, generateUniqueKey, uploadObject } from '@/lib/storage'
 import { resolveRequiredTaskLocale } from '@/lib/task/resolve-locale'
 import { submitTask } from '@/lib/task/submitter'
 import { TASK_TYPE } from '@/lib/task/types'
+import { findAcceptedSubmission, submissionCreationId } from '@/lib/inspiration-video/submission'
 
 type UploadedAsset = {
   kind: 'primary_image' | 'reference_image' | 'reference_audio'
@@ -93,9 +94,11 @@ async function uploadDraftAssets(
   onUploaded: (storageKey: string) => void,
 ): Promise<UploadedAsset[]> {
   const assets: UploadedAsset[] = []
-  const primaryImage = await uploadImage(creationId, draft.primaryImage, 'primary_image', 0)
-  assets.push(primaryImage)
-  onUploaded(primaryImage.storageKey)
+  if (draft.primaryImage) {
+    const primaryImage = await uploadImage(creationId, draft.primaryImage, 'primary_image', 0)
+    assets.push(primaryImage)
+    onUploaded(primaryImage.storageKey)
+  }
   for (const [index, file] of draft.referenceImages.entries()) {
     const asset = await uploadImage(creationId, file, 'reference_image', index)
     assets.push(asset)
@@ -123,6 +126,11 @@ export const POST = apiHandler(async (request: NextRequest) => {
   const resolved = await resolveInspirationVideoWorkspace(session.user.id)
   if ('error' in resolved) return resolved.error
   const { workspace } = resolved
+  const creationId = submissionCreationId(session.user.id, workspace.id, formData.get('submissionId'))
+  if (creationId) {
+    const existing = await findAcceptedSubmission(creationId)
+    if (existing) return NextResponse.json(existing, { status: 202 })
+  }
 
   let selection: Awaited<ReturnType<typeof resolveModelSelection>>
   try {
@@ -150,6 +158,11 @@ export const POST = apiHandler(async (request: NextRequest) => {
   }
 
   const builtinCapabilities = resolveBuiltinCapabilitiesByModelKey('video', selection.modelKey)
+  if (!draft.primaryImage && builtinCapabilities?.video?.textToVideo !== true) {
+    throw new ApiError('INVALID_PARAMS', { message: '当前模型需要主图，请上传图片或选择支持纯文字生成的模型', field: 'primaryImage' })
+  }
+  const allowedRatios = builtinCapabilities?.video?.aspectRatios
+  if (allowedRatios && !allowedRatios.includes(draft.aspectRatio)) throw new ApiError('INVALID_PARAMS', { message: '当前模型不支持所选画幅', field: 'aspectRatio' })
   const hasGenerateAudioOption = !builtinCapabilities
     || Array.isArray(builtinCapabilities.video?.generateAudioOptions)
 
@@ -176,6 +189,7 @@ export const POST = apiHandler(async (request: NextRequest) => {
 
   const creation = await prisma.inspirationVideoCreation.create({
     data: {
+      ...(creationId ? { id: creationId } : {}),
       workspaceId: workspace.id,
       prompt: draft.prompt,
       modelKey: selection.modelKey,
@@ -184,6 +198,11 @@ export const POST = apiHandler(async (request: NextRequest) => {
       duration: draft.duration,
       generateAudio: draft.generateAudio,
     },
+  }).catch(async (error: unknown) => {
+    if (creationId && error && typeof error === 'object' && 'code' in error && error.code === 'P2002') {
+      throw new ApiError('CONFLICT', { message: '相同提交已在处理中，请稍后重试', creationId })
+    }
+    throw error
   })
   const uploadedKeys: string[] = []
 

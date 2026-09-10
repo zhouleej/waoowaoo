@@ -7,6 +7,7 @@ import { parseModelKeyStrict } from '@/lib/model-config-contract'
 import { prisma } from '@/lib/prisma'
 import { getSignedUrl } from '@/lib/storage'
 import type { TaskJobData } from '@/lib/task/types'
+import { inspectGeneratedVideo } from '@/lib/media/video-metadata'
 import { reportTaskProgress } from '@/lib/workers/shared'
 import {
   assertTaskActive,
@@ -27,15 +28,16 @@ export async function handleInspirationVideoTask(job: Job<TaskJobData>) {
   }
 
   const primaryImage = creation.assets.find((asset) => asset.kind === 'primary_image')
-  if (!primaryImage) throw new Error('INSPIRATION_VIDEO_PRIMARY_IMAGE_REQUIRED')
+
 
   const parsedModel = parseModelKeyStrict(creation.modelKey)
   const usePublicMediaUrl = getProviderKey(parsedModel?.provider).toLowerCase() === 'maas-seedance'
   const builtinCapabilities = resolveBuiltinCapabilitiesByModelKey('video', creation.modelKey)
   const hasGenerateAudioOption = !builtinCapabilities
     || Array.isArray(builtinCapabilities.video?.generateAudioOptions)
-  const primaryImageUrl = getSignedUrl(primaryImage.storageKey, 7_200)
-  const imageUrl = usePublicMediaUrl
+  if (!primaryImage && builtinCapabilities?.video?.textToVideo !== true) throw new Error('INSPIRATION_VIDEO_PRIMARY_IMAGE_REQUIRED')
+  const primaryImageUrl = primaryImage ? getSignedUrl(primaryImage.storageKey, 7_200) : ''
+  const imageUrl = !primaryImage ? '' : usePublicMediaUrl
     ? await normalizeToOriginalMediaUrl(primaryImageUrl, { absoluteBaseUrl: getPublicBaseUrl() })
     : await normalizeToBase64ForGeneration(primaryImageUrl)
   const referenceImages = creation.assets
@@ -77,6 +79,7 @@ export async function handleInspirationVideoTask(job: Job<TaskJobData>) {
     creation.id,
     generatedVideo.downloadHeaders,
   )
+  const metadata = await inspectGeneratedVideo(outputVideoKey)
   await assertTaskActive(job, 'persist_inspiration_video_result')
   await prisma.inspirationVideoCreation.update({
     where: { id: creation.id },
@@ -86,6 +89,7 @@ export async function handleInspirationVideoTask(job: Job<TaskJobData>) {
   return {
     creationId: creation.id,
     videoUrl: outputVideoKey,
+    metadata,
     ...(typeof generatedVideo.actualVideoTokens === 'number'
       ? { actualVideoTokens: generatedVideo.actualVideoTokens }
       : {}),

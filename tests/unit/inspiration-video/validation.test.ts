@@ -37,10 +37,10 @@ describe('inspiration video input validation', () => {
     expect(parsed.referenceAudios).toHaveLength(1)
   })
 
-  it('requires exactly one primary image', () => {
+  it('allows no primary image, with model support enforced by the route', () => {
     const formData = createBaseFormData()
     formData.delete('primaryImage')
-    expect(() => parseInspirationVideoDraft(formData)).toThrow(ApiError)
+    expect(parseInspirationVideoDraft(formData).primaryImage).toBeNull()
   })
 
   it('rejects an unsupported audio file type', () => {

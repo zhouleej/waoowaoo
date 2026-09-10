@@ -115,10 +115,11 @@ export async function requireNovelPromotionPanelByStoryboardIndexInProject(
         },
       },
     },
-    select: {
-      id: true,
-      storyboardId: true,
-      panelIndex: true,
+      select: {
+        id: true,
+        storyboardId: true,
+        panelIndex: true,
+        imageUrl: true,
     },
   })
 

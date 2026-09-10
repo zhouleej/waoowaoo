@@ -1,3 +1,4 @@
+vi.mock('@/lib/media/video-metadata', () => ({ inspectGeneratedVideo: async () => ({ durationMs: 5000, width: 1280, height: 720, fps: 30 }) }))
 import type { Job } from 'bullmq'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { TASK_TYPE, type TaskJobData } from '@/lib/task/types'
@@ -209,6 +210,12 @@ describe('worker video processor behavior', () => {
     })
 
     await expect(processor!(job)).rejects.toThrow('VIDEO_MODEL_REQUIRED: payload.videoModel is required')
+  })
+  it('rejects first-last-frame generation without a selected last image', async () => {
+    await expect(workerState.processor!(buildJob({ type: TASK_TYPE.VIDEO_PANEL,
+      payload: { videoModel: 'maas-seedance::doubao-seedance-2.0', firstLastFrame: { flModel: 'maas-seedance::doubao-seedance-2.0' } },
+    }))).rejects.toThrow('VIDEO_LAST_FRAME_REQUIRED')
+    expect(utilsMock.resolveVideoSourceFromGeneration).not.toHaveBeenCalled()
   })
 
   it('VIDEO_PANEL: 透传异步轮询返回的下载头到 COS 上传', async () => {
@@ -459,6 +466,7 @@ describe('worker video processor behavior', () => {
     expect(result).toEqual({
       creationId: 'creation-1',
       videoUrl: 'inspiration-video/result.mp4',
+      metadata: { durationMs: 5000, width: 1280, height: 720, fps: 30 },
     })
     expect(prismaMock.novelPromotionPanel.update).not.toHaveBeenCalled()
   })

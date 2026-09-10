@@ -23,7 +23,9 @@
     "addImage": "Image",
     "addAudio": "Audio",
     "mobileCloudOnly": "Multi-reference input currently requires the Mobile Cloud Seedance 2.0 model. Other models support prompts and a key image.",
-    "modelChangedNotice": "Reference images and audio were cleared after switching to a standard video model."
+    "modelChangedNotice": "Reference images and audio were cleared after switching to a standard video model.",
+    "optionalPrimary": "Image optional: leave it empty to generate from text.",
+    "requiredPrimary": "This model requires an image."
   },
   "parameters": {
     "model": "Video model",
@@ -39,9 +41,15 @@
     "generate": "Generate now",
     "submitting": "Submitting",
     "queued": "Your creation is queued. Progress will update automatically.",
-    "download": "Download video",
+    "download": "Download",
     "modelSettings": "Model settings",
-    "configureNow": "Configure now"
+    "configureNow": "Configure now",
+    "reuse": "Reuse settings and assets",
+    "retry": "Retry",
+    "cancel": "Cancel task",
+    "delete": "Delete record",
+    "loadMore": "Load more",
+    "deleteConfirm": "Delete this creation? Media files will be retained."
   },
   "preview": {
     "title": "Current creation",
@@ -76,6 +84,7 @@
   "errors": {
     "loadFailed": "Failed to load the Inspiration Video workspace",
     "modelsFailed": "Failed to load video models",
-    "submitFailed": "Failed to submit the creation"
+    "submitFailed": "Failed to submit the creation",
+    "refreshAfterSubmit": "Task accepted. Refresh failed; reload the page instead of submitting again."
   }
 }

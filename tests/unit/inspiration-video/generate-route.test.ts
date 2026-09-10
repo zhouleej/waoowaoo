@@ -45,7 +45,7 @@ vi.mock('@/lib/config-service', () => ({
 }))
 vi.mock('@/lib/model-capabilities/lookup', () => ({
   resolveBuiltinCapabilitiesByModelKey: vi.fn(() => ({
-    video: { generateAudioOptions: [true, false] },
+    video: { generateAudioOptions: [true, false], textToVideo: true },
   })),
 }))
 vi.mock('@/lib/inspiration-video/workspace', () => ({
@@ -65,7 +65,7 @@ vi.mock('sharp', () => ({
   })),
 }))
 
-function createRequest(options?: { references?: boolean }): NextRequest {
+function createRequest(options?: { references?: boolean; textOnly?: boolean }): NextRequest {
   const formData = new FormData()
   formData.set('prompt', 'A cinematic rainy neon street')
   formData.set('modelKey', 'maas-seedance::doubao-seedance-2.0')
@@ -74,7 +74,7 @@ function createRequest(options?: { references?: boolean }): NextRequest {
   formData.set('duration', '5')
   formData.set('generateAudio', 'true')
   formData.set('locale', 'zh')
-  formData.set('primaryImage', new File(['primary'], 'primary.png', { type: 'image/png' }))
+  if (!options?.textOnly) formData.set('primaryImage', new File(['primary'], 'primary.png', { type: 'image/png' }))
   if (options?.references !== false) {
     formData.append('referenceImages', new File(['reference'], 'reference.webp', { type: 'image/webp' }))
     formData.append('referenceAudios', new File(['audio'], 'reference.mp3', { type: 'audio/mpeg' }))
@@ -90,6 +90,14 @@ describe('inspiration video generate route', () => {
     vi.clearAllMocks()
     authState.authenticated = true
     submitTaskMock.mockResolvedValue({ success: true, async: true, taskId: 'task-1', status: 'queued' })
+  })
+
+  it('submits text without uploading an image for a capable model', async () => {
+    const { POST } = await import('@/app/api/inspiration-video/generate/route')
+    const response = await POST(createRequest({ textOnly: true, references: false }), { params: Promise.resolve({}) })
+    expect(response.status).toBe(202)
+    expect(storageMock.uploadObject).not.toHaveBeenCalled()
+    expect(submitTaskMock).toHaveBeenCalledWith(expect.objectContaining({ targetType: 'InspirationVideoCreation' }))
   })
 
   it('uploads all materials, submits a video task, and links the task to the creation', async () => {

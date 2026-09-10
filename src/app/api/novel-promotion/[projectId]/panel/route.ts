@@ -1,3 +1,4 @@
+import { parseModelKeyStrict } from '@/lib/model-config-contract'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireProjectAuthLight, isErrorResponse } from '@/lib/api-auth'
@@ -229,7 +230,8 @@ export const PATCH = apiHandler(async (
   const panelModel = prisma.novelPromotionPanel as unknown as {
     create: (args: { data: Record<string, unknown> }) => Promise<unknown>
   }
-  const { panelId, storyboardId, panelIndex, videoPrompt, firstLastFramePrompt } = body
+  const { panelId, storyboardId, panelIndex, videoPrompt, firstLastFramePrompt, videoModel } = body
+  if (videoModel !== undefined && videoModel !== null && (typeof videoModel !== 'string' || !parseModelKeyStrict(videoModel))) throw new ApiError('INVALID_PARAMS')
 
   // 🔥 方式1：通过 panelId 直接更新（优先）
   if (panelId) {
@@ -239,7 +241,9 @@ export const PATCH = apiHandler(async (
     const updateData: {
       videoPrompt?: string | null
       firstLastFramePrompt?: string | null
+      videoModel?: string | null
     } = {}
+    if (videoModel !== undefined) updateData.videoModel = videoModel
     if (videoPrompt !== undefined) updateData.videoPrompt = videoPrompt
     if (firstLastFramePrompt !== undefined) updateData.firstLastFramePrompt = firstLastFramePrompt
 
@@ -271,8 +275,10 @@ export const PATCH = apiHandler(async (
   const updateData: {
     videoPrompt?: string | null
     firstLastFramePrompt?: string | null
+      videoModel?: string | null
   } = {}
-  if (videoPrompt !== undefined) {
+  if (videoModel !== undefined) updateData.videoModel = videoModel
+    if (videoPrompt !== undefined) {
     updateData.videoPrompt = videoPrompt
   }
   if (firstLastFramePrompt !== undefined) {
@@ -299,6 +305,7 @@ export const PATCH = apiHandler(async (
         imageUrl: null,
         videoPrompt: videoPrompt ?? null,
         firstLastFramePrompt: firstLastFramePrompt ?? null,
+        videoModel: videoModel ?? null,
       }
     })
   }

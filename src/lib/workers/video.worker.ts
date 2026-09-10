@@ -23,6 +23,7 @@ import { getProviderConfig } from '@/lib/api-config'
 import { getSignedUrl } from '@/lib/storage'
 import { mobileCloudMaasAssetClient } from '@/lib/mobile-cloud-maas/asset-client'
 import { handleInspirationVideoTask } from './handlers/inspiration-video'
+import { inspectGeneratedVideo } from '@/lib/media/video-metadata'
 
 type AnyObj = Record<string, unknown>
 type VideoOptionValue = string | number | boolean
@@ -177,6 +178,10 @@ async function generateVideoForPanel(
     : await normalizeToBase64ForGeneration(sourceImageUrl))
 
   let lastFrameImageForGeneration: string | undefined
+  if (firstLastFramePayload && (typeof firstLastFramePayload.lastFrameStoryboardId !== 'string'
+    || !Number.isInteger(firstLastFramePayload.lastFramePanelIndex))) {
+    throw new Error('VIDEO_LAST_FRAME_REQUIRED')
+  }
   if (
     firstLastFramePayload &&
     typeof firstLastFramePayload.lastFrameStoryboardId === 'string' &&
@@ -204,6 +209,7 @@ async function generateVideoForPanel(
     }
   }
 
+  if (firstLastFramePayload && !lastFrameImageForGeneration) throw new Error('VIDEO_LAST_FRAME_IMAGE_REQUIRED')
   const generatedVideo = await resolveVideoSourceFromGeneration(job, {
     userId: job.data.userId,
     modelId: model,
@@ -274,12 +280,14 @@ async function handleVideoPanelTask(job: Job<TaskJobData>) {
     generationOptions,
   )
 
+  const metadata = await inspectGeneratedVideo(cosKey)
   await assertTaskActive(job, 'persist_panel_video')
   await prisma.novelPromotionPanel.update({
     where: { id: panel.id },
     data: {
       videoUrl: cosKey,
       videoGenerationMode: generationMode,
+      duration: metadata.durationMs / 1000,
       videoMediaId: null,
       lipSyncVideoUrl: null,
       lipSyncVideoMediaId: null,

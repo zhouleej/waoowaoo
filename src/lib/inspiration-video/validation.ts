@@ -37,7 +37,7 @@ export type InspirationVideoDraft = {
   resolution: string
   duration: number
   generateAudio: boolean
-  primaryImage: UploadFile
+  primaryImage: UploadFile | null
   referenceImages: UploadFile[]
   referenceAudios: UploadFile[]
 }
@@ -121,7 +121,7 @@ export function parseInspirationVideoDraft(formData: FormData): InspirationVideo
   if (!modelKey) throw new ApiError('INVALID_PARAMS', { field: 'modelKey' })
   if (!aspectRatio || aspectRatio.length > 20) throw new ApiError('INVALID_PARAMS', { field: 'aspectRatio' })
   if (!resolution || resolution.length > 20) throw new ApiError('INVALID_PARAMS', { field: 'resolution' })
-  if (primaryImages.length !== 1) throw new ApiError('INVALID_PARAMS', { field: 'primaryImage' })
+  if (primaryImages.length > 1) throw new ApiError('INVALID_PARAMS', { field: 'primaryImage' })
   if (referenceImages.length > INSPIRATION_VIDEO_LIMITS.referenceImages) {
     throw new ApiError('INVALID_PARAMS', { field: 'referenceImages' })
   }
@@ -141,7 +141,7 @@ export function parseInspirationVideoDraft(formData: FormData): InspirationVideo
     })
   }
 
-  validateFile(primaryImages[0], 'image', 'primaryImage')
+  if (primaryImages[0]) validateFile(primaryImages[0], 'image', 'primaryImage')
   referenceImages.forEach((file, index) => validateFile(file, 'image', `referenceImages.${index}`))
   referenceAudios.forEach((file, index) => validateFile(file, 'audio', `referenceAudios.${index}`))
 
@@ -152,7 +152,7 @@ export function parseInspirationVideoDraft(formData: FormData): InspirationVideo
     resolution,
     duration,
     generateAudio,
-    primaryImage: primaryImages[0],
+    primaryImage: primaryImages[0] || null,
     referenceImages,
     referenceAudios,
   }

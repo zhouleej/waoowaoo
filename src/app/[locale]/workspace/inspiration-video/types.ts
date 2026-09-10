@@ -16,6 +16,7 @@ export type InspirationMedia = {
 
 export type InspirationVideoCreation = {
   id: string
+  taskId?: string | null
   prompt: string
   modelKey: string
   aspectRatio: string
@@ -34,6 +35,7 @@ export type InspirationVideoCreation = {
 }
 
 export type InspirationVideoBootstrap = {
+  nextCursor?: string | null
   workspace: { projectId: string }
   defaults: {
     videoModel: string | null

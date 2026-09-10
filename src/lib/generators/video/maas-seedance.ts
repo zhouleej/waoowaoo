@@ -137,14 +137,14 @@ export class MaasSeedanceVideoGenerator extends BaseVideoGenerator {
       throw new Error('MAAS_SEEDANCE_PROMPT_REQUIRED')
     }
 
-    const normalizedImageUrl = await normalizeMediaReference(imageUrl, 'imageUrl')
+    const normalizedImageUrl = imageUrl ? await normalizeMediaReference(imageUrl, 'imageUrl') : undefined
     const normalizedLastFrameImageUrl = rawOptions.lastFrameImageUrl
       ? await normalizeMediaReference(rawOptions.lastFrameImageUrl, 'lastFrameImageUrl')
       : undefined
     const body = {
       model,
       prompt: trimmedPrompt,
-      image_url: normalizedImageUrl,
+      ...(normalizedImageUrl ? { image_url: normalizedImageUrl } : {}),
       ...(normalizedLastFrameImageUrl ? { last_frame_image_url: normalizedLastFrameImageUrl } : {}),
       reference_images: await normalizeUrlList(rawOptions.referenceImages, 'referenceImages'),
       reference_videos: await normalizeUrlList(rawOptions.referenceVideos, 'referenceVideos'),
@@ -158,7 +158,7 @@ export class MaasSeedanceVideoGenerator extends BaseVideoGenerator {
 
     // #region debug-point A-E:node-before-python
     reportDebugUrls('src/lib/generators/video/maas-seedance.ts:before-python', [
-      { fieldName: 'image_url', value: body.image_url },
+      ...(body.image_url ? [{ fieldName: 'image_url', value: body.image_url }] : []),
       ...('last_frame_image_url' in body ? [{ fieldName: 'last_frame_image_url', value: body.last_frame_image_url as string }] : []),
       ...body.reference_images.map((value, index) => ({ fieldName: `reference_images[${index}]`, value })),
       ...body.reference_videos.map((value, index) => ({ fieldName: `reference_videos[${index}]`, value })),

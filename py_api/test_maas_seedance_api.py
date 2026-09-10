@@ -63,6 +63,10 @@ from py_api import maas_seedance_api as adapter
 
 
 class MaasSeedanceApiTest(unittest.TestCase):
+    def test_accepts_text_only_content(self) -> None:
+        request = adapter.VideoGenerationRequest(prompt="A rainy street")
+        self.assertEqual(adapter.build_content(request), [{"type": "text", "text": "A rainy street"}])
+
     def test_forwards_supported_resolution_to_sdk_payload(self) -> None:
         request = adapter.VideoGenerationRequest(
             prompt="animate this image",

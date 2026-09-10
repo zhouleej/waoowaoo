@@ -23,7 +23,9 @@
     "addImage": "参考图",
     "addAudio": "参考声音",
     "mobileCloudOnly": "多素材参考当前仅支持移动云 Seedance 2.0 模型；其他模型可使用文案和主图。",
-    "modelChangedNotice": "已切换到普通视频模型，参考图和参考声音已清空。"
+    "modelChangedNotice": "已切换到普通视频模型，参考图和参考声音已清空。",
+    "optionalPrimary": "主图可选：不上传图片时，直接根据文字生成视频。",
+    "requiredPrimary": "当前模型需要主图。"
   },
   "parameters": {
     "model": "视频模型",
@@ -41,7 +43,13 @@
     "queued": "创作任务已进入队列，生成进度会自动更新。",
     "download": "下载视频",
     "modelSettings": "模型设置",
-    "configureNow": "立即配置"
+    "configureNow": "立即配置",
+    "reuse": "复用素材和参数",
+    "retry": "重试",
+    "cancel": "取消任务",
+    "delete": "删除记录",
+    "loadMore": "加载更多",
+    "deleteConfirm": "删除此创作记录？媒体文件暂时保留。"
   },
   "preview": {
     "title": "本次创作",
@@ -76,6 +84,7 @@
   "errors": {
     "loadFailed": "灵感视频工作区加载失败",
     "modelsFailed": "视频模型加载失败",
-    "submitFailed": "创作任务提交失败"
+    "submitFailed": "创作任务提交失败",
+    "refreshAfterSubmit": "任务已接收，但刷新列表失败，请刷新页面查看，无需重复提交。"
   }
 }

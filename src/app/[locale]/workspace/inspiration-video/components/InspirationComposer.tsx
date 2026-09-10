@@ -88,11 +88,13 @@ export default function InspirationComposer({
     if (file) onChange({ primaryImage: file })
   }
 
-  const canSubmit = Boolean(form.prompt.trim() && form.primaryImage && form.modelKey && !submitting)
+  const capabilities = models.find((model) => model.value === form.modelKey)?.capabilities?.video
+  const canSubmit = Boolean(form.prompt.trim() && (form.primaryImage || capabilities?.textToVideo) && form.modelKey && !submitting)
 
   return (
     <section className="glass-surface-elevated overflow-hidden rounded-3xl border border-[var(--glass-stroke-base)]">
       <div className="border-b border-[var(--glass-stroke-base)] px-5 py-4 sm:px-7">
+        <p className="mb-3 text-sm text-[var(--glass-text-secondary)]">{capabilities?.textToVideo ? t('materials.optionalPrimary') : t('materials.requiredPrimary')}</p>
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[var(--glass-tone-info-bg)] text-[var(--glass-tone-info-fg)]">
@@ -237,7 +239,7 @@ export default function InspirationComposer({
           <label className="space-y-1.5">
             <span className="text-xs font-medium text-[var(--glass-text-secondary)]">{t('parameters.ratio')}</span>
             <select value={form.aspectRatio} onChange={(event) => onChange({ aspectRatio: event.target.value })} className="glass-input-base h-11 w-full rounded-xl px-3 text-sm">
-              {['16:9', '9:16', '1:1', '4:3', '3:4'].map((ratio) => <option key={ratio} value={ratio}>{ratio}</option>)}
+              {(capabilities?.aspectRatios || ['16:9', '9:16', '1:1', '4:3', '3:4']).map((ratio) => <option key={ratio} value={ratio}>{ratio}</option>)}
             </select>
           </label>
           <label className="space-y-1.5">

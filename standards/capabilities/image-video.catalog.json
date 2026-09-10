@@ -624,6 +624,8 @@
         "modelId":  "veo-3.1-generate-preview",
         "capabilities":  {
                              "video":  {
+                                           "textToVideo": true,
+                                           "aspectRatios": ["16:9", "9:16"],
                                            "generationModeOptions":  [
                                                                          "normal",
                                                                          "firstlastframe"
@@ -649,6 +651,8 @@
         "modelId":  "veo-3.1-fast-generate-preview",
         "capabilities":  {
                              "video":  {
+                                           "textToVideo": true,
+                                           "aspectRatios": ["16:9", "9:16"],
                                            "generationModeOptions":  [
                                                                          "normal",
                                                                          "firstlastframe"
@@ -674,6 +678,8 @@
         "modelId":  "veo-3.0-generate-001",
         "capabilities":  {
                              "video":  {
+                                           "textToVideo": true,
+                                           "aspectRatios": ["16:9", "9:16"],
                                            "durationOptions":  [
                                                                    4,
                                                                    6,
@@ -694,6 +700,8 @@
         "modelId":  "veo-3.0-fast-generate-001",
         "capabilities":  {
                              "video":  {
+                                           "textToVideo": true,
+                                           "aspectRatios": ["16:9", "9:16"],
                                            "durationOptions":  [
                                                                    4,
                                                                    6,
@@ -714,6 +722,8 @@
         "modelId":  "veo-2.0-generate-001",
         "capabilities":  {
                              "video":  {
+                                           "textToVideo": true,
+                                           "aspectRatios": ["16:9", "9:16"],
                                            "durationOptions":  [
                                                                    5,
                                                                    6,
@@ -1227,6 +1237,8 @@
         "modelId":  "doubao-seedance-2.0",
         "capabilities":  {
                              "video":  {
+                                           "textToVideo": true,
+                                           "aspectRatios": ["16:9", "9:16", "1:1", "4:3", "3:4"],
                                            "resolutionOptions":  [
                                                                      "480p",
                                                                      "720p",

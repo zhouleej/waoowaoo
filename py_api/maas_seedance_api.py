@@ -79,7 +79,7 @@ def _report_debug_urls(location: str, urls: list[tuple[str, str]]) -> None:
 class VideoGenerationRequest(BaseModel):
     model: str | None = None
     prompt: str = Field(min_length=1)
-    image_url: str
+    image_url: str | None = None
     last_frame_image_url: str | None = None
     reference_images: list[str] = Field(default_factory=list)
     reference_videos: list[str] = Field(default_factory=list)
@@ -132,11 +132,12 @@ def require_public_url(value: str, field_name: str) -> str:
 
 def build_content(request: VideoGenerationRequest) -> list[dict[str, Any]]:
     content: list[dict[str, Any]] = [{"type": "text", "text": request.prompt.strip()}]
-    content.append({
-        "type": "image_url",
-        "image_url": {"url": require_public_url(request.image_url, "image_url")},
-        "role": "reference_image",
-    })
+    if request.image_url:
+        content.append({
+            "type": "image_url",
+            "image_url": {"url": require_public_url(request.image_url, "image_url")},
+            "role": "reference_image",
+        })
 
     if request.last_frame_image_url:
         content.append({
@@ -339,7 +340,7 @@ def create_video_generation(
 
     # #region debug-point A-E:python-before-sdk
     _report_debug_urls("py_api/maas_seedance_api.py:before-sdk", [
-        ("image_url", request.image_url),
+        *([("image_url", request.image_url)] if request.image_url else []),
         *([("last_frame_image_url", request.last_frame_image_url)] if request.last_frame_image_url else []),
         *((f"reference_images[{index}]", value) for index, value in enumerate(request.reference_images)),
         *((f"reference_videos[{index}]", value) for index, value in enumerate(request.reference_videos)),

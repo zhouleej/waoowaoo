@@ -61,7 +61,7 @@ export function useUpdateProjectPanelVideoPrompt(projectId: string) {
       storyboardId: string
       panelIndex: number
       value: string
-      field?: 'videoPrompt' | 'firstLastFramePrompt'
+      field?: 'videoPrompt' | 'firstLastFramePrompt' | 'videoModel'
     }) =>
       await requestJsonWithError(
         `/api/novel-promotion/${projectId}/panel`,
@@ -71,15 +71,14 @@ export function useUpdateProjectPanelVideoPrompt(projectId: string) {
           body: JSON.stringify({
             storyboardId,
             panelIndex,
-            ...(field === 'firstLastFramePrompt'
-              ? { firstLastFramePrompt: value }
-              : { videoPrompt: value }),
+            [field]: value,
           }),
         },
         'update failed',
       ),
     onSettled: () => {
       invalidateQueryTemplates(queryClient, [queryKeys.projectData(projectId)])
+      void queryClient.invalidateQueries({ queryKey: queryKeys.episodeData(projectId, '').slice(0, 2) })
     },
   })
 }

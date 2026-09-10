@@ -88,7 +88,7 @@ const prismaMock = vi.hoisted(() => ({
     update: vi.fn(async () => ({})),
   },
   novelPromotionPanel: {
-    findFirst: vi.fn(async () => ({ id: 'panel-1' })),
+    findFirst: vi.fn(async () => ({ id: 'panel-1', imageUrl: 'image.png' })),
     findMany: vi.fn(async () => []),
     findUnique: vi.fn(async ({ where }: { where?: { id?: string } }) => {
       const id = where?.id || 'panel-1'
@@ -422,6 +422,7 @@ const DIRECT_CASES: ReadonlyArray<DirectRouteCase> = [
       },
       firstLastFrame: {
         flModel: 'ark::doubao-seedance-2-0-260128',
+        lastFrameStoryboardId: 'storyboard-1', lastFramePanelIndex: 1,
       },
     },
     params: { projectId: 'project-1' },
@@ -436,6 +437,7 @@ const DIRECT_CASES: ReadonlyArray<DirectRouteCase> = [
       },
       firstLastFrame: {
         flModel: 'ark::doubao-seedance-2-0-260128',
+        lastFrameStoryboardId: 'storyboard-1', lastFramePanelIndex: 1,
       },
     },
   },

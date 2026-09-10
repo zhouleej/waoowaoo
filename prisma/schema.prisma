@@ -211,6 +211,7 @@ model NovelPromotionPanel {
   mobileCloudAssetSyncedAt  DateTime?
   imageHistory              String?                   @db.Text
   videoPrompt               String?                   @db.Text
+  videoModel                String?
   firstLastFramePrompt      String?                   @db.Text
   videoUrl                  String?                   @db.Text
   videoGenerationMode       String?                   @db.Text // 视频生成方式：normal | firstlastframe

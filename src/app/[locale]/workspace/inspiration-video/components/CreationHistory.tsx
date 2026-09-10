@@ -8,6 +8,8 @@ import type { InspirationVideoCreation, InspirationVideoModel } from '../types'
 type Props = {
   creations: InspirationVideoCreation[]
   models: InspirationVideoModel[]
+  onAction: (creation: InspirationVideoCreation, action: 'retry' | 'cancel' | 'delete' | 'reuse') => void
+  busy?: boolean
 }
 
 function statusClass(status: string): string {
@@ -16,7 +18,7 @@ function statusClass(status: string): string {
   return 'bg-[var(--glass-tone-info-bg)] text-[var(--glass-tone-info-fg)]'
 }
 
-export default function CreationHistory({ creations, models }: Props) {
+export default function CreationHistory({ creations, models, onAction, busy }: Props) {
   const t = useTranslations('inspirationVideo')
   const locale = useLocale()
   const modelLabelByKey = new Map(models.map((model) => [model.value, model.label]))
@@ -59,6 +61,13 @@ export default function CreationHistory({ creations, models }: Props) {
                 </span>
               </div>
               <div className="p-4">
+                <div className="mb-3 flex flex-wrap gap-3 text-xs">
+                  <button disabled={busy} onClick={() => onAction(creation, 'reuse')}>{t('actions.reuse')}</button>
+                  {['failed', 'canceled'].includes(creation.status) && !creation.videoUrl && <button disabled={busy} onClick={() => onAction(creation, 'retry')}>{t('actions.retry')}</button>}
+                  {['queued', 'processing'].includes(creation.status) ? <button disabled={busy} onClick={() => onAction(creation, 'cancel')}>{t('actions.cancel')}</button>
+                    : <button disabled={busy || creation.status === 'settling'} onClick={() => onAction(creation, 'delete')}>{t('actions.delete')}</button>}
+                  {creation.videoUrl && <a href={creation.videoUrl} download>{t('actions.download')}</a>}
+                </div>
                 <p className="line-clamp-2 min-h-10 text-sm leading-5 text-[var(--glass-text-primary)]">{creation.prompt}</p>
                 <div className="mt-3 flex items-center justify-between gap-3 text-xs text-[var(--glass-text-tertiary)]">
                   <span className="min-w-0 truncate">{modelLabelByKey.get(creation.modelKey) || creation.modelKey}</span>

@@ -220,6 +220,14 @@ export const POST = apiHandler(async (
   const isBatch = body.all === true
 
   validateFirstLastFrameModel(body?.firstLastFrame)
+  if (isRecord(body.firstLastFrame)) {
+    const last = body.firstLastFrame
+    if (typeof last.lastFrameStoryboardId !== 'string' || !Number.isInteger(last.lastFramePanelIndex)) {
+      throw new ApiError('INVALID_PARAMS', { message: '首尾帧生成需要选择有效尾帧' })
+    }
+    const tail = await requireNovelPromotionPanelByStoryboardIndexInProject(projectId, last.lastFrameStoryboardId, Number(last.lastFramePanelIndex))
+    if (!tail.imageUrl) throw new ApiError('INVALID_PARAMS', { message: '所选尾帧尚未生成图片' })
+  }
   await validateVideoCapabilityCombination({
     payload: body,
     projectId,
