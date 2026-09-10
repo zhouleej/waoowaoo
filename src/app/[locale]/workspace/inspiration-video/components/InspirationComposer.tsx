@@ -125,6 +125,7 @@ export default function InspirationComposer({
             placeholder={t('prompt.placeholder')}
             className="glass-input-base min-h-36 w-full resize-y rounded-2xl px-4 py-3 text-sm leading-6 outline-none"
           />
+          <button type="button" className="mt-2 text-xs text-[var(--glass-text-secondary)]" onClick={() => onChange({ prompt: `${form.prompt}${form.prompt ? '\n' : ''}${t('prompt.structure')}`.slice(0, 2000) })}>{t('prompt.addStructure')}</button>
         </div>
 
         <div>
@@ -134,7 +135,7 @@ export default function InspirationComposer({
               <p className="mt-1 text-xs text-[var(--glass-text-tertiary)]">{t('materials.hint')}</p>
             </div>
             <span className="text-xs text-[var(--glass-text-tertiary)]">
-              {1 + form.referenceImages.length + form.referenceAudios.length}/12
+              {(form.primaryImage ? 1 : 0) + form.referenceImages.length + form.referenceAudios.length}/12
             </span>
           </div>
 

@@ -189,6 +189,7 @@ export default function VideoPanelCardBody({ runtime }: VideoPanelCardBodyProps)
                       value={videoModel.selectedModel || undefined}
                       onModelChange={(modelKey) => {
                         videoModel.setSelectedModel(modelKey)
+                        actions.onUpdatePanelVideoModel(panel.storyboardId, panel.panelIndex, modelKey)
                       }}
                       capabilityFields={videoModel.capabilityFields.map((field) => ({
                         field: field.field,

@@ -67,6 +67,7 @@ export const GET = apiHandler(async (request: NextRequest) => {
         errorCode: true,
         errorMessage: true,
         result: true,
+        billingInfo: true,
       },
     })
     : []
@@ -93,6 +94,8 @@ export const GET = apiHandler(async (request: NextRequest) => {
       return {
         id: creation.id,
         taskId: task?.id || null,
+        chargedCost: task?.billingInfo && typeof task.billingInfo === 'object' && !Array.isArray(task.billingInfo)
+          && typeof task.billingInfo.chargedCost === 'number' ? task.billingInfo.chargedCost : null,
         prompt: creation.prompt,
         modelKey: creation.modelKey,
         aspectRatio: creation.aspectRatio,

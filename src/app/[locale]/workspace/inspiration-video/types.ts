@@ -17,6 +17,8 @@ export type InspirationMedia = {
 export type InspirationVideoCreation = {
   id: string
   taskId?: string | null
+  actualMetadata?: { durationMs?: number; width?: number; height?: number; fps?: number } | null
+  chargedCost?: number | null
   prompt: string
   modelKey: string
   aspectRatio: string

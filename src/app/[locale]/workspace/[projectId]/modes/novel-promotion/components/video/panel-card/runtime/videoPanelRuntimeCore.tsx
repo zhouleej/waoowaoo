@@ -69,7 +69,7 @@ export function useVideoPanelActions({
   })
 
   const videoModel = usePanelVideoModel({
-    defaultVideoModel,
+    defaultVideoModel: panel.videoModel || panel.textPanel?.videoModel || defaultVideoModel,
     capabilityOverrides,
     videoResolution,
     userVideoModels,

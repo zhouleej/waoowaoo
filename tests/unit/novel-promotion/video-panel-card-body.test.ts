@@ -3,13 +3,17 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import VideoPanelCardBody from '@/app/[locale]/workspace/[projectId]/modes/novel-promotion/components/video/panel-card/VideoPanelCardBody'
 import type { VideoPanelRuntime } from '@/app/[locale]/workspace/[projectId]/modes/novel-promotion/components/video/panel-card/hooks/useVideoPanelActions'
+const dropdown = vi.hoisted(() => ({ change: null as null | ((model: string) => void) }))
 
 vi.mock('@/components/task/TaskStatusInline', () => ({
   default: () => React.createElement('span', null, 'task-status'),
 }))
 
 vi.mock('@/components/ui/config-modals/ModelCapabilityDropdown', () => ({
-  ModelCapabilityDropdown: () => React.createElement('div', null, 'model-dropdown'),
+  ModelCapabilityDropdown: ({ onModelChange }: { onModelChange: (model: string) => void }) => {
+    dropdown.change = onModelChange
+    return React.createElement('div', null, 'model-dropdown')
+  },
 }))
 
 vi.mock('@/components/ui/icons', () => ({
@@ -152,6 +156,16 @@ function createRuntime(overrides: Partial<VideoPanelRuntime> = {}): VideoPanelRu
 }
 
 describe('VideoPanelCardBody', () => {
+  it('saves a model change for the selected panel', () => {
+    const runtime = createRuntime()
+    runtime.layout.isLinked = false
+    runtime.layout.isLastFrame = false
+    const update = vi.fn()
+    runtime.actions.onUpdatePanelVideoModel = update
+    renderToStaticMarkup(React.createElement(VideoPanelCardBody, { runtime }))
+    dropdown.change?.('google::veo-3.1-generate-preview')
+    expect(update).toHaveBeenCalledWith('sb-1', 2, 'google::veo-3.1-generate-preview')
+  })
   it('renders incoming and outgoing first-last-frame UI for chained panel', () => {
     const markup = renderToStaticMarkup(
       React.createElement(VideoPanelCardBody, {

@@ -9,7 +9,9 @@
   },
   "prompt": {
     "label": "Creative prompt",
-    "placeholder": "For example: A futuristic city at night. The camera rises slowly above a neon street as rain crosses the lens and the character looks back at a distant aircraft. Describe the subject, motion, setting, camera, and sound atmosphere…"
+    "placeholder": "For example: A futuristic city at night. The camera rises slowly above a neon street as rain crosses the lens and the character looks back at a distant aircraft. Describe the subject, motion, setting, camera, and sound atmosphere…",
+    "addStructure": "Append prompt structure",
+    "structure": "Subject:\nAction:\nScene:\nCamera motion:\nVisual style:\nAudio:"
   },
   "materials": {
     "title": "@ References",
@@ -66,7 +68,9 @@
     "count": "{count} total",
     "emptyTitle": "No creations yet",
     "emptyHint": "Complete the settings above and generate a video to save it here.",
-    "references": "{count} refs"
+    "references": "{count} refs",
+    "actual": "Actual file",
+    "cost": "Charged amount (CNY)"
   },
   "status": {
     "queued": "Queued",

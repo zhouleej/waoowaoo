@@ -69,6 +69,8 @@ export default function CreationHistory({ creations, models, onAction, busy }: P
                   {creation.videoUrl && <a href={creation.videoUrl} download>{t('actions.download')}</a>}
                 </div>
                 <p className="line-clamp-2 min-h-10 text-sm leading-5 text-[var(--glass-text-primary)]">{creation.prompt}</p>
+                {creation.actualMetadata?.durationMs && <p className="mt-2 text-xs text-[var(--glass-text-secondary)]">{t('history.actual')}: {(creation.actualMetadata.durationMs / 1000).toFixed(2)}s · {creation.actualMetadata.width}×{creation.actualMetadata.height} · {creation.actualMetadata.fps}fps</p>}
+                {typeof creation.chargedCost === 'number' && <p className="mt-1 text-xs text-[var(--glass-text-secondary)]">{t('history.cost')}: {creation.chargedCost.toFixed(4)}</p>}
                 <div className="mt-3 flex items-center justify-between gap-3 text-xs text-[var(--glass-text-tertiary)]">
                   <span className="min-w-0 truncate">{modelLabelByKey.get(creation.modelKey) || creation.modelKey}</span>
                   <span className="shrink-0">{new Intl.DateTimeFormat(locale, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(creation.createdAt))}</span>
