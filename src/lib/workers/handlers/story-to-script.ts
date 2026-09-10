@@ -532,6 +532,7 @@ export async function handleStoryToScriptTask(job: Job<TaskJobData>) {
       )
 
       const persistedResult = await prisma.$transaction(async (tx) => {
+        await (await import('@/lib/novel-promotion/episode-snapshots')).saveEpisodeSnapshot(tx, episodeId)
         const createdCharacters = await persistAnalyzedCharacters({
           projectInternalId: novelData.id,
           existingNames: existingCharacterNames,

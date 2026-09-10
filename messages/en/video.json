@@ -188,7 +188,12 @@
     "loading": "Loading editor…",
     "rendering": "Saving or rendering video…",
     "download": "Download video",
-    "unsaved": "You have unsaved edits. Leave?"
+    "unsaved": "You have unsaved edits. Leave?",
+    "versions": "Episode history",
+    "versionDescription": "Saved before regeneration. Counts: shots / dialogue lines.",
+    "restore": "Restore",
+    "restoreConfirm": "Replace this episode with the selected version? The current version will also be saved.",
+    "noVersions": "No versions saved before regeneration yet"
   },
   "errors": {
     "unknownError": "Unknown error"

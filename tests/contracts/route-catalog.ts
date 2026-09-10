@@ -29,6 +29,7 @@ export type RouteCatalogEntry = {
 }
 
 const ROUTE_FILES = [
+  'src/app/api/novel-promotion/[projectId]/snapshots/route.ts',
   'src/app/api/novel-promotion/[projectId]/editor/render/route.ts',
   'src/app/api/admin/download-logs/route.ts',
   'src/app/api/asset-hub/ai-design-character/route.ts',

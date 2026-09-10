@@ -1,6 +1,7 @@
 import { safeParseJson, safeParseJsonArray } from '@/lib/json-repair'
 import { prisma } from '@/lib/prisma'
 import type { StoryboardPanel } from '@/lib/storyboard-phases'
+import { saveEpisodeSnapshot } from '@/lib/novel-promotion/episode-snapshots'
 
 export type JsonRecord = Record<string, unknown>
 
@@ -228,6 +229,7 @@ export async function persistStoryboardOutputs(params: {
   voiceLineRows: JsonRecord[] | null
 }) {
   const persistedStoryboards = await prisma.$transaction(async (tx) => {
+    if (params.voiceLineRows !== null && params.clipPanels.length > 0) await saveEpisodeSnapshot(tx, params.episodeId)
     const persisted: PersistedStoryboard[] = []
     const panelIdByStoryboardRef = new Map<string, string>()
     const storyboardIdByRef = new Map<string, string>()

@@ -188,7 +188,12 @@
     "loading": "正在加载剪辑…",
     "rendering": "正在保存或合成视频，请稍候…",
     "download": "下载成片",
-    "unsaved": "剪辑尚未保存，确定离开？"
+    "unsaved": "剪辑尚未保存，确定离开？",
+    "versions": "剧集历史版本",
+    "versionDescription": "重生成前自动保存。记录显示镜头数 / 台词数。",
+    "restore": "恢复",
+    "restoreConfirm": "恢复此版本将替换当前剧集内容，当前版本也会保存。继续？",
+    "noVersions": "尚无重生成前的历史版本"
   },
   "errors": {
     "unknownError": "未知错误"

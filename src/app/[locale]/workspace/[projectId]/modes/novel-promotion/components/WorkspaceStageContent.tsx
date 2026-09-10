@@ -6,6 +6,7 @@ import StoryboardStage from './StoryboardStage'
 import VideoStageRoute from './VideoStageRoute'
 import VoiceStageRoute from './VoiceStageRoute'
 import EditorStageRoute from './EditorStageRoute'
+import EpisodeVersionHistory from './EpisodeVersionHistory'
 
 interface WorkspaceStageContentProps {
   currentStage: string
@@ -16,6 +17,7 @@ export default function WorkspaceStageContent({
 }: WorkspaceStageContentProps) {
   return (
     <div key={currentStage} className="animate-page-enter">
+      <EpisodeVersionHistory />
       {currentStage === 'config' && <ConfigStage />}
 
       {(currentStage === 'script' || currentStage === 'assets') && <ScriptStage />}

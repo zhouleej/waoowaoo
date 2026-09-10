@@ -140,6 +140,7 @@ describe('worker story-to-script behavior', () => {
       id: 'episode-1',
       novelPromotionProjectId: 'np-project-1',
       novelText: 'episode text',
+      clips: [], storyboards: [], voiceLines: [],
     })
 
     orchestratorMock.runStoryToScriptOrchestrator.mockResolvedValue({
