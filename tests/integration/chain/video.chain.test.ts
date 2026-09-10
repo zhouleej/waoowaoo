@@ -196,6 +196,7 @@ describe('chain contract - video queue behavior', () => {
       where: { id: 'panel-1' },
       data: {
         lipSyncVideoUrl: 'cos/lip-sync/video.mp4',
+        lipSyncVideoMediaId: null,
         lipSyncTaskId: null,
       },
     })

@@ -302,6 +302,13 @@ describe('worker video processor behavior', () => {
       videoUrl: 'cos/lip-sync/video.mp4',
       actualVideoTokens: 108000,
     })
+    expect(prismaMock.novelPromotionPanel.update).toHaveBeenCalledWith({
+      where: { id: 'panel-1' },
+      data: expect.objectContaining({
+        videoUrl: 'cos/lip-sync/video.mp4', videoMediaId: null,
+        lipSyncVideoUrl: null, lipSyncVideoMediaId: null, lipSyncTaskId: null,
+      }),
+    })
   })
 
   it('ASSET_HUB_VIRTUAL_HUMAN_TRIAL: 仅接受 asset URI 并返回不落库的预览地址', async () => {
@@ -398,6 +405,7 @@ describe('worker video processor behavior', () => {
       where: { id: 'panel-1' },
       data: {
         lipSyncVideoUrl: 'cos/lip-sync/video.mp4',
+        lipSyncVideoMediaId: null,
         lipSyncTaskId: null,
       },
     })

@@ -5,6 +5,7 @@ import { logError as _ulogError, logInfo as _ulogInfo } from '@/lib/logging/core
 import type { VideoPanel } from '@/app/[locale]/workspace/[projectId]/modes/novel-promotion/components/video'
 import type { EpisodeVideoUrlsResponse } from './types'
 import { getErrorMessage } from './utils'
+import { downloadCompleteBatch } from '@/lib/media/download-batch'
 
 interface MutationLike<TInput = unknown, TOutput = unknown> {
   mutateAsync: (input: TInput) => Promise<TOutput>
@@ -65,18 +66,12 @@ export function useVideoDownloadAll({
       setDownloadProgress({ current: 0, total: videos.length })
 
       const zip = new JSZip()
-      for (let index = 0; index < videos.length; index += 1) {
-        const video = videos[index]
-        _ulogInfo(`[下载视频] 下载 ${index + 1}/${videos.length}: ${video.fileName}`)
-        setDownloadProgress({ current: index + 1, total: videos.length })
-
-        try {
-          const blob = await downloadRemoteBlobMutation.mutateAsync(video.videoUrl)
-          zip.file(video.fileName, blob)
-        } catch (error) {
-          _ulogError(`[下载视频] 下载失败: ${video.fileName}`, error)
-        }
-      }
+      const downloads = await downloadCompleteBatch(videos,
+        (url) => downloadRemoteBlobMutation.mutateAsync(url),
+        (current, total) => setDownloadProgress({ current, total }),
+      )
+      for (const file of downloads) zip.file(file.fileName, file.data)
+      zip.file('manifest.json', JSON.stringify({ total: downloads.length, files: downloads.map((file) => file.fileName) }, null, 2))
 
       _ulogInfo('[下载视频] 生成 ZIP 文件...')
       const zipBlob = await zip.generateAsync({ type: 'blob' })

@@ -315,7 +315,26 @@ export const PATCH = apiHandler(async (
       }
     }
 
-    const updated = await prisma.novelPromotionVoiceLine.update({
+    const updated = await prisma.$transaction(async (tx) => {
+      const source = await tx.novelPromotionVoiceLine.findUnique({ where: { id: lineId } })
+      if (!source) throw new ApiError('NOT_FOUND')
+      const changed = (content !== undefined && content.trim() !== source.content)
+        || (speaker !== undefined && speaker.trim() !== source.speaker)
+        || (emotionPrompt !== undefined && (emotionPrompt || null) !== source.emotionPrompt)
+        || (emotionStrength !== undefined && emotionStrength !== source.emotionStrength)
+        || (voicePresetId !== undefined && voicePresetId !== source.voicePresetId)
+      if (changed && audioUrl === undefined) {
+        updateData.audioUrl = null
+        updateData.audioMediaId = null
+        updateData.audioDuration = null
+      }
+      if (changed || audioUrl !== undefined) {
+        await tx.novelPromotionPanel.updateMany({
+          where: { matchedVoiceLines: { some: { id: lineId } } },
+          data: { lipSyncVideoUrl: null, lipSyncVideoMediaId: null, lipSyncTaskId: null },
+        })
+      }
+      return tx.novelPromotionVoiceLine.update({
       where: { id: lineId },
       data: updateData,
       include: {
@@ -327,6 +346,7 @@ export const PATCH = apiHandler(async (
           }
         }
       }
+      })
     })
     return NextResponse.json({
       success: true,

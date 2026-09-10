@@ -280,6 +280,10 @@ async function handleVideoPanelTask(job: Job<TaskJobData>) {
     data: {
       videoUrl: cosKey,
       videoGenerationMode: generationMode,
+      videoMediaId: null,
+      lipSyncVideoUrl: null,
+      lipSyncVideoMediaId: null,
+      lipSyncTaskId: null,
     },
   })
 
@@ -348,6 +352,7 @@ async function handleLipSyncTask(job: Job<TaskJobData>) {
     where: { id: panel.id },
     data: {
       lipSyncVideoUrl: cosKey,
+      lipSyncVideoMediaId: null,
       lipSyncTaskId: null,
     },
   })
