@@ -22,6 +22,7 @@ import { parseModelKeyStrict } from '@/lib/model-config-contract'
 import { getProviderConfig } from '@/lib/api-config'
 import { getSignedUrl } from '@/lib/storage'
 import { mobileCloudMaasAssetClient } from '@/lib/mobile-cloud-maas/asset-client'
+import { handleInspirationVideoTask } from './handlers/inspiration-video'
 
 type AnyObj = Record<string, unknown>
 type VideoOptionValue = string | number | boolean
@@ -411,6 +412,9 @@ async function processVideoTask(job: Job<TaskJobData>) {
 
   switch (job.data.type) {
     case TASK_TYPE.VIDEO_PANEL:
+      if (job.data.targetType === 'InspirationVideoCreation') {
+        return await handleInspirationVideoTask(job)
+      }
       return await handleVideoPanelTask(job)
     case TASK_TYPE.LIP_SYNC:
       return await handleLipSyncTask(job)

@@ -50,7 +50,8 @@ export default getRequestConfig(async ({ requestLocale }) => {
         workspaceRedesign,
         home,
         organizations,
-        platform
+        platform,
+        inspirationVideo
     ] = await Promise.all([
         import(`../messages/${locale}/common.json`),
         import(`../messages/${locale}/stages.json`),
@@ -85,7 +86,8 @@ export default getRequestConfig(async ({ requestLocale }) => {
         import(`../messages/${locale}/workspaceRedesign.json`),
         import(`../messages/${locale}/home.json`),
         import(`../messages/${locale}/organizations.json`),
-        import(`../messages/${locale}/platform.json`)
+        import(`../messages/${locale}/platform.json`),
+        import(`../messages/${locale}/inspirationVideo.json`)
     ]);
 
     return {
@@ -124,7 +126,8 @@ export default getRequestConfig(async ({ requestLocale }) => {
             workspaceRedesign: workspaceRedesign.default,
             home: home.default,
             organizations: organizations.default,
-            platform: platform.default
+            platform: platform.default,
+            inspirationVideo: inspirationVideo.default
         }
     };
 });

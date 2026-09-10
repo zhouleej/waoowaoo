@@ -19,6 +19,7 @@ import {
 import { findBuiltinCapabilities } from '@/lib/model-capabilities/catalog'
 import { findBuiltinPricingCatalogEntry } from '@/lib/model-pricing/catalog'
 import type { VideoPricingTier } from '@/lib/model-pricing/video-tier'
+import { getProviderKey } from '@/lib/api-config'
 
 type StoredModelType = UnifiedModelType | string
 
@@ -40,6 +41,7 @@ interface UserModelOption {
   value: string
   label: string
   provider?: string
+  providerKey?: string
   providerName?: string
   capabilities?: ModelCapabilities
   videoPricingTiers?: VideoPricingTier[]
@@ -212,6 +214,7 @@ export const GET = apiHandler(async () => {
       value: modelKey,
       label: toDisplayLabel(model, modelId || modelKey),
       provider,
+      providerKey: getProviderKey(provider),
       providerName: provider ? providerNameMap.get(provider) : undefined,
     }
 

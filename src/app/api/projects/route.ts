@@ -65,6 +65,7 @@ export const GET = apiHandler(async (request: NextRequest) => {
   const where: Record<string, unknown> = organizationContext.organizationId
     ? { organizationId: organizationContext.organizationId }
     : { userId: session.user.id, organizationId: null }
+  where.inspirationVideoWorkspace = null
 
   // 如果有搜索关键词，搜索名称和描述
   // 注意：SQLite 不支持 mode: 'insensitive'，但 SQLite 的 LIKE 默认即大小写不敏感（ASCII 范围）

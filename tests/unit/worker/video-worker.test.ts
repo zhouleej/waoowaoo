@@ -57,6 +57,10 @@ const outboundImageMock = vi.hoisted(() => ({
 }))
 
 const prismaMock = vi.hoisted(() => ({
+  inspirationVideoCreation: {
+    findUnique: vi.fn(),
+    update: vi.fn(async () => undefined),
+  },
   novelPromotionPanel: {
     findUnique: vi.fn(),
     findFirst: vi.fn(),
@@ -108,7 +112,9 @@ vi.mock('@/lib/mobile-cloud-maas/asset-client', () => ({
   mobileCloudMaasAssetClient: mobileCloudAssetClientMock,
 }))
 vi.mock('@/lib/model-capabilities/lookup', () => ({
-  resolveBuiltinCapabilitiesByModelKey: vi.fn(() => ({ video: { firstlastframe: true } })),
+  resolveBuiltinCapabilitiesByModelKey: vi.fn(() => ({
+    video: { firstlastframe: true, generateAudioOptions: [true, false] },
+  })),
 }))
 vi.mock('@/lib/model-config-contract', () => modelContractMock)
 vi.mock('@/lib/api-config', () => ({
@@ -159,6 +165,21 @@ describe('worker video processor behavior', () => {
 
     prismaMock.novelPromotionPanel.findUnique.mockResolvedValue(buildPanel())
     prismaMock.novelPromotionPanel.findFirst.mockResolvedValue(buildPanel())
+    prismaMock.inspirationVideoCreation.findUnique.mockResolvedValue({
+      id: 'creation-1',
+      prompt: 'A slow camera push through a rainy neon street',
+      modelKey: 'maas-seedance::doubao-seedance-2.0',
+      aspectRatio: '16:9',
+      resolution: '720p',
+      duration: 5,
+      generateAudio: true,
+      workspace: { projectId: 'project-1' },
+      assets: [
+        { kind: 'primary_image', storageKey: 'inspiration/primary.jpg', sortOrder: 0 },
+        { kind: 'reference_image', storageKey: 'inspiration/reference.jpg', sortOrder: 0 },
+        { kind: 'reference_audio', storageKey: 'inspiration/reference.mp3', sortOrder: 0 },
+      ],
+    })
     modelContractMock.parseModelKeyStrict.mockReturnValue({ provider: 'fal' })
     prismaMock.novelPromotionVoiceLine.findUnique.mockResolvedValue({
       id: 'line-1',
@@ -391,6 +412,47 @@ describe('worker video processor behavior', () => {
     })
 
     await expect(processor!(unsupportedJob)).rejects.toThrow('Unsupported video task type')
+  })
+
+  it('VIDEO_PANEL: inspiration creation passes image and audio references and persists its own output', async () => {
+    const processor = workerState.processor
+    expect(processor).toBeTruthy()
+    modelContractMock.parseModelKeyStrict.mockReturnValue({ provider: 'maas-seedance' })
+    utilsMock.uploadVideoSourceToCos.mockResolvedValueOnce('inspiration-video/result.mp4')
+
+    const result = await processor!(buildJob({
+      type: TASK_TYPE.VIDEO_PANEL,
+      targetType: 'InspirationVideoCreation',
+      targetId: 'creation-1',
+    })) as { creationId: string; videoUrl: string }
+
+    expect(utilsMock.resolveVideoSourceFromGeneration).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        modelId: 'maas-seedance::doubao-seedance-2.0',
+        options: expect.objectContaining({
+          prompt: 'A slow camera push through a rainy neon street',
+          referenceImages: ['/api/storage/sign?key=inspiration%2Freference.jpg'],
+          referenceAudios: ['/api/storage/sign?key=inspiration%2Freference.mp3'],
+          generateAudio: true,
+        }),
+      }),
+    )
+    expect(utilsMock.uploadVideoSourceToCos).toHaveBeenCalledWith(
+      'https://provider.example/video.mp4',
+      'inspiration-video',
+      'creation-1',
+      undefined,
+    )
+    expect(prismaMock.inspirationVideoCreation.update).toHaveBeenCalledWith({
+      where: { id: 'creation-1' },
+      data: { outputVideoKey: 'inspiration-video/result.mp4' },
+    })
+    expect(result).toEqual({
+      creationId: 'creation-1',
+      videoUrl: 'inspiration-video/result.mp4',
+    })
+    expect(prismaMock.novelPromotionPanel.update).not.toHaveBeenCalled()
   })
 
   it('VIDEO_PANEL: MAAS sends a registered active storyboard material as an asset URI', async () => {

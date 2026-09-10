@@ -36,6 +36,7 @@ const GENERATION_OPERATION_PATTERNS = [
   /\/ai-(?:create|modify)-/,
   /\/modify-(?:asset|storyboard)-image(?:\/|$)/,
   /\/asset-hub\/(?:generate-image|modify-image|voice-design)(?:\/|$)/,
+  /\/inspiration-video(?:\/|$)/,
 ]
 
 function isGenerationOperationPath(pathname: string): boolean {

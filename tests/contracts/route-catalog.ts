@@ -73,6 +73,8 @@ const ROUTE_FILES = [
   'src/app/api/auth/register/route.ts',
   'src/app/api/cos/image/route.ts',
   'src/app/api/files/[...path]/route.ts',
+  'src/app/api/inspiration-video/generate/route.ts',
+  'src/app/api/inspiration-video/route.ts',
   'src/app/api/storage/sign/route.ts',
   'src/app/api/novel-promotion/[projectId]/ai-create-character/route.ts',
   'src/app/api/novel-promotion/[projectId]/ai-create-location/route.ts',
@@ -221,6 +223,7 @@ function resolveCategory(routeFile: string): RouteCategory {
   if (routeFile.startsWith('src/app/api/assets/')) return 'assets'
   if (routeFile.startsWith('src/app/api/asset-hub/')) return 'asset-hub'
   if (routeFile.startsWith('src/app/api/novel-promotion/')) return 'novel-promotion'
+  if (routeFile.startsWith('src/app/api/inspiration-video/')) return 'projects'
   if (routeFile.startsWith('src/app/api/projects/')) return 'projects'
   if (
     routeFile.startsWith('src/app/api/tasks/')
@@ -276,6 +279,7 @@ function resolveContractGroup(routeFile: string): RouteContractGroup {
   if (routeFile.startsWith('src/app/api/assets/')) return 'crud-assets-routes'
   if (routeFile.startsWith('src/app/api/asset-hub/')) return 'crud-asset-hub-routes'
   if (routeFile.startsWith('src/app/api/novel-promotion/')) return 'crud-novel-promotion-routes'
+  if (routeFile.startsWith('src/app/api/inspiration-video/')) return 'user-project-routes'
   if (
     routeFile.startsWith('src/app/api/tasks/')
     || routeFile.startsWith('src/app/api/runs/')

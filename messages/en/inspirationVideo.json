@@ -1,0 +1,81 @@
+{
+  "eyebrow": "AI multi-reference video creation",
+  "title": "Inspiration Video",
+  "subtitle": "Bring a written idea, a key image, reference images, and sound into one studio to generate a video you can preview and download.",
+  "composer": {
+    "title": "Describe your idea",
+    "subtitle": "The prompt defines the content while references guide the visuals and sound",
+    "mode": "Video generation"
+  },
+  "prompt": {
+    "label": "Creative prompt",
+    "placeholder": "For example: A futuristic city at night. The camera rises slowly above a neon street as rain crosses the lens and the character looks back at a distant aircraft. Describe the subject, motion, setting, camera, and sound atmosphere…"
+  },
+  "materials": {
+    "title": "@ References",
+    "hint": "The key image defines the first frame; image and audio references add character, style, and sound direction.",
+    "primary": "Key image / first frame",
+    "required": "Required",
+    "replace": "Replace image",
+    "uploadPrimary": "Upload or drop a key image",
+    "references": "Reference assets",
+    "referenceLimit": "Up to 8 images and 3 audio files",
+    "addImage": "Image",
+    "addAudio": "Audio",
+    "mobileCloudOnly": "Multi-reference input currently requires the Mobile Cloud Seedance 2.0 model. Other models support prompts and a key image.",
+    "modelChangedNotice": "Reference images and audio were cleared after switching to a standard video model."
+  },
+  "parameters": {
+    "model": "Video model",
+    "selectModel": "Select a video model",
+    "ratio": "Aspect ratio",
+    "resolution": "Resolution",
+    "duration": "Duration",
+    "seconds": "{duration}s",
+    "nativeAudio": "Generate native audio",
+    "nativeAudioHint": "Automatically enabled when audio references are added; results depend on the selected model."
+  },
+  "actions": {
+    "generate": "Generate now",
+    "submitting": "Submitting",
+    "queued": "Your creation is queued. Progress will update automatically.",
+    "download": "Download video",
+    "modelSettings": "Model settings",
+    "configureNow": "Configure now"
+  },
+  "preview": {
+    "title": "Current creation",
+    "subtitle": "Latest task and output preview",
+    "imageAlt": "Video key image preview",
+    "generating": "Generating video",
+    "emptyTitle": "Waiting for your first idea",
+    "emptyHint": "Describe your idea and upload a key image. The generated result will appear here in real time.",
+    "failedFallback": "Video generation failed. Check the model configuration and references, then try again."
+  },
+  "history": {
+    "title": "Creation history",
+    "subtitle": "Inspiration videos in the current personal or organization workspace",
+    "count": "{count} total",
+    "emptyTitle": "No creations yet",
+    "emptyHint": "Complete the settings above and generate a video to save it here.",
+    "references": "{count} refs"
+  },
+  "status": {
+    "queued": "Queued",
+    "processing": "Generating",
+    "settling": "Settling",
+    "completed": "Completed",
+    "failed": "Failed",
+    "canceled": "Canceled",
+    "dismissed": "Dismissed"
+  },
+  "models": {
+    "emptyTitle": "No video model is configured",
+    "emptyHint": "Add a video model and provider key in Settings before creating a video."
+  },
+  "errors": {
+    "loadFailed": "Failed to load the Inspiration Video workspace",
+    "modelsFailed": "Failed to load video models",
+    "submitFailed": "Failed to submit the creation"
+  }
+}

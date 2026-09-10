@@ -1,0 +1,81 @@
+{
+  "eyebrow": "AI 多素材视频创作",
+  "title": "灵感视频",
+  "subtitle": "把文字创意、主画面、参考图片与声音放进同一个创作台，快速生成一条可直接预览和下载的视频。",
+  "composer": {
+    "title": "描述你的灵感",
+    "subtitle": "文案决定内容，素材帮助模型理解画面与声音",
+    "mode": "视频生成"
+  },
+  "prompt": {
+    "label": "创意描述",
+    "placeholder": "例如：夜色中的未来城市，镜头从霓虹街道缓慢上升，雨滴掠过镜头，人物回头望向远处的飞行器。请描述主体、动作、环境、镜头和声音氛围……"
+  },
+  "materials": {
+    "title": "@ 素材参考",
+    "hint": "主图决定首帧；参考图与参考声音用于补充人物、风格和声音氛围。",
+    "primary": "主图 / 首帧",
+    "required": "必选",
+    "replace": "更换图片",
+    "uploadPrimary": "上传主图或拖入图片",
+    "references": "参考素材",
+    "referenceLimit": "参考图最多 8 张，声音最多 3 个",
+    "addImage": "参考图",
+    "addAudio": "参考声音",
+    "mobileCloudOnly": "多素材参考当前仅支持移动云 Seedance 2.0 模型；其他模型可使用文案和主图。",
+    "modelChangedNotice": "已切换到普通视频模型，参考图和参考声音已清空。"
+  },
+  "parameters": {
+    "model": "视频模型",
+    "selectModel": "请选择视频模型",
+    "ratio": "画面比例",
+    "resolution": "清晰度",
+    "duration": "时长",
+    "seconds": "{duration} 秒",
+    "nativeAudio": "同时生成原生声音",
+    "nativeAudioHint": "有参考声音时会自动开启；具体效果取决于所选模型。"
+  },
+  "actions": {
+    "generate": "立即生成",
+    "submitting": "正在提交",
+    "queued": "创作任务已进入队列，生成进度会自动更新。",
+    "download": "下载视频",
+    "modelSettings": "模型设置",
+    "configureNow": "立即配置"
+  },
+  "preview": {
+    "title": "本次创作",
+    "subtitle": "最新任务与结果预览",
+    "imageAlt": "视频主图预览",
+    "generating": "正在生成视频",
+    "emptyTitle": "等待你的第一个灵感",
+    "emptyHint": "填写创意描述并上传主图后，生成结果会在这里实时出现。",
+    "failedFallback": "视频生成失败，请检查模型配置或素材后重试。"
+  },
+  "history": {
+    "title": "创作记录",
+    "subtitle": "当前个人或组织空间中的灵感视频",
+    "count": "共 {count} 条",
+    "emptyTitle": "还没有创作记录",
+    "emptyHint": "完成上方设置并开始生成，你的视频会保存在这里。",
+    "references": "{count} 个参考"
+  },
+  "status": {
+    "queued": "排队中",
+    "processing": "生成中",
+    "settling": "结算中",
+    "completed": "已完成",
+    "failed": "失败",
+    "canceled": "已取消",
+    "dismissed": "已忽略"
+  },
+  "models": {
+    "emptyTitle": "尚未配置可用的视频模型",
+    "emptyHint": "请先前往设置中心添加视频模型与提供商密钥。"
+  },
+  "errors": {
+    "loadFailed": "灵感视频工作区加载失败",
+    "modelsFailed": "视频模型加载失败",
+    "submitFailed": "创作任务提交失败"
+  }
+}

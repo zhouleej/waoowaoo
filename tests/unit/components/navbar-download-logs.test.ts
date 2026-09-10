@@ -49,6 +49,7 @@ vi.mock('@/i18n/navigation', () => ({
 
 const messages = {
   nav: {
+    inspirationVideo: 'Inspiration video',
     workspace: '工作区',
     assetHub: '资产中心',
     profile: '设置中心',
