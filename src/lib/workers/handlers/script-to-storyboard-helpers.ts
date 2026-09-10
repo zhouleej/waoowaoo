@@ -250,9 +250,9 @@ export async function persistStoryboardOutputs(params: {
       storyboardIdByRef.set(storyboard.id, storyboard.id)
       storyboardIdByRef.set(clipEntry.clipId, storyboard.id)
 
-      await tx.novelPromotionPanel.deleteMany({
-        where: { storyboardId: storyboard.id },
-      })
+      if (params.voiceLineRows !== null) {
+        await tx.novelPromotionPanel.deleteMany({ where: { storyboardId: storyboard.id } })
+      }
 
       const panelModel = tx.novelPromotionPanel as unknown as {
         create: (args: {
@@ -277,7 +277,7 @@ export async function persistStoryboardOutputs(params: {
       const persistedPanels: PersistedStoryboard['panels'] = []
       for (let i = 0; i < clipEntry.finalPanels.length; i += 1) {
         const panel = clipEntry.finalPanels[i]
-        const created = await panelModel.create({
+        const createArgs = {
           data: {
             storyboardId: storyboard.id,
             panelIndex: i,
@@ -302,7 +302,13 @@ export async function persistStoryboardOutputs(params: {
             characters: true,
             props: true,
           },
-        })
+        } as const
+        const created = params.voiceLineRows === null
+          ? await tx.novelPromotionPanel.upsert({
+            where: { storyboardId_panelIndex: { storyboardId: storyboard.id, panelIndex: i } },
+            create: createArgs.data, update: createArgs.data, select: createArgs.select,
+          })
+          : await panelModel.create(createArgs)
         panelIdByStoryboardRef.set(`${storyboard.id}:${created.panelIndex}`, created.id)
         panelIdByStoryboardRef.set(`${clipEntry.clipId}:${created.panelIndex}`, created.id)
         persistedPanels.push(created)

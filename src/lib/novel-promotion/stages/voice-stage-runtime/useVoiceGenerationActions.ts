@@ -206,6 +206,15 @@ export function useVoiceGenerationActions({
       }
 
       const taskResults = Array.isArray(data.results) ? data.results : []
+      if (Array.isArray(data.results)) {
+        const acceptedIds = new Set(data.results.map((item) => item.lineId))
+        setPendingVoiceGenerationByLineId((prev) => {
+          const next = { ...prev }
+          for (const id of lineIds) if (!acceptedIds.has(id)) delete next[id]
+          return next
+        })
+      }
+      if (data.error) alert(`${t('errors.batchFailed')}: ${data.error}`)
       if (taskResults.length > 0) {
         for (const result of taskResults) {
           if (!result?.lineId || !result?.taskId) continue

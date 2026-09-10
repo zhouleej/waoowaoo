@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { requireProjectAuthLight, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError, getRequestId } from '@/lib/api-errors'
 import { submitTask } from '@/lib/task/submitter'
+import { collectBatchSubmissions } from '@/lib/task/batch-submit'
 import { resolveRequiredTaskLocale } from '@/lib/task/resolve-locale'
 import { TASK_TYPE } from '@/lib/task/types'
 import { buildDefaultTaskBillingInfo } from '@/lib/billing'
@@ -254,8 +255,8 @@ export const POST = apiHandler(async (
       return NextResponse.json({ tasks: [], total: 0 })
     }
 
-    const results = await Promise.all(
-      panels.map(async (panel) =>
+    const results = await collectBatchSubmissions(
+      panels, async (panel) =>
         submitTask({
           userId: session.user.id,
           locale,
@@ -271,10 +272,9 @@ export const POST = apiHandler(async (
           dedupeKey: `video_panel:${panel.id}`,
           billingInfo: buildVideoPanelBillingInfoOrThrow(body),
         }),
-      ),
     )
 
-    return NextResponse.json({ tasks: results, total: panels.length })
+    return NextResponse.json({ tasks: results.accepted, total: panels.length, rejected: results.rejected })
   }
 
   const storyboardId = typeof body.storyboardId === 'string' ? body.storyboardId : null

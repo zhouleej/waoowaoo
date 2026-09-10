@@ -87,10 +87,13 @@ export function useWorkspaceVideoActions({
     }
 
     try {
-      await batchGenerateVideosMutation.mutateAsync({
+      const result = await batchGenerateVideosMutation.mutateAsync({
         ...options,
         videoModel: normalizedVideoModel,
       })
+      if (result.rejected?.length) {
+        alert(`${t('execution.batchVideoFailed')}: ${result.tasks?.length || 0}/${result.total}\n${result.rejected.map((item: { id: string; message: string }) => `${item.id}: ${item.message}`).join('\n')}`)
+      }
     } catch (err: unknown) {
       if (isAbortError(err)) {
         _ulogInfo(t('execution.requestAborted'))

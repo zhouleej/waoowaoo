@@ -670,6 +670,19 @@ describe('api contract - direct submit routes (behavior)', () => {
     expect(DIRECT_CASES.length).toBe(20)
   })
 
+  it('batch video submission reports accepted and rejected targets separately', async () => {
+    prismaMock.novelPromotionPanel.findMany.mockResolvedValueOnce([{ id: 'panel-a' }, { id: 'panel-b' }] as never)
+    submitTaskMock.mockResolvedValueOnce({ taskId: 'task-a', async: true })
+    submitTaskMock.mockRejectedValueOnce(new Error('quota exceeded'))
+    const { POST } = await import('@/app/api/novel-promotion/[projectId]/generate-video/route')
+    const response = await POST(buildMockRequest({ path: '/api/novel-promotion/project-1/generate-video', method: 'POST',
+      body: { all: true, episodeId: 'episode-1', videoModel: 'ark::doubao-seedance-2-0-260128', locale: 'zh' },
+    }), { params: Promise.resolve({ projectId: 'project-1' }) })
+    expect(await response.json()).toEqual({ tasks: [{ taskId: 'task-a', async: true }], total: 2,
+      rejected: [{ id: 'panel-b', message: 'quota exceeded' }],
+    })
+  })
+
   for (const routeCase of DIRECT_CASES) {
     it(`${routeCase.routeFile} -> returns 401 when unauthenticated`, async () => {
       authState.authenticated = false

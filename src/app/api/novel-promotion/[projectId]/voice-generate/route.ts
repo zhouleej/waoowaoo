@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { requireProjectAuthLight, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError, getRequestId } from '@/lib/api-errors'
 import { submitTask } from '@/lib/task/submitter'
+import { collectBatchSubmissions } from '@/lib/task/batch-submit'
 import { resolveRequiredTaskLocale } from '@/lib/task/resolve-locale'
 import { TASK_TYPE } from '@/lib/task/types'
 import { buildDefaultTaskBillingInfo } from '@/lib/billing'
@@ -249,8 +250,8 @@ export const POST = apiHandler(async (
     })
   }
 
-  const results = await Promise.all(
-    voiceLines.map(async (line) => {
+  const batch = await collectBatchSubmissions(
+    voiceLines, async (line) => {
       const payload = {
         episodeId,
         lineId: line.id,
@@ -273,8 +274,9 @@ export const POST = apiHandler(async (
       return {
         lineId: line.id,
         taskId: result.taskId}
-    }),
+    },
   )
+  const results = batch.accepted
 
   if (all) {
     return NextResponse.json({
@@ -282,9 +284,12 @@ export const POST = apiHandler(async (
       async: true,
       results,
       taskIds: results.map((item) => item.taskId),
+      rejected: batch.rejected,
+      error: batch.rejected.length ? batch.rejected.map((item) => `${item.id}: ${item.message}`).join('\n') : undefined,
       total: results.length})
   }
 
+  if (!results.length) throw new ApiError('EXTERNAL_ERROR', { message: batch.rejected[0]?.message || 'Voice submission failed' })
   return NextResponse.json({
     success: true,
     async: true,
