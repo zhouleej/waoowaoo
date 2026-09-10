@@ -26,7 +26,7 @@ export const GET = apiHandler(async (
   // 获取基础项目信息
   const project = await prisma.project.findUnique({
     where: { id: projectId },
-    include: { user: true }
+    include: { user: { select: { id: true, name: true, image: true } } }
   })
 
   if (!project) {

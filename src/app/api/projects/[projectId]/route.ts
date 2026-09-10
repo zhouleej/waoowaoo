@@ -1,7 +1,8 @@
 import { logInfo as _ulogInfo, logError as _ulogError } from '@/lib/logging/core'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { addSignedUrlsToProject, deleteObjects } from '@/lib/storage'
+import { addSignedUrlsToProject } from '@/lib/storage'
+import { retainProjectMedia } from '@/lib/media/retention'
 import { resolveStorageKeyFromMediaValue } from '@/lib/media/service'
 import { logProjectAction } from '@/lib/logging/semantic'
 import { requireProjectAuthLight, isErrorResponse } from '@/lib/api-auth'
@@ -70,7 +71,7 @@ export const GET = apiHandler(async (
   const project = await prisma.project.findUnique({
     where: { id: projectId },
     include: {
-      user: true
+      user: { select: { id: true, name: true, image: true } }
     }
   })
 
@@ -250,25 +251,22 @@ export const DELETE = apiHandler(async (
   // 1. 先收集所有 COS 文件 Key
   _ulogInfo(`[DELETE] 开始删除项目: ${project.name} (${projectId})`)
   const projectVoiceIds = await collectProjectBailianManagedVoiceIds(projectId)
-  const voiceCleanupResult = await cleanupUnreferencedBailianVoices({
-    voiceIds: projectVoiceIds,
-    scope: {
-      userId: session.user.id,
-      excludeProjectId: projectId,
-    },
-  })
   const cosKeys = await collectProjectCOSKeys(projectId)
-
-  // 2. 批量删除 COS 文件
-  let cosResult = { success: 0, failed: 0 }
-  if (cosKeys.length > 0) {
-    _ulogInfo(`[DELETE] 正在删除 ${cosKeys.length} 个 COS 文件...`)
-    cosResult = await deleteObjects(cosKeys)
-  }
+  const retentionId = await retainProjectMedia(projectId, cosKeys)
+  const cosResult = { success: 0, failed: 0 }
 
   // 3. 删除数据库记录 (级联删除所有关联数据)
   await prisma.project.delete({
     where: { id: projectId }
+  })
+
+  // External voice deletion is best effort only after the database deletion.
+  const voiceCleanupResult = await cleanupUnreferencedBailianVoices({
+    voiceIds: projectVoiceIds,
+    scope: { userId: session.user.id, excludeProjectId: projectId },
+  }).catch((error) => {
+    _ulogError('[DELETE] 音色清理失败，保留远端音色', error)
+    return { deletedVoiceIds: [], skippedReferencedVoiceIds: projectVoiceIds }
   })
 
   logProjectAction(
@@ -294,6 +292,8 @@ export const DELETE = apiHandler(async (
     success: true,
     cosFilesDeleted: cosResult.success,
     cosFilesFailed: cosResult.failed,
+    retainedMediaCount: new Set(cosKeys).size,
+    retentionId,
     bailianVoicesDeleted: voiceCleanupResult.deletedVoiceIds.length,
     bailianVoicesSkippedReferenced: voiceCleanupResult.skippedReferencedVoiceIds.length,
   })

@@ -315,6 +315,12 @@ export async function persistStoryboardOutputs(params: {
       })
     }
 
+    // null means this step did not analyze dialogue; [] explicitly replaces it
+    // with no lines. A local storyboard retry must never clear the episode.
+    if (params.voiceLineRows === null) {
+      return { persistedStoryboards: persisted, createdVoiceLines: [] }
+    }
+
     const voiceLineModel = tx.novelPromotionVoiceLine as unknown as {
       upsert?: (args: unknown) => Promise<{ id: string }>
       create: (args: unknown) => Promise<{ id: string }>
