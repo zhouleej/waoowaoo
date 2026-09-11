@@ -16,6 +16,7 @@ import {
 import { TaskTerminatedError } from '@/lib/task/errors'
 import { isTaskActive, trySetTaskExternalId } from '@/lib/task/service'
 import { type TaskJobData } from '@/lib/task/types'
+import { getErrorSpec } from '@/lib/errors/codes'
 import { reportTaskProgress } from './shared'
 import { prisma } from '@/lib/prisma'
 
@@ -132,16 +133,24 @@ export async function waitExternalResult(
     }
 
     if (status.status === 'failed') {
+      const errorCode = status.errorCode || 'GENERATION_FAILED'
+      const retryable = status.errorRetryable ?? getErrorSpec(errorCode).retryable
       logger.error({
         message: status.error || 'external task failed',
-        errorCode: 'EXTERNAL_ERROR',
-        retryable: true,
+        errorCode,
+        retryable,
         durationMs: Date.now() - startAt,
         details: {
           externalId,
         },
       })
-      throw new Error(status.error || `External task failed: ${externalId}`)
+      const error = new Error(status.error || `External task failed: ${externalId}`) as Error & {
+        code?: string
+        retryable?: boolean
+      }
+      error.code = errorCode
+      error.retryable = retryable
+      throw error
     }
 
     const elapsed = Date.now() - startAt

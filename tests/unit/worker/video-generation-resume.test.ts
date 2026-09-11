@@ -60,6 +60,10 @@ function buildJob(): Job<TaskJobData> {
 describe('worker utils video generation resume', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    prismaMock.task.findUnique.mockReset()
+    asyncPollMock.pollAsyncTask.mockReset()
+    generatorApiMock.generateImage.mockReset()
+    generatorApiMock.generateVideo.mockReset()
   })
 
   it('continues polling from existing externalId without re-submitting generation', async () => {
@@ -113,6 +117,31 @@ describe('worker utils video generation resume', () => {
     expect(prismaMock.task.findUnique).not.toHaveBeenCalled()
     expect(asyncPollMock.pollAsyncTask).not.toHaveBeenCalled()
     expect(generatorApiMock.generateImage).toHaveBeenCalledTimes(1)
+  })
+
+  it('preserves an external polling failure code for task lifecycle handling', async () => {
+    const externalId = 'MAAS:VIDEO:maas-seedance:task-sensitive'
+    prismaMock.task.findUnique.mockResolvedValueOnce({ externalId })
+    asyncPollMock.pollAsyncTask.mockResolvedValueOnce({
+      status: 'failed',
+      error: 'The input image did not pass the content review.',
+      errorCode: 'SENSITIVE_CONTENT',
+      errorRetryable: false,
+    })
+
+    const generation = resolveVideoSourceFromGeneration(buildJob(), {
+      userId: 'user-1',
+      modelId: 'maas-seedance::doubao-seedance-2.0',
+      imageUrl: 'https://media.example.com/first.png',
+      options: { prompt: 'animate this frame' },
+    })
+
+    await expect(generation).rejects.toMatchObject({
+      code: 'SENSITIVE_CONTENT',
+      message: 'The input image did not pass the content review.',
+      retryable: false,
+    })
+    expect(generatorApiMock.generateVideo).not.toHaveBeenCalled()
   })
 
   it('preserves a non-retryable video generation error code for task lifecycle handling', async () => {

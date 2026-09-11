@@ -179,6 +179,38 @@ def normalize_status(raw: Any) -> str:
     return "processing"
 
 
+def normalize_task_failure(task_info: dict[str, Any]) -> dict[str, Any]:
+    raw_error = task_info.get("error") or task_info.get("message") or "Maas Seedance task failed"
+    upstream_code: str | None = None
+    message: str
+
+    def compact(value: Any, fallback: str = "") -> str:
+        normalized = " ".join(str(value).split())[:1000]
+        return normalized or fallback
+
+    if isinstance(raw_error, dict):
+        raw_code = raw_error.get("code") or raw_error.get("type")
+        if raw_code is not None:
+            upstream_code = compact(raw_code) or None
+        raw_message = raw_error.get("message") or raw_error.get("detail") or raw_error.get("reason")
+        message = compact(raw_message or upstream_code, "Maas Seedance task failed")
+    else:
+        message = compact(raw_error, "Maas Seedance task failed")
+
+    combined = f"{upstream_code or ''} {message}".lower()
+    sensitive = any(marker in combined for marker in (
+        "sensitive",
+        "privacyinformation",
+        "content policy",
+    ))
+    return {
+        "error": message,
+        "error_code": "SENSITIVE_CONTENT" if sensitive else "GENERATION_FAILED",
+        "upstream_error_code": upstream_code,
+        "retryable": not sensitive,
+    }
+
+
 VIDEO_TMP_DIR.mkdir(parents=True, exist_ok=True)
 client = MaasSeedanceClient(
     maas_base_url=MAAS_BASE_URL,
@@ -378,7 +410,16 @@ def get_video_generation(
     if status == "succeeded":
         response["video_url"] = f"/v1/videos/generations/{task_id}/content"
     if status == "failed":
-        response["error"] = task_info.get("error") or task_info.get("message") or "Maas Seedance task failed"
+        failure = normalize_task_failure(task_info)
+        response.update(failure)
+        logger.warning(
+            "MAAS Seedance task failed: task_id=%s raw_status=%s error_code=%s upstream_error_code=%s message=%s",
+            task_id,
+            raw_status,
+            failure["error_code"],
+            failure["upstream_error_code"],
+            failure["error"],
+        )
     return response
 
 

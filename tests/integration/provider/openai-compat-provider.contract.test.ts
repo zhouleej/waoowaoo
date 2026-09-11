@@ -220,6 +220,41 @@ describe('provider contract - openai compatible media template', () => {
     })
   })
 
+  it('preserves a structured MAAS task failure returned by the adapter', async () => {
+    getProviderConfigMock.mockResolvedValue({
+      id: 'maas-seedance',
+      apiKey: 'maas-local-key',
+      baseUrl: server!.baseUrl,
+    })
+    server!.defineScenario({
+      method: 'GET',
+      path: '/v1/videos/generations/maas_task_failed',
+      mode: 'fatal_error',
+      submitResponse: {
+        status: 200,
+        body: {
+          id: 'maas_task_failed',
+          status: 'failed',
+          error: {
+            code: 'InputImageSensitiveContentDetected.PrivacyInformation',
+            message: 'The input image did not pass the content review.',
+          },
+        },
+      },
+    })
+
+    const result = await pollAsyncTask(
+      'MAAS:VIDEO:maas-seedance:maas_task_failed',
+      'user-local',
+    )
+
+    expect(result).toEqual({
+      status: 'failed',
+      error: 'InputImageSensitiveContentDetected.PrivacyInformation: The input image did not pass the content review.',
+      errorCode: 'SENSITIVE_CONTENT',
+    })
+  })
+
   it('preserves the MAAS input-safety rejection instead of replacing it with an URL validation error', async () => {
     getProviderConfigMock.mockResolvedValue({
       id: 'maas-seedance',

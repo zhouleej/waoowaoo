@@ -21,6 +21,7 @@ import { queryGeminiBatchStatus, querySeedanceVideoStatus, queryGoogleVideoStatu
 import { getProviderConfig, getUserModels } from './api-config'
 import { buildRenderedTemplateRequest, buildTemplateVariables, normalizeResponseJson, readJsonPath } from './openai-compat-template-runtime'
 import { composeModelKey } from './model-config-contract'
+import { isKnownErrorCode, type UnifiedErrorCode } from './errors/codes'
 
 const OPENAI_COMPAT_PROVIDER_PREFIX = 'openai-compatible:'
 const PROVIDER_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -33,6 +34,8 @@ export interface PollResult {
     actualVideoTokens?: number
     downloadHeaders?: Record<string, string>
     error?: string
+    errorCode?: UnifiedErrorCode
+    errorRetryable?: boolean
 }
 
 function getErrorMessage(error: unknown): string {
@@ -42,6 +45,52 @@ function getErrorMessage(error: unknown): string {
         if (typeof candidate === 'string') return candidate
     }
     return '查询异常'
+}
+
+function readMaasErrorText(value: unknown, depth = 0): string {
+    if (depth > 3 || value === null || value === undefined) return ''
+    if (typeof value === 'string') return value.trim()
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+    if (typeof value !== 'object') return ''
+
+    const record = value as Record<string, unknown>
+    const code = typeof record.code === 'string' ? record.code.trim() : ''
+    const message = readMaasErrorText(record.message ?? record.detail ?? record.reason, depth + 1)
+    if (code && message) return `${code}: ${message}`
+    if (message) return message
+    if (code) return code
+
+    const nested = readMaasErrorText(record.error ?? record.cause, depth + 1)
+    if (nested) return nested
+
+    try {
+        return JSON.stringify(value).slice(0, 1000)
+    } catch {
+        return ''
+    }
+}
+
+function resolveMaasFailure(payload: Record<string, unknown>, taskId: string): Pick<PollResult, 'error' | 'errorCode' | 'errorRetryable'> {
+    const upstreamError = readMaasErrorText(payload.error ?? payload.message ?? payload.detail)
+    const upstreamCode = typeof payload.upstream_error_code === 'string'
+        ? payload.upstream_error_code.trim()
+        : typeof payload.error_code === 'string'
+            ? payload.error_code.trim()
+            : ''
+    const combined = `${upstreamCode} ${upstreamError}`.toLowerCase()
+    const errorCode: UnifiedErrorCode = isKnownErrorCode(payload.error_code)
+        ? payload.error_code
+        : combined.includes('sensitive')
+            || combined.includes('privacyinformation')
+            || combined.includes('content policy')
+            ? 'SENSITIVE_CONTENT'
+            : 'GENERATION_FAILED'
+
+    return {
+        error: upstreamError || `MAAS Seedance task failed: ${taskId}`,
+        errorCode,
+        ...(typeof payload.retryable === 'boolean' ? { errorRetryable: payload.retryable } : {}),
+    }
 }
 
 /**
@@ -377,9 +426,7 @@ async function pollMaasSeedanceTask(
     if (status === 'failed' || status === 'cancelled' || status === 'canceled') {
         return {
             status: 'failed',
-            error: typeof payload.error === 'string' && payload.error.trim()
-                ? payload.error.trim()
-                : `MAAS Seedance task failed: ${taskId}`,
+            ...resolveMaasFailure(payload, taskId),
         }
     }
     return { status: 'pending' }

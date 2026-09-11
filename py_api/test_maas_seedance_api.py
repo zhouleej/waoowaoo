@@ -54,6 +54,9 @@ class FakeMaasSeedanceClient:
             return "unused"
         raise FakeAICCException("create seedance task error")
 
+    def query_video_generation_task(self, _task_id: str) -> dict[str, object]:
+        return {"status": "processing"}
+
 
 fake_maas_seedance = ModuleType("maas_seedance")
 fake_maas_seedance.MaasSeedanceClient = FakeMaasSeedanceClient
@@ -150,6 +153,31 @@ class MaasSeedanceApiTest(unittest.TestCase):
 
         self.assertEqual(raised.exception.status_code, 422)
         self.assertEqual(raised.exception.detail["code"], "SENSITIVE_CONTENT")
+
+    def test_preserves_structured_failure_reason_from_status_query(self) -> None:
+        task_info = {
+            "status": "failed",
+            "error": {
+                "code": "InputImageSensitiveContentDetected.PrivacyInformation",
+                "message": "The input image did not pass the content review.",
+            },
+        }
+
+        with patch.object(adapter.client, "query_video_generation_task", return_value=task_info):
+            response = adapter.get_video_generation(
+                "task-sensitive",
+                f"Bearer {adapter.INTERNAL_API_KEY}",
+            )
+
+        self.assertEqual(response, {
+            "id": "task-sensitive",
+            "status": "failed",
+            "raw_status": "failed",
+            "error": "The input image did not pass the content review.",
+            "error_code": "SENSITIVE_CONTENT",
+            "upstream_error_code": "InputImageSensitiveContentDetected.PrivacyInformation",
+            "retryable": False,
+        })
 
 
 if __name__ == "__main__":
