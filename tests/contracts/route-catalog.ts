@@ -77,6 +77,7 @@ const ROUTE_FILES = [
   'src/app/api/files/[...path]/route.ts',
   'src/app/api/inspiration-video/generate/route.ts',
   'src/app/api/inspiration-video/route.ts',
+  'src/app/api/storage/proxy/route.ts',
   'src/app/api/storage/sign/route.ts',
   'src/app/api/novel-promotion/[projectId]/ai-create-character/route.ts',
   'src/app/api/novel-promotion/[projectId]/ai-create-location/route.ts',

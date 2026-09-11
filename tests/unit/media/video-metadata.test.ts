@@ -9,8 +9,8 @@ vi.mock('@/lib/storage', () => ({ getObjectBuffer: async () => Buffer.from('vide
 vi.mock('@/lib/media/service', () => ({ ensureMediaObjectFromStorageKey: state.save }))
 vi.mock('mediabunny', () => ({
   ALL_FORMATS: ['all-formats'],
-  FilePathSource: class FilePathSource {
-    constructor(readonly filePath: string) {}
+  BufferSource: class BufferSource {
+    constructor(readonly buffer: Uint8Array) {}
   },
   Input: class Input {
     constructor(options: unknown) {
@@ -31,7 +31,10 @@ describe('generated video metadata', () => {
   it('persists measured duration rather than requested duration', async () => {
     expect(await inspectGeneratedVideo('video.mp4')).toEqual({ durationMs: 7250, width: 1280, height: 720, fps: 24 })
     expect(state.save).toHaveBeenCalledWith('video.mp4', expect.objectContaining({ durationMs: 7250, sizeBytes: 5 }))
-    expect(state.open).toHaveBeenCalledWith(expect.objectContaining({ formats: ['all-formats'] }))
+    expect(state.open).toHaveBeenCalledWith(expect.objectContaining({
+      formats: ['all-formats'],
+      source: expect.objectContaining({ buffer: Buffer.from('video') }),
+    }))
     expect(state.dispose).toHaveBeenCalledOnce()
   })
   it('rejects an output without measurable duration', async () => {

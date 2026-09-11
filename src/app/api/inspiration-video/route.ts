@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUserAuth, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
-import { getSignedUrl } from '@/lib/storage'
+import { getStorageProxyUrl } from '@/lib/storage'
 import { resolveInspirationVideoWorkspace } from '@/lib/inspiration-video/workspace'
 import { actOnCreation } from '@/lib/inspiration-video/actions'
 
@@ -109,17 +109,17 @@ export const GET = apiHandler(async (request: NextRequest) => {
         errorCode: task?.errorCode || null,
         errorMessage: task?.errorMessage || null,
         primaryImage: primaryImage
-          ? { name: primaryImage.originalName, url: getSignedUrl(primaryImage.storageKey, 7_200) }
+          ? { name: primaryImage.originalName, url: getStorageProxyUrl(primaryImage.storageKey, 7_200) }
           : null,
         referenceImages: referenceImages.map((asset) => ({
           name: asset.originalName,
-          url: getSignedUrl(asset.storageKey, 7_200),
+          url: getStorageProxyUrl(asset.storageKey, 7_200),
         })),
         referenceAudios: referenceAudios.map((asset) => ({
           name: asset.originalName,
-          url: getSignedUrl(asset.storageKey, 7_200),
+          url: getStorageProxyUrl(asset.storageKey, 7_200),
         })),
-        videoUrl: creation.outputVideoKey ? getSignedUrl(creation.outputVideoKey, 7_200) : null,
+        videoUrl: creation.outputVideoKey ? getStorageProxyUrl(creation.outputVideoKey, 7_200) : null,
       }
     }),
   })

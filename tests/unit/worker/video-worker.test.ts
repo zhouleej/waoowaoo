@@ -73,6 +73,7 @@ const prismaMock = vi.hoisted(() => ({
 }))
 const storageMock = vi.hoisted(() => ({
   getSignedUrl: vi.fn((key: string) => `/api/storage/sign?key=${encodeURIComponent(key)}`),
+  getStorageProxyUrl: vi.fn((key: string) => `/api/storage/proxy?key=${encodeURIComponent(key)}&expires=proxy`),
 }))
 const mobileCloudAssetClientMock = vi.hoisted(() => ({
   getAsset: vi.fn(),
@@ -109,6 +110,7 @@ vi.mock('@/lib/workers/utils', () => utilsMock)
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock }))
 vi.mock('@/lib/storage', () => storageMock)
 vi.mock('@/lib/media/outbound-image', () => outboundImageMock)
+vi.mock('@/lib/env', () => ({ getPublicBaseUrl: () => 'https://app.example' }))
 vi.mock('@/lib/mobile-cloud-maas/asset-client', () => ({
   mobileCloudMaasAssetClient: mobileCloudAssetClientMock,
 }))
@@ -447,8 +449,8 @@ describe('worker video processor behavior', () => {
         modelId: 'maas-seedance::doubao-seedance-2.0',
         options: expect.objectContaining({
           prompt: 'A slow camera push through a rainy neon street',
-          referenceImages: ['/api/storage/sign?key=inspiration%2Freference.jpg'],
-          referenceAudios: ['/api/storage/sign?key=inspiration%2Freference.mp3'],
+          referenceImages: ['https://app.example/api/storage/proxy?key=inspiration%2Freference.jpg&expires=proxy'],
+          referenceAudios: ['https://app.example/api/storage/proxy?key=inspiration%2Freference.mp3&expires=proxy'],
           generateAudio: true,
         }),
       }),

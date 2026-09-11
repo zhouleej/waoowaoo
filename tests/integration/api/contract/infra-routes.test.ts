@@ -14,6 +14,7 @@ const loggingMock = vi.hoisted(() => ({
 
 const storageMock = vi.hoisted(() => ({
   getSignedObjectUrl: vi.fn(async (key: string, ttl: number) => `https://signed.example/${key}?expires=${ttl}`),
+  getObjectBuffer: vi.fn(async () => Buffer.from('0123456789')),
 }))
 
 vi.mock('@/lib/api-auth', () => {
@@ -49,6 +50,7 @@ vi.mock('@/lib/storage', () => storageMock)
 describe('api contract - infra routes (behavior)', () => {
   const routes = ROUTE_CATALOG.filter((entry) => entry.contractGroup === 'infra-routes')
   const originalUploadDir = process.env.UPLOAD_DIR
+  const originalStorageProxySecret = process.env.STORAGE_PROXY_SECRET
   const tempState = {
     uploadDirAbs: '',
     uploadDirRel: '',
@@ -57,6 +59,7 @@ describe('api contract - infra routes (behavior)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     authState.authenticated = false
+    process.env.STORAGE_PROXY_SECRET = 'storage-proxy-test-secret'
     vi.resetModules()
   })
 
@@ -71,6 +74,11 @@ describe('api contract - infra routes (behavior)', () => {
       delete process.env.UPLOAD_DIR
     } else {
       process.env.UPLOAD_DIR = originalUploadDir
+    }
+    if (originalStorageProxySecret === undefined) {
+      delete process.env.STORAGE_PROXY_SECRET
+    } else {
+      process.env.STORAGE_PROXY_SECRET = originalStorageProxySecret
     }
   })
 
@@ -87,6 +95,7 @@ describe('api contract - infra routes (behavior)', () => {
       'src/app/api/admin/download-logs/route.ts',
       'src/app/api/cos/image/route.ts',
       'src/app/api/files/[...path]/route.ts',
+      'src/app/api/storage/proxy/route.ts',
       'src/app/api/storage/sign/route.ts',
       'src/app/api/system/boot-id/route.ts',
     ]))
@@ -146,6 +155,41 @@ describe('api contract - infra routes (behavior)', () => {
     expect(storageMock.getSignedObjectUrl).toHaveBeenCalledWith('folder/a.png', 3600)
     expect(res.status).toBe(307)
     expect(res.headers.get('location')).toBe('https://signed.example/folder/a.png?expires=3600')
+  })
+
+  it('GET /api/storage/proxy serves a signed object through the application origin', async () => {
+    const { getStorageProxyUrl } = await import('@/lib/storage/proxy-url')
+    const path = getStorageProxyUrl('folder/video.mp4', 600)
+    const mod = await import('@/app/api/storage/proxy/route')
+    const req = buildMockRequest({ path, method: 'GET' })
+
+    const res = await mod.GET(req, { params: Promise.resolve({}) })
+
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toBe('video/mp4')
+    expect(res.headers.get('accept-ranges')).toBe('bytes')
+    expect(await res.text()).toBe('0123456789')
+    expect(storageMock.getObjectBuffer).toHaveBeenCalledWith('folder/video.mp4')
+  })
+
+  it('GET /api/storage/proxy supports byte ranges and rejects a tampered signature', async () => {
+    const { getStorageProxyUrl } = await import('@/lib/storage/proxy-url')
+    const path = getStorageProxyUrl('folder/video.mp4', 600)
+    const mod = await import('@/app/api/storage/proxy/route')
+    const rangeReq = buildMockRequest({
+      path,
+      method: 'GET',
+      headers: { range: 'bytes=2-5' },
+    })
+
+    const rangeRes = await mod.GET(rangeReq, { params: Promise.resolve({}) })
+    expect(rangeRes.status).toBe(206)
+    expect(rangeRes.headers.get('content-range')).toBe('bytes 2-5/10')
+    expect(await rangeRes.text()).toBe('2345')
+
+    const tamperedReq = buildMockRequest({ path: `${path}0`, method: 'GET' })
+    const tamperedRes = await mod.GET(tamperedReq, { params: Promise.resolve({}) })
+    expect(tamperedRes.status).toBe(403)
   })
 
   it('GET /api/system/boot-id returns the current server boot id', async () => {

@@ -1,11 +1,11 @@
 import type { Job } from 'bullmq'
 import { getProviderKey } from '@/lib/api-config'
 import { getPublicBaseUrl } from '@/lib/env'
-import { normalizeToBase64ForGeneration, normalizeToOriginalMediaUrl } from '@/lib/media/outbound-image'
+import { normalizeToBase64ForGeneration } from '@/lib/media/outbound-image'
 import { resolveBuiltinCapabilitiesByModelKey } from '@/lib/model-capabilities/lookup'
 import { parseModelKeyStrict } from '@/lib/model-config-contract'
 import { prisma } from '@/lib/prisma'
-import { getSignedUrl } from '@/lib/storage'
+import { getStorageProxyUrl } from '@/lib/storage'
 import type { TaskJobData } from '@/lib/task/types'
 import { inspectGeneratedVideo } from '@/lib/media/video-metadata'
 import { reportTaskProgress } from '@/lib/workers/shared'
@@ -36,16 +36,21 @@ export async function handleInspirationVideoTask(job: Job<TaskJobData>) {
   const hasGenerateAudioOption = !builtinCapabilities
     || Array.isArray(builtinCapabilities.video?.generateAudioOptions)
   if (!primaryImage && builtinCapabilities?.video?.textToVideo !== true) throw new Error('INSPIRATION_VIDEO_PRIMARY_IMAGE_REQUIRED')
-  const primaryImageUrl = primaryImage ? getSignedUrl(primaryImage.storageKey, 7_200) : ''
+  const publicBaseUrl = getPublicBaseUrl()
+  const toPublicProxyUrl = (key: string) => new URL(getStorageProxyUrl(key, 7_200), publicBaseUrl).toString()
+  const toGenerationProxyUrl = (key: string) => usePublicMediaUrl
+    ? toPublicProxyUrl(key)
+    : getStorageProxyUrl(key, 7_200)
+  const primaryImageUrl = primaryImage ? getStorageProxyUrl(primaryImage.storageKey, 7_200) : ''
   const imageUrl = !primaryImage ? '' : usePublicMediaUrl
-    ? await normalizeToOriginalMediaUrl(primaryImageUrl, { absoluteBaseUrl: getPublicBaseUrl() })
+    ? new URL(primaryImageUrl, publicBaseUrl).toString()
     : await normalizeToBase64ForGeneration(primaryImageUrl)
   const referenceImages = creation.assets
     .filter((asset) => asset.kind === 'reference_image')
-    .map((asset) => getSignedUrl(asset.storageKey, 7_200))
+    .map((asset) => toGenerationProxyUrl(asset.storageKey))
   const referenceAudios = creation.assets
     .filter((asset) => asset.kind === 'reference_audio')
-    .map((asset) => getSignedUrl(asset.storageKey, 7_200))
+    .map((asset) => toGenerationProxyUrl(asset.storageKey))
 
   await reportTaskProgress(job, 15, {
     stage: 'inspiration_video_submit',
