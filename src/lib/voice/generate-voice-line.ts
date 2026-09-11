@@ -1,4 +1,5 @@
 import { logInfo as _ulogInfo } from '@/lib/logging/core'
+import { randomUUID } from 'node:crypto'
 import { fal } from '@fal-ai/client'
 import { prisma } from '@/lib/prisma'
 import { getAudioApiKey, getProviderConfig, getProviderKey, resolveModelSelectionOrSingle } from '@/lib/api-config'
@@ -166,6 +167,7 @@ export async function generateVoiceLine(params: {
   checkCancelled?: CheckCancelled
 }) {
   const checkCancelled = params.checkCancelled
+  await checkCancelled?.()
 
   const line = await prisma.novelPromotionVoiceLine.findUnique({
     where: { id: params.lineId },
@@ -176,6 +178,7 @@ export async function generateVoiceLine(params: {
       content: true,
       emotionPrompt: true,
       emotionStrength: true,
+      updatedAt: true,
     },
   })
   if (!line) {
@@ -265,17 +268,35 @@ export async function generateVoiceLine(params: {
     throw new Error(`AUDIO_PROVIDER_UNSUPPORTED: ${audioSelection.provider}`)
   }
 
-  const audioKey = `voice/${params.projectId}/${episodeId}/${line.id}.wav`
+  await checkCancelled?.()
+  const source = await prisma.novelPromotionVoiceLine.findUnique({
+    where: { id: line.id }, select: { updatedAt: true },
+  })
+  const sourceChanged = () => Object.assign(new Error('VOICE_SOURCE_CHANGED: 台词已修改，请按最新内容重新生成配音'), {
+    code: 'CONFLICT', retryable: false,
+  })
+  if (!source || source.updatedAt.getTime() !== line.updatedAt.getTime()) throw sourceChanged()
+
+  // Immutable output paths keep saved timelines and episode snapshots usable.
+  const audioKey = `voice/${params.projectId}/${episodeId}/${line.id}-${randomUUID()}.wav`
   const cosKey = await uploadObject(generated.audioData, audioKey)
 
   await checkCancelled?.()
 
-  await prisma.novelPromotionVoiceLine.update({
-    where: { id: line.id },
-    data: {
-      audioUrl: cosKey,
-      audioDuration: generated.audioDuration || null,
-    },
+  await prisma.$transaction(async (tx) => {
+    const saved = await tx.novelPromotionVoiceLine.updateMany({
+      where: { id: line.id, updatedAt: line.updatedAt },
+      data: {
+        audioUrl: cosKey,
+        audioMediaId: null,
+        audioDuration: generated.audioDuration || null,
+      },
+    })
+    if (saved.count !== 1) throw sourceChanged()
+    await tx.novelPromotionPanel.updateMany({
+      where: { matchedVoiceLines: { some: { id: line.id } } },
+      data: { lipSyncVideoUrl: null, lipSyncVideoMediaId: null, lipSyncTaskId: null },
+    })
   })
 
   const signedUrl = getSignedUrl(cosKey, 7200)
