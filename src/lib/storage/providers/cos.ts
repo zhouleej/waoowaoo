@@ -1,5 +1,14 @@
 import { StorageProviderNotImplementedError } from '@/lib/storage/errors'
-import type { DeleteObjectsResult, SignedUrlParams, StorageProvider, UploadObjectParams, UploadObjectResult } from '@/lib/storage/types'
+import type {
+  DeleteObjectsResult,
+  ObjectByteRange,
+  SignedUrlParams,
+  StorageObjectMetadata,
+  StorageObjectStream,
+  StorageProvider,
+  UploadObjectParams,
+  UploadObjectResult,
+} from '@/lib/storage/types'
 
 export class CosStorageProvider implements StorageProvider {
   readonly kind = 'cos' as const
@@ -25,6 +34,14 @@ export class CosStorageProvider implements StorageProvider {
   }
 
   async getObjectBuffer(_key: string): Promise<Buffer> {
+    throw new StorageProviderNotImplementedError('cos')
+  }
+
+  async getObjectMetadata(_key: string): Promise<StorageObjectMetadata> {
+    throw new StorageProviderNotImplementedError('cos')
+  }
+
+  async getObjectStream(_key: string, _range?: ObjectByteRange): Promise<StorageObjectStream> {
     throw new StorageProviderNotImplementedError('cos')
   }
 

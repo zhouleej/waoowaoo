@@ -1,6 +1,6 @@
 import { createScopedLogger } from '@/lib/logging/core'
 import { createStorageProvider } from '@/lib/storage/factory'
-import type { DeleteObjectsResult, StorageProvider } from '@/lib/storage/types'
+import type { DeleteObjectsResult, ObjectByteRange, StorageProvider } from '@/lib/storage/types'
 import { DEFAULT_SIGNED_URL_EXPIRES_SECONDS, withRetry } from '@/lib/storage/utils'
 
 const storageLogger = createScopedLogger({
@@ -65,6 +65,14 @@ export function extractStorageKey(input: string | null | undefined): string | nu
 
 export async function getObjectBuffer(key: string): Promise<Buffer> {
   return await getStorageProvider().getObjectBuffer(key)
+}
+
+export async function getObjectMetadata(key: string) {
+  return await getStorageProvider().getObjectMetadata(key)
+}
+
+export async function getObjectStream(key: string, range?: ObjectByteRange) {
+  return await getStorageProvider().getObjectStream(key, range)
 }
 
 export async function getSignedObjectUrl(key: string, expiresInSeconds: number = DEFAULT_SIGNED_URL_EXPIRES_SECONDS): Promise<string> {
@@ -134,7 +142,7 @@ export async function downloadAndUploadVideo(
     }
 
     const buffer = Buffer.from(await response.arrayBuffer())
-    return await uploadObject(buffer, key, 1)
+    return await uploadObject(buffer, key, 1, 'video/mp4')
   }, maxRetries, RETRY_DELAY_BASE_MS)
 }
 

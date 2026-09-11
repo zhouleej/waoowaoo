@@ -97,7 +97,10 @@ describe('inspiration video generate route', () => {
     const response = await POST(createRequest({ textOnly: true, references: false }), { params: Promise.resolve({}) })
     expect(response.status).toBe(202)
     expect(storageMock.uploadObject).not.toHaveBeenCalled()
-    expect(submitTaskMock).toHaveBeenCalledWith(expect.objectContaining({ targetType: 'InspirationVideoCreation' }))
+    expect(submitTaskMock).toHaveBeenCalledWith(expect.objectContaining({
+      targetType: 'InspirationVideoCreation',
+      payload: expect.objectContaining({ generateThumbnailFromVideo: true }),
+    }))
   })
 
   it('uploads all materials, submits a video task, and links the task to the creation', async () => {
@@ -121,6 +124,7 @@ describe('inspiration video generate route', () => {
       targetId: 'creation-1',
       payload: expect.objectContaining({
         videoModel: 'maas-seedance::doubao-seedance-2.0',
+        generateThumbnailFromVideo: false,
         generationOptions: expect.objectContaining({ generateAudio: true }),
       }),
     }))

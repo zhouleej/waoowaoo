@@ -45,7 +45,14 @@ export default function CreationHistory({ creations, models, onAction, busy }: P
             <article key={creation.id} className="glass-surface group overflow-hidden rounded-2xl border border-[var(--glass-stroke-base)] transition-transform hover:-translate-y-0.5">
               <div className="relative aspect-video overflow-hidden bg-[var(--glass-bg-muted)]">
                 {creation.videoUrl ? (
-                  <video src={creation.videoUrl} controls playsInline preload="metadata" className="h-full w-full bg-black object-contain" />
+                  <video
+                    src={creation.videoUrl}
+                    poster={creation.thumbnailUrl || undefined}
+                    controls
+                    playsInline
+                    preload={creation.thumbnailUrl ? 'none' : 'metadata'}
+                    className="h-full w-full bg-black object-contain"
+                  />
                 ) : creation.primaryImage ? (
                   <Image src={creation.primaryImage.url} alt={creation.prompt} fill unoptimized className="object-cover" />
                 ) : (
@@ -66,7 +73,14 @@ export default function CreationHistory({ creations, models, onAction, busy }: P
                   {['failed', 'canceled'].includes(creation.status) && !creation.videoUrl && <button disabled={busy} onClick={() => onAction(creation, 'retry')}>{t('actions.retry')}</button>}
                   {['queued', 'processing'].includes(creation.status) ? <button disabled={busy} onClick={() => onAction(creation, 'cancel')}>{t('actions.cancel')}</button>
                     : <button disabled={busy || creation.status === 'settling'} onClick={() => onAction(creation, 'delete')}>{t('actions.delete')}</button>}
-                  {creation.videoUrl && <a href={creation.videoUrl} download>{t('actions.download')}</a>}
+                  {creation.videoUrl && (
+                    <a
+                      href={creation.downloadUrl || creation.videoUrl}
+                      download={creation.downloadFilename || true}
+                    >
+                      {t('actions.download')}
+                    </a>
+                  )}
                 </div>
                 <p className="line-clamp-2 min-h-10 text-sm leading-5 text-[var(--glass-text-primary)]">{creation.prompt}</p>
                 {creation.actualMetadata?.durationMs && <p className="mt-2 text-xs text-[var(--glass-text-secondary)]">{t('history.actual')}: {(creation.actualMetadata.durationMs / 1000).toFixed(2)}s · {creation.actualMetadata.width}×{creation.actualMetadata.height} · {creation.actualMetadata.fps}fps</p>}

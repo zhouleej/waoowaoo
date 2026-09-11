@@ -14,7 +14,25 @@ const loggingMock = vi.hoisted(() => ({
 
 const storageMock = vi.hoisted(() => ({
   getSignedObjectUrl: vi.fn(async (key: string, ttl: number) => `https://signed.example/${key}?expires=${ttl}`),
-  getObjectBuffer: vi.fn(async () => Buffer.from('0123456789')),
+  getObjectMetadata: vi.fn(async () => ({
+    size: 10,
+    contentType: 'application/octet-stream',
+    etag: '"video-etag"',
+    lastModified: new Date('2026-09-11T05:00:00Z'),
+  })),
+  getObjectStream: vi.fn(async (_key: string, range?: { start: number; end: number }) => {
+    const source = Buffer.from('0123456789')
+    const body = range ? source.subarray(range.start, range.end + 1) : source
+    return {
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(body)
+          controller.close()
+        },
+      }),
+      contentLength: body.length,
+    }
+  }),
 }))
 
 vi.mock('@/lib/api-auth', () => {
@@ -169,7 +187,8 @@ describe('api contract - infra routes (behavior)', () => {
     expect(res.headers.get('content-type')).toBe('video/mp4')
     expect(res.headers.get('accept-ranges')).toBe('bytes')
     expect(await res.text()).toBe('0123456789')
-    expect(storageMock.getObjectBuffer).toHaveBeenCalledWith('folder/video.mp4')
+    expect(storageMock.getObjectMetadata).toHaveBeenCalledWith('folder/video.mp4')
+    expect(storageMock.getObjectStream).toHaveBeenCalledWith('folder/video.mp4', undefined)
   })
 
   it('GET /api/storage/proxy supports byte ranges and rejects a tampered signature', async () => {
@@ -186,10 +205,40 @@ describe('api contract - infra routes (behavior)', () => {
     expect(rangeRes.status).toBe(206)
     expect(rangeRes.headers.get('content-range')).toBe('bytes 2-5/10')
     expect(await rangeRes.text()).toBe('2345')
+    expect(storageMock.getObjectStream).toHaveBeenCalledWith('folder/video.mp4', { start: 2, end: 5 })
 
     const tamperedReq = buildMockRequest({ path: `${path}0`, method: 'GET' })
     const tamperedRes = await mod.GET(tamperedReq, { params: Promise.resolve({}) })
     expect(tamperedRes.status).toBe(403)
+  })
+
+  it('HEAD /api/storage/proxy returns media metadata without reading the object body', async () => {
+    const { getStorageProxyUrl } = await import('@/lib/storage/proxy-url')
+    const path = getStorageProxyUrl('folder/video.mp4', 600)
+    const mod = await import('@/app/api/storage/proxy/route')
+    const req = buildMockRequest({ path, method: 'HEAD' as 'GET' })
+
+    const res = await mod.HEAD(req, { params: Promise.resolve({}) })
+
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-length')).toBe('10')
+    expect(res.headers.get('etag')).toBe('"video-etag"')
+    expect(storageMock.getObjectMetadata).toHaveBeenCalledWith('folder/video.mp4')
+    expect(storageMock.getObjectStream).not.toHaveBeenCalled()
+  })
+
+  it('GET /api/storage/proxy emits a signed UTF-8 attachment filename', async () => {
+    const { getStorageDownloadUrl } = await import('@/lib/storage/proxy-url')
+    const path = getStorageDownloadUrl('folder/video.mp4', '灵感视频_abc123.mp4', 600)
+    const mod = await import('@/app/api/storage/proxy/route')
+    const req = buildMockRequest({ path, method: 'GET' })
+
+    const res = await mod.GET(req, { params: Promise.resolve({}) })
+
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-disposition')).toContain('filename*=UTF-8')
+    expect(res.headers.get('content-disposition')).toContain('%E7%81%B5%E6%84%9F%E8%A7%86%E9%A2%91_abc123.mp4')
+    expect(await res.text()).toBe('0123456789')
   })
 
   it('GET /api/system/boot-id returns the current server boot id', async () => {

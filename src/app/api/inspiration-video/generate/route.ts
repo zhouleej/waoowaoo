@@ -235,6 +235,7 @@ export const POST = apiHandler(async (request: NextRequest) => {
       payload: {
         videoModel: selection.modelKey,
         prompt: draft.prompt,
+        generateThumbnailFromVideo: !draft.primaryImage && draft.referenceImages.length === 0,
         generationOptions: {
           aspectRatio: draft.aspectRatio,
           resolution: draft.resolution,

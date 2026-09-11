@@ -2,9 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUserAuth, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
-import { getStorageProxyUrl } from '@/lib/storage'
+import { getStorageDownloadUrl, getStorageProxyUrl } from '@/lib/storage'
 import { resolveInspirationVideoWorkspace } from '@/lib/inspiration-video/workspace'
 import { actOnCreation } from '@/lib/inspiration-video/actions'
+import { selectInspirationVideoThumbnail } from '@/lib/inspiration-video/thumbnail'
+
+function videoDownloadFilename(creationId: string): string {
+  return `灵感视频_${creationId.slice(0, 12)}.mp4`
+}
 
 export const POST = apiHandler(async (request: NextRequest) => {
   const auth = await requireUserAuth()
@@ -91,6 +96,8 @@ export const GET = apiHandler(async (request: NextRequest) => {
       const primaryImage = creation.assets.find((asset) => asset.kind === 'primary_image')
       const referenceImages = creation.assets.filter((asset) => asset.kind === 'reference_image')
       const referenceAudios = creation.assets.filter((asset) => asset.kind === 'reference_audio')
+      const thumbnail = selectInspirationVideoThumbnail(creation.assets)
+      const downloadFilename = videoDownloadFilename(creation.id)
       return {
         id: creation.id,
         taskId: task?.id || null,
@@ -119,7 +126,12 @@ export const GET = apiHandler(async (request: NextRequest) => {
           name: asset.originalName,
           url: getStorageProxyUrl(asset.storageKey, 7_200),
         })),
+        thumbnailUrl: thumbnail ? getStorageProxyUrl(thumbnail.storageKey, 7_200) : null,
         videoUrl: creation.outputVideoKey ? getStorageProxyUrl(creation.outputVideoKey, 7_200) : null,
+        downloadUrl: creation.outputVideoKey
+          ? getStorageDownloadUrl(creation.outputVideoKey, downloadFilename, 7_200)
+          : null,
+        downloadFilename: creation.outputVideoKey ? downloadFilename : null,
       }
     }),
   })

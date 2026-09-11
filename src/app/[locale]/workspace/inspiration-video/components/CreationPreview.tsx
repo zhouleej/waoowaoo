@@ -52,7 +52,14 @@ export default function CreationPreview({ creation, pendingImage }: Props) {
       <div className="p-4">
         <div className="relative flex min-h-[500px] items-center justify-center overflow-hidden rounded-2xl border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-muted)]">
           {creation?.videoUrl ? (
-            <video src={creation.videoUrl} controls playsInline preload="metadata" className="max-h-[560px] w-full bg-black object-contain" />
+            <video
+              src={creation.videoUrl}
+              poster={creation.thumbnailUrl || undefined}
+              controls
+              playsInline
+              preload="metadata"
+              className="max-h-[560px] w-full bg-black object-contain"
+            />
           ) : backgroundImage ? (
             <>
               <Image src={backgroundImage} alt={t('preview.imageAlt')} fill unoptimized className={`object-cover ${running ? 'scale-105 blur-[2px]' : ''}`} />
@@ -92,7 +99,11 @@ export default function CreationPreview({ creation, pendingImage }: Props) {
               </div>
             ) : null}
             {creation.videoUrl ? (
-              <a href={creation.videoUrl} target="_blank" rel="noreferrer" download className="glass-btn-base glass-btn-secondary flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm">
+              <a
+                href={creation.downloadUrl || creation.videoUrl}
+                download={creation.downloadFilename || true}
+                className="glass-btn-base glass-btn-secondary flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm"
+              >
                 <AppIcon name="download" className="h-4 w-4" />{t('actions.download')}
               </a>
             ) : null}

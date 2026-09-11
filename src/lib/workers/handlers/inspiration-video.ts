@@ -5,7 +5,13 @@ import { normalizeToBase64ForGeneration } from '@/lib/media/outbound-image'
 import { resolveBuiltinCapabilitiesByModelKey } from '@/lib/model-capabilities/lookup'
 import { parseModelKeyStrict } from '@/lib/model-config-contract'
 import { prisma } from '@/lib/prisma'
-import { getStorageProxyUrl } from '@/lib/storage'
+import { getStorageProxyUrl, uploadObject } from '@/lib/storage'
+import { createScopedLogger } from '@/lib/logging/core'
+import {
+  GENERATED_VIDEO_THUMBNAIL_KIND,
+  shouldExtractInspirationVideoThumbnail,
+} from '@/lib/inspiration-video/thumbnail'
+import { extractStoredVideoFirstFrame } from '@/lib/media/video-thumbnail'
 import type { TaskJobData } from '@/lib/task/types'
 import { inspectGeneratedVideo } from '@/lib/media/video-metadata'
 import { reportTaskProgress } from '@/lib/workers/shared'
@@ -16,6 +22,12 @@ import {
 } from '@/lib/workers/utils'
 
 export async function handleInspirationVideoTask(job: Job<TaskJobData>) {
+  const logger = createScopedLogger({
+    module: 'worker.inspiration-video',
+    taskId: job.data.taskId,
+    projectId: job.data.projectId,
+    userId: job.data.userId,
+  })
   const creation = await prisma.inspirationVideoCreation.findUnique({
     where: { id: job.data.targetId },
     include: {
@@ -85,6 +97,47 @@ export async function handleInspirationVideoTask(job: Job<TaskJobData>) {
     generatedVideo.downloadHeaders,
   )
   const metadata = await inspectGeneratedVideo(outputVideoKey)
+  if (shouldExtractInspirationVideoThumbnail(job.data.payload, creation.assets)) {
+    try {
+      const thumbnail = await extractStoredVideoFirstFrame(outputVideoKey)
+      const thumbnailKey = `images/inspiration-video/${creation.id}/output-thumbnail.jpg`
+      await uploadObject(thumbnail, thumbnailKey, 3, 'image/jpeg')
+      const existingThumbnail = creation.assets.find((asset) => asset.kind === GENERATED_VIDEO_THUMBNAIL_KIND)
+      if (existingThumbnail) {
+        await prisma.inspirationVideoAsset.update({
+          where: { id: existingThumbnail.id },
+          data: {
+            storageKey: thumbnailKey,
+            originalName: 'output-thumbnail.jpg',
+            mimeType: 'image/jpeg',
+            sizeBytes: thumbnail.length,
+            sortOrder: 0,
+          },
+        })
+      } else {
+        await prisma.inspirationVideoAsset.create({
+          data: {
+            creationId: creation.id,
+            kind: GENERATED_VIDEO_THUMBNAIL_KIND,
+            storageKey: thumbnailKey,
+            originalName: 'output-thumbnail.jpg',
+            mimeType: 'image/jpeg',
+            sizeBytes: thumbnail.length,
+            sortOrder: 0,
+          },
+        })
+      }
+    } catch (error) {
+      logger.warn({
+        action: 'worker.inspiration-video.thumbnail.failed',
+        message: 'Failed to extract inspiration video thumbnail; preserving completed video output',
+        details: { creationId: creation.id, outputVideoKey },
+        error: error instanceof Error
+          ? { name: error.name, message: error.message, stack: error.stack }
+          : { message: String(error) },
+      })
+    }
+  }
   await assertTaskActive(job, 'persist_inspiration_video_result')
   await prisma.inspirationVideoCreation.update({
     where: { id: creation.id },

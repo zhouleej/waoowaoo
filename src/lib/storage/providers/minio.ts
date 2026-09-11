@@ -1,4 +1,14 @@
-import type { DeleteObjectsResult, SignedUrlParams, StorageProvider, UploadObjectParams, UploadObjectResult } from '@/lib/storage/types'
+import { Readable } from 'node:stream'
+import type {
+  DeleteObjectsResult,
+  ObjectByteRange,
+  SignedUrlParams,
+  StorageObjectMetadata,
+  StorageObjectStream,
+  StorageProvider,
+  UploadObjectParams,
+  UploadObjectResult,
+} from '@/lib/storage/types'
 import { requireEnv, streamToBuffer, toFetchableUrl, validateMinioBucket, validateMinioCredential, validateMinioEndpoint } from '@/lib/storage/utils'
 
 const DEFAULT_MINIO_REGION = 'us-east-1'
@@ -13,10 +23,33 @@ type S3SdkModule = {
   DeleteObjectCommand: new (input: Record<string, unknown>) => unknown
   DeleteObjectsCommand: new (input: Record<string, unknown>) => unknown
   GetObjectCommand: new (input: Record<string, unknown>) => unknown
+  HeadObjectCommand: new (input: Record<string, unknown>) => unknown
 }
 
 type PresignerModule = {
   getSignedUrl: (client: S3ClientLike, command: unknown, options: { expiresIn: number }) => Promise<string>
+}
+
+function toWebStream(body: unknown): ReadableStream<Uint8Array> {
+  if (body && typeof body === 'object') {
+    const sdkBody = body as {
+      transformToWebStream?: () => ReadableStream<Uint8Array>
+      pipe?: (...args: unknown[]) => unknown
+    }
+    if (typeof sdkBody.transformToWebStream === 'function') return sdkBody.transformToWebStream()
+    if (typeof sdkBody.pipe === 'function') {
+      return Readable.toWeb(body as Readable) as ReadableStream<Uint8Array>
+    }
+  }
+  if (body instanceof Uint8Array) {
+    return new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(body)
+        controller.close()
+      },
+    })
+  }
+  throw new Error('STORAGE_OBJECT_BODY_UNREADABLE')
 }
 
 export class MinioStorageProvider implements StorageProvider {
@@ -150,6 +183,56 @@ export class MinioStorageProvider implements StorageProvider {
       Key: key,
     })) as { Body?: unknown }
     return await streamToBuffer(result.Body)
+  }
+
+  async getObjectMetadata(key: string): Promise<StorageObjectMetadata> {
+    const sdk = await this.loadSdk()
+    const client = await this.getClient()
+    const result = await client.send(new sdk.HeadObjectCommand({
+      Bucket: this.bucket,
+      Key: key,
+    })) as {
+      ContentLength?: number
+      ContentType?: string
+      ETag?: string
+      LastModified?: Date
+    }
+    if (!Number.isSafeInteger(result.ContentLength) || (result.ContentLength ?? -1) < 0) {
+      throw new Error('STORAGE_OBJECT_SIZE_INVALID')
+    }
+    return {
+      size: result.ContentLength as number,
+      contentType: result.ContentType,
+      etag: result.ETag,
+      lastModified: result.LastModified,
+    }
+  }
+
+  async getObjectStream(key: string, range?: ObjectByteRange): Promise<StorageObjectStream> {
+    const sdk = await this.loadSdk()
+    const client = await this.getClient()
+    const result = await client.send(new sdk.GetObjectCommand({
+      Bucket: this.bucket,
+      Key: key,
+      ...(range ? { Range: `bytes=${range.start}-${range.end}` } : {}),
+    })) as {
+      Body?: unknown
+      ContentLength?: number
+      ContentType?: string
+      ETag?: string
+      LastModified?: Date
+    }
+    const expectedLength = range ? range.end - range.start + 1 : result.ContentLength
+    if (!Number.isSafeInteger(expectedLength) || (expectedLength ?? -1) < 0) {
+      throw new Error('STORAGE_OBJECT_STREAM_SIZE_INVALID')
+    }
+    return {
+      body: toWebStream(result.Body),
+      contentLength: expectedLength as number,
+      contentType: result.ContentType,
+      etag: result.ETag,
+      lastModified: result.LastModified,
+    }
   }
 
   extractStorageKey(input: string | null | undefined): string | null {

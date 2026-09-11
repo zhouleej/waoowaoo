@@ -1,6 +1,17 @@
 import fs from 'node:fs/promises'
+import { createReadStream } from 'node:fs'
 import path from 'node:path'
-import type { DeleteObjectsResult, SignedUrlParams, StorageProvider, UploadObjectParams, UploadObjectResult } from '@/lib/storage/types'
+import { Readable } from 'node:stream'
+import type {
+  DeleteObjectsResult,
+  ObjectByteRange,
+  SignedUrlParams,
+  StorageObjectMetadata,
+  StorageObjectStream,
+  StorageProvider,
+  UploadObjectParams,
+  UploadObjectResult,
+} from '@/lib/storage/types'
 import { normalizeKey, toFetchableUrl } from '@/lib/storage/utils'
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR || './data/uploads'
@@ -55,6 +66,27 @@ export class LocalStorageProvider implements StorageProvider {
 
   async getObjectBuffer(key: string): Promise<Buffer> {
     return await fs.readFile(resolveUploadPath(key))
+  }
+
+  async getObjectMetadata(key: string): Promise<StorageObjectMetadata> {
+    const stats = await fs.stat(resolveUploadPath(key))
+    return {
+      size: stats.size,
+      etag: `W/\"${stats.size.toString(16)}-${Math.trunc(stats.mtimeMs).toString(16)}\"`,
+      lastModified: stats.mtime,
+    }
+  }
+
+  async getObjectStream(key: string, range?: ObjectByteRange): Promise<StorageObjectStream> {
+    const filePath = resolveUploadPath(key)
+    const stats = await fs.stat(filePath)
+    const nodeStream = createReadStream(filePath, range ? { start: range.start, end: range.end } : undefined)
+    return {
+      body: Readable.toWeb(nodeStream) as ReadableStream<Uint8Array>,
+      contentLength: range ? range.end - range.start + 1 : stats.size,
+      etag: `W/\"${stats.size.toString(16)}-${Math.trunc(stats.mtimeMs).toString(16)}\"`,
+      lastModified: stats.mtime,
+    }
   }
 
   extractStorageKey(input: string | null | undefined): string | null {

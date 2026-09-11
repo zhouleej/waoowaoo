@@ -33,7 +33,10 @@ export type InspirationVideoCreation = {
   primaryImage: InspirationMedia | null
   referenceImages: InspirationMedia[]
   referenceAudios: InspirationMedia[]
+  thumbnailUrl: string | null
   videoUrl: string | null
+  downloadUrl: string | null
+  downloadFilename: string | null
 }
 
 export type InspirationVideoBootstrap = {
