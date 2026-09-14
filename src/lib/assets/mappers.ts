@@ -45,6 +45,8 @@ type GlobalCharacterRecord = {
   id: string
   name: string
   folderId: string | null
+  voiceType?: 'custom' | 'qwen-designed' | 'uploaded' | null
+  voiceId?: string | null
   customVoiceUrl: string | null
   media?: MediaRef | null
   appearances: Array<{
@@ -297,8 +299,8 @@ export function mapGlobalCharacterToAsset(character: GlobalCharacterRecord): Cha
     profileTaskRefs: [],
     profileTaskState: createIdleTaskState(),
     voice: {
-      voiceType: null,
-      voiceId: null,
+      voiceType: character.voiceType ?? null,
+      voiceId: character.voiceId ?? null,
       customVoiceUrl: character.customVoiceUrl,
       media: character.media ?? null,
     },

@@ -21,7 +21,7 @@ interface VoiceDesignDialogBaseProps {
   speaker: string
   hasExistingVoice?: boolean
   onClose: () => void
-  onSave: (voiceId: string, audioBase64: string) => void
+  onSave: (voiceId: string, audioBase64: string) => void | Promise<void>
   onDesignVoice: (payload: VoiceDesignMutationPayload) => Promise<VoiceDesignMutationResult>
 }
 
@@ -40,6 +40,7 @@ export default function VoiceDesignDialogBase({
   const [previewText, setPreviewText] = useState(tv('defaultPreviewText'))
   const [schemeCount, setSchemeCount] = useState(String(DEFAULT_VOICE_SCHEME_COUNT))
   const [isDesignSubmitting, setIsDesignSubmitting] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [generatedVoices, setGeneratedVoices] = useState<GeneratedVoice[]>([])
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
@@ -115,20 +116,29 @@ export default function VoiceDesignDialogBase({
       if (hasExistingVoice) {
         setShowConfirmDialog(true)
       } else {
-        doSave()
+        void doSave()
       }
     }
   }
 
-  const doSave = () => {
-    if (selectedIndex !== null && generatedVoices[selectedIndex]) {
-      const voice = generatedVoices[selectedIndex]
-      onSave(voice.voiceId, voice.audioBase64)
-      handleClose()
+  const doSave = async () => {
+    if (selectedIndex === null || !generatedVoices[selectedIndex] || isSaving) return
+
+    const voice = generatedVoices[selectedIndex]
+    setIsSaving(true)
+    setError(null)
+
+    try {
+      await onSave(voice.voiceId, voice.audioBase64)
+      resetAndClose()
+    } catch (err: unknown) {
+      setShowConfirmDialog(false)
+      setError(err instanceof Error && err.message ? err.message : t('operationFailed'))
+      setIsSaving(false)
     }
   }
 
-  const handleClose = () => {
+  const resetAndClose = () => {
     setVoicePrompt('')
     setPreviewText(tv('defaultPreviewText'))
     setSchemeCount(String(DEFAULT_VOICE_SCHEME_COUNT))
@@ -137,10 +147,16 @@ export default function VoiceDesignDialogBase({
     setSelectedIndex(null)
     setShowConfirmDialog(false)
     setPlayingIndex(null)
+    setIsSaving(false)
     if (audioRef.current) {
       audioRef.current.pause()
     }
     onClose()
+  }
+
+  const handleClose = () => {
+    if (isSaving) return
+    resetAndClose()
   }
 
   if (!isOpen) return null
@@ -161,7 +177,11 @@ export default function VoiceDesignDialogBase({
               <span className="glass-chip glass-chip-warning text-xs px-1.5 py-0.5">{tv('hasExistingVoice')}</span>
             )}
           </div>
-          <button onClick={handleClose} className="glass-btn-base glass-btn-soft p-1 text-[var(--glass-text-tertiary)]">
+          <button
+            onClick={handleClose}
+            disabled={isSaving}
+            className="glass-btn-base glass-btn-soft p-1 text-[var(--glass-text-tertiary)] disabled:opacity-50 disabled:cursor-not-allowed"
+          >
             <AppIcon name="close" className="w-5 h-5" />
           </button>
         </div>
@@ -191,17 +211,17 @@ export default function VoiceDesignDialogBase({
                   onClick={() => {
                     void handleGenerate()
                   }}
-                  disabled={isDesignSubmitting}
+                  disabled={isDesignSubmitting || isSaving}
                   className="glass-btn-base glass-btn-secondary flex-1 py-2 rounded-lg text-sm"
                 >
                   {tv('regenerate')}
                 </button>
                 <button
                   onClick={handleConfirmSelection}
-                  disabled={selectedIndex === null}
+                  disabled={selectedIndex === null || isSaving}
                   className="glass-btn-base glass-btn-tone-success flex-1 py-2 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
                 >
-                  {tv('confirmUse')}
+                  {isSaving ? t('loading') : tv('confirmUse')}
                 </button>
               </div>
             )}
@@ -223,15 +243,19 @@ export default function VoiceDesignDialogBase({
             <div className="flex gap-2">
               <button
                 onClick={() => setShowConfirmDialog(false)}
-                className="glass-btn-base glass-btn-secondary flex-1 py-2 rounded-lg text-sm"
+                disabled={isSaving}
+                className="glass-btn-base glass-btn-secondary flex-1 py-2 rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {t('cancel')}
               </button>
               <button
-                onClick={doSave}
-                className="glass-btn-base glass-btn-danger flex-1 py-2 rounded-lg text-sm"
+                onClick={() => {
+                  void doSave()
+                }}
+                disabled={isSaving}
+                className="glass-btn-base glass-btn-danger flex-1 py-2 rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {tv('confirmReplaceBtn')}
+                {isSaving ? t('loading') : tv('confirmReplaceBtn')}
               </button>
             </div>
           </div>

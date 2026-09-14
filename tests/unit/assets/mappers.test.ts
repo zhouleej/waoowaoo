@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { mapGlobalVoiceToAsset, mapProjectCharacterToAsset, mapProjectPropToAsset } from '@/lib/assets/mappers'
+import {
+  mapGlobalCharacterToAsset,
+  mapGlobalVoiceToAsset,
+  mapProjectCharacterToAsset,
+  mapProjectPropToAsset,
+} from '@/lib/assets/mappers'
 import { groupAssetsByKind } from '@/lib/assets/grouping'
 
 describe('asset mappers', () => {
@@ -77,6 +82,26 @@ describe('asset mappers', () => {
         language: 'zh',
       }),
     }))
+  })
+
+  it('preserves a global character designed voice in the unified asset contract', () => {
+    const asset = mapGlobalCharacterToAsset({
+      id: 'character-global-1',
+      name: 'Hero',
+      folderId: null,
+      voiceType: 'qwen-designed',
+      voiceId: 'voice-provider-1',
+      customVoiceUrl: '/m/voice-media-1',
+      media: null,
+      appearances: [],
+    })
+
+    expect(asset.voice).toEqual({
+      voiceType: 'qwen-designed',
+      voiceId: 'voice-provider-1',
+      customVoiceUrl: '/m/voice-media-1',
+      media: null,
+    })
   })
 
   it('maps project props into the unified visual asset contract and groups them by kind', () => {

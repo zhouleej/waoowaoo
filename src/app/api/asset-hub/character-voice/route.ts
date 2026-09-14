@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { uploadObject, generateUniqueKey, getSignedUrl } from '@/lib/storage'
 import { requireUserAuth, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
+import { resolveMediaRefFromLegacyValue } from '@/lib/media/service'
 
 interface VoiceDesignPayload {
     voiceId?: string
@@ -62,13 +63,16 @@ export const POST = apiHandler(async (request: NextRequest) => {
         const audioBuffer = Buffer.from(audioBase64, 'base64')
         const key = generateUniqueKey(`global-voice/${session.user.id}/${characterId}`, 'wav')
         const cosUrl = await uploadObject(audioBuffer, key)
+        const customVoiceMedia = await resolveMediaRefFromLegacyValue(cosUrl)
 
         await db.globalCharacter.update({
             where: { id: characterId },
             data: {
                 voiceType: 'qwen-designed',
                 voiceId: voiceId,
-                customVoiceUrl: cosUrl
+                customVoiceUrl: cosUrl,
+                customVoiceMediaId: customVoiceMedia?.id ?? null,
+                globalVoiceId: null,
             }
         })
 
@@ -108,13 +112,16 @@ export const POST = apiHandler(async (request: NextRequest) => {
     const ext = file.name.split('.').pop()?.toLowerCase() || 'mp3'
     const key = generateUniqueKey(`global-voice/${session.user.id}/${characterId}`, ext)
     const audioUrl = await uploadObject(buffer, key)
+    const customVoiceMedia = await resolveMediaRefFromLegacyValue(audioUrl)
 
     await db.globalCharacter.update({
         where: { id: characterId },
         data: {
             voiceType: 'uploaded',
             voiceId: null,
-            customVoiceUrl: audioUrl
+            customVoiceUrl: audioUrl,
+            customVoiceMediaId: customVoiceMedia?.id ?? null,
+            globalVoiceId: null,
         }
     })
 
