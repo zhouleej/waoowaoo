@@ -1,3 +1,5 @@
+import type { Readable } from 'node:stream'
+
 export type StorageType = 'minio' | 'local' | 'cos'
 
 export interface UploadObjectParams {
@@ -10,6 +12,13 @@ export interface UploadObjectResult {
   key: string
 }
 
+export interface UploadObjectStreamParams {
+  key: string
+  body: Readable
+  contentLength: number
+  contentType?: string
+}
+
 export interface DeleteObjectsResult {
   success: number
   failed: number
@@ -18,6 +27,7 @@ export interface DeleteObjectsResult {
 export interface SignedUrlParams {
   key: string
   expiresInSeconds: number
+  responseContentDisposition?: string
 }
 
 export type ObjectByteRange = {
@@ -43,6 +53,7 @@ export type StorageObjectStream = {
 export interface StorageProvider {
   readonly kind: StorageType
   uploadObject(params: UploadObjectParams): Promise<UploadObjectResult>
+  uploadObjectStream(params: UploadObjectStreamParams): Promise<UploadObjectResult>
   deleteObject(key: string): Promise<void>
   deleteObjects(keys: string[]): Promise<DeleteObjectsResult>
   getSignedObjectUrl(params: SignedUrlParams): Promise<string>

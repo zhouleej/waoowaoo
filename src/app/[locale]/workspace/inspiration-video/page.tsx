@@ -14,6 +14,10 @@ import {
   validateInspirationVideoFiles,
 } from '@/lib/inspiration-video/client'
 import { filterNormalVideoModelOptions } from '@/lib/model-capabilities/video-model-options'
+import {
+  applyInspirationVideoProgress,
+  shouldRefreshInspirationVideoWorkspace,
+} from '@/lib/inspiration-video/live-state'
 import { useSSE } from '@/lib/query/hooks/useSSE'
 import type { SSEEvent } from '@/lib/task/types'
 import InspirationComposer from './components/InspirationComposer'
@@ -153,10 +157,15 @@ export default function InspirationVideoPage() {
 
   const handleSSEEvent = useCallback((event: SSEEvent) => {
     if (event.targetType !== 'InspirationVideoCreation') return
+    setBootstrap((current) => current ? {
+      ...current,
+      creations: applyInspirationVideoProgress(current.creations, event),
+    } : current)
+    if (!shouldRefreshInspirationVideoWorkspace(event)) return
     if (refreshTimerRef.current !== null) window.clearTimeout(refreshTimerRef.current)
     refreshTimerRef.current = window.setTimeout(() => {
       void refreshWorkspace().catch(() => undefined)
-    }, 300)
+    }, 500)
   }, [refreshWorkspace])
 
   useEffect(() => () => {

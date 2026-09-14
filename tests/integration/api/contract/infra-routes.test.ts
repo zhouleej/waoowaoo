@@ -12,7 +12,9 @@ const loggingMock = vi.hoisted(() => ({
   readAllLogs: vi.fn(async () => 'worker log line 1\nworker log line 2'),
 }))
 
+const storageState = vi.hoisted(() => ({ kind: 'local' }))
 const storageMock = vi.hoisted(() => ({
+  getStorageType: vi.fn(() => storageState.kind),
   getSignedObjectUrl: vi.fn(async (key: string, ttl: number) => `https://signed.example/${key}?expires=${ttl}`),
   getObjectMetadata: vi.fn(async () => ({
     size: 10,
@@ -77,6 +79,7 @@ describe('api contract - infra routes (behavior)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     authState.authenticated = false
+    storageState.kind = 'local'
     process.env.STORAGE_PROXY_SECRET = 'storage-proxy-test-secret'
     vi.resetModules()
   })
@@ -239,6 +242,25 @@ describe('api contract - infra routes (behavior)', () => {
     expect(res.headers.get('content-disposition')).toContain('filename*=UTF-8')
     expect(res.headers.get('content-disposition')).toContain('%E7%81%B5%E6%84%9F%E8%A7%86%E9%A2%91_abc123.mp4')
     expect(await res.text()).toBe('0123456789')
+  })
+
+  it('GET /api/storage/proxy redirects MinIO downloads to object storage', async () => {
+    storageState.kind = 'minio'
+    const { getStorageDownloadUrl } = await import('@/lib/storage/proxy-url')
+    const path = getStorageDownloadUrl('folder/video.mp4', '灵感视频_abc123.mp4', 600)
+    const mod = await import('@/app/api/storage/proxy/route')
+    const req = buildMockRequest({ path, method: 'GET' })
+
+    const res = await mod.GET(req, { params: Promise.resolve({}) })
+
+    expect(res.status).toBe(307)
+    expect(res.headers.get('location')).toContain('https://signed.example/folder/video.mp4')
+    expect(storageMock.getSignedObjectUrl).toHaveBeenCalledWith(
+      'folder/video.mp4',
+      expect.any(Number),
+      expect.stringContaining("filename*=UTF-8''%E7%81%B5%E6%84%9F%E8%A7%86%E9%A2%91_abc123.mp4"),
+    )
+    expect(storageMock.getObjectStream).not.toHaveBeenCalled()
   })
 
   it('GET /api/system/boot-id returns the current server boot id', async () => {

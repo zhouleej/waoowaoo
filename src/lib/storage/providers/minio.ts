@@ -7,6 +7,7 @@ import type {
   StorageObjectStream,
   StorageProvider,
   UploadObjectParams,
+  UploadObjectStreamParams,
   UploadObjectResult,
 } from '@/lib/storage/types'
 import { requireEnv, streamToBuffer, toFetchableUrl, validateMinioBucket, validateMinioCredential, validateMinioEndpoint } from '@/lib/storage/utils'
@@ -161,6 +162,26 @@ export class MinioStorageProvider implements StorageProvider {
     return { key: params.key }
   }
 
+  async uploadObjectStream(params: UploadObjectStreamParams): Promise<UploadObjectResult> {
+    if (!Number.isSafeInteger(params.contentLength) || params.contentLength < 0) {
+      throw new Error('STORAGE_STREAM_CONTENT_LENGTH_INVALID')
+    }
+    const sdk = await this.loadSdk()
+    const client = await this.getClient()
+    await client.send(
+      new sdk.PutObjectCommand({
+        Bucket: this.bucket,
+        Key: params.key,
+        Body: params.body,
+        ContentLength: params.contentLength,
+        ContentType: params.contentType,
+      }),
+      { abortSignal: AbortSignal.timeout(this.uploadTimeoutMs) },
+    )
+
+    return { key: params.key }
+  }
+
   async deleteObject(key: string): Promise<void> {
     const sdk = await this.loadSdk()
     const client = await this.getClient()
@@ -203,6 +224,9 @@ export class MinioStorageProvider implements StorageProvider {
         Bucket: this.bucket,
         Key: params.key,
         ...(responseContentType ? { ResponseContentType: responseContentType } : {}),
+        ...(params.responseContentDisposition
+          ? { ResponseContentDisposition: params.responseContentDisposition }
+          : {}),
       }),
       {
         expiresIn: params.expiresInSeconds,

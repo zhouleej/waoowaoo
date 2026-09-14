@@ -3,14 +3,25 @@ const state = vi.hoisted(() => ({
   duration: 7.25,
   dispose: vi.fn(),
   open: vi.fn(),
+  read: vi.fn(async () => ({
+    body: new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array([1, 2, 3]))
+        controller.close()
+      },
+    }),
+  })),
   save: vi.fn().mockResolvedValue({}),
 }))
-vi.mock('@/lib/storage', () => ({ getObjectBuffer: async () => Buffer.from('video') }))
+vi.mock('@/lib/storage', () => ({
+  getObjectMetadata: async () => ({ size: 5, contentType: 'video/mp4' }),
+  getObjectStream: state.read,
+}))
 vi.mock('@/lib/media/service', () => ({ ensureMediaObjectFromStorageKey: state.save }))
 vi.mock('mediabunny', () => ({
   ALL_FORMATS: ['all-formats'],
-  BufferSource: class BufferSource {
-    constructor(readonly buffer: Uint8Array) {}
+  StreamSource: class StreamSource {
+    constructor(readonly options: Record<string, unknown>) {}
   },
   Input: class Input {
     constructor(options: unknown) {
@@ -33,8 +44,19 @@ describe('generated video metadata', () => {
     expect(state.save).toHaveBeenCalledWith('video.mp4', expect.objectContaining({ durationMs: 7250, sizeBytes: 5 }))
     expect(state.open).toHaveBeenCalledWith(expect.objectContaining({
       formats: ['all-formats'],
-      source: expect.objectContaining({ buffer: Buffer.from('video') }),
+      source: expect.objectContaining({
+        options: expect.objectContaining({
+          maxCacheSize: 4 * 1024 * 1024,
+          prefetchProfile: 'network',
+        }),
+      }),
     }))
+    const source = state.open.mock.calls[0][0].source as {
+      options: { getSize: () => number; read: (start: number, end: number) => Promise<unknown> }
+    }
+    expect(source.options.getSize()).toBe(5)
+    await source.options.read(1, 4)
+    expect(state.read).toHaveBeenCalledWith('video.mp4', { start: 1, end: 3 })
     expect(state.dispose).toHaveBeenCalledOnce()
   })
   it('rejects an output without measurable duration', async () => {

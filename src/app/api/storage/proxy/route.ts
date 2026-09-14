@@ -1,7 +1,7 @@
 import path from 'node:path'
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { apiHandler, ApiError } from '@/lib/api-errors'
-import { getObjectMetadata, getObjectStream } from '@/lib/storage'
+import { getObjectMetadata, getObjectStream, getSignedObjectUrl, getStorageType } from '@/lib/storage'
 import { verifyStorageProxySignature, type StorageProxyDisposition } from '@/lib/storage/proxy-url'
 
 export const runtime = 'nodejs'
@@ -75,12 +75,17 @@ async function serveObject(request: NextRequest, headOnly: boolean) {
     throw new ApiError('FORBIDDEN')
   }
 
+  const cacheSeconds = Math.max(0, expires - Math.floor(Date.now() / 1_000))
+  if (disposition === 'attachment' && getStorageType() === 'minio') {
+    const signedUrl = await getSignedObjectUrl(key, Math.max(1, cacheSeconds), attachmentHeader(filename))
+    return NextResponse.redirect(signedUrl, 307)
+  }
+
   const metadata = await getObjectMetadata(key)
   const range = parseByteRange(request.headers.get('range'), metadata.size)
   const contentType = MIME_BY_EXTENSION[path.extname(key).toLowerCase()]
     || metadata.contentType
     || 'application/octet-stream'
-  const cacheSeconds = Math.max(0, expires - Math.floor(Date.now() / 1_000))
 
   if (range === 'invalid') {
     return new Response(null, {

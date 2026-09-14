@@ -1,3 +1,4 @@
+import { Readable } from 'node:stream'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MinioStorageProvider } from '@/lib/storage/providers/minio'
 import { StorageConfigError } from '@/lib/storage/errors'
@@ -16,7 +17,7 @@ vi.mock('@aws-sdk/client-s3', () => ({
   S3Client: s3ClientMock,
   GetObjectCommand: vi.fn(function GetObjectCommand(input: Record<string, unknown>) { return input }),
   HeadObjectCommand: vi.fn(function HeadObjectCommand(input: Record<string, unknown>) { return input }),
-  PutObjectCommand: vi.fn(),
+  PutObjectCommand: vi.fn(function PutObjectCommand(input: Record<string, unknown>) { return input }),
   DeleteObjectCommand: vi.fn(),
   DeleteObjectsCommand: vi.fn(),
 }))
@@ -69,6 +70,23 @@ describe('MinioStorageProvider signing endpoint', () => {
         Bucket: 'waoowaoo',
         Key: 'images/history-video.mp4',
         ResponseContentType: 'video/mp4',
+      }),
+      { expiresIn: 3600 },
+    )
+  })
+
+  it('signs direct downloads with their requested attachment filename', async () => {
+    const provider = new MinioStorageProvider()
+    await provider.getSignedObjectUrl({
+      key: 'images/history-video.mp4',
+      expiresInSeconds: 3600,
+      responseContentDisposition: "attachment; filename*=UTF-8''video.mp4",
+    })
+
+    expect(getSignedUrlMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        ResponseContentDisposition: "attachment; filename*=UTF-8''video.mp4",
       }),
       { expiresIn: 3600 },
     )
@@ -127,6 +145,30 @@ describe('MinioStorageProvider signing endpoint', () => {
 
     expect(s3SendMock).toHaveBeenCalledWith(
       expect.anything(),
+      { abortSignal: expect.any(AbortSignal) },
+    )
+  })
+
+  it('uploads a video stream with a fixed content length instead of buffering it', async () => {
+    const provider = new MinioStorageProvider()
+    s3SendMock.mockResolvedValueOnce({})
+    const body = Readable.from([Buffer.from('video')])
+
+    await provider.uploadObjectStream({
+      key: 'images/output.mp4',
+      body,
+      contentLength: 5,
+      contentType: 'video/mp4',
+    })
+
+    expect(s3SendMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        Bucket: 'waoowaoo',
+        Key: 'images/output.mp4',
+        Body: body,
+        ContentLength: 5,
+        ContentType: 'video/mp4',
+      }),
       { abortSignal: expect.any(AbortSignal) },
     )
   })

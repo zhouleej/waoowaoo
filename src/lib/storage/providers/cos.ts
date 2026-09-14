@@ -7,6 +7,7 @@ import type {
   StorageObjectStream,
   StorageProvider,
   UploadObjectParams,
+  UploadObjectStreamParams,
   UploadObjectResult,
 } from '@/lib/storage/types'
 
@@ -18,6 +19,10 @@ export class CosStorageProvider implements StorageProvider {
   }
 
   async uploadObject(_params: UploadObjectParams): Promise<UploadObjectResult> {
+    throw new StorageProviderNotImplementedError('cos')
+  }
+
+  async uploadObjectStream(_params: UploadObjectStreamParams): Promise<UploadObjectResult> {
     throw new StorageProviderNotImplementedError('cos')
   }
 
