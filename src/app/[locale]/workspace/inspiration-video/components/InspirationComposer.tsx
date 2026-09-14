@@ -5,6 +5,7 @@ import { useEffect, useState, type ChangeEvent, type DragEvent } from 'react'
 import { useTranslations } from 'next-intl'
 import { AppIcon } from '@/components/ui/icons'
 import type { InspirationVideoForm, InspirationVideoModel } from '../types'
+import MobileCloudImagePicker from './MobileCloudImagePicker'
 
 type Props = {
   form: InspirationVideoForm
@@ -42,6 +43,26 @@ function FileThumbnail({ file, onRemove }: { file: File; onRemove: () => void })
   )
 }
 
+function CloudThumbnail({ src, name, onRemove }: { src: string; name: string; onRemove: () => void }) {
+  const t = useTranslations('inspirationVideo')
+  return (
+    <div className="group relative h-20 w-20 shrink-0 overflow-hidden rounded-xl border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-muted)]">
+      <Image src={src} alt={name} fill unoptimized className="object-cover" />
+      <span className="absolute bottom-1 left-1 rounded-full bg-black/60 px-1.5 py-0.5 text-[9px] text-white">
+        {t('materials.mobileCloudTag')}
+      </span>
+      <button
+        type="button"
+        onClick={onRemove}
+        className="absolute right-1 top-1 rounded-full bg-black/55 p-1 text-white opacity-0 transition-opacity group-hover:opacity-100"
+        aria-label={name}
+      >
+        <AppIcon name="close" className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  )
+}
+
 function AudioChip({ file, onRemove }: { file: File; onRemove: () => void }) {
   return (
     <div className="flex max-w-52 items-center gap-2 rounded-xl border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-surface)] px-3 py-2">
@@ -69,9 +90,11 @@ export default function InspirationComposer({
   onSubmit,
 }: Props) {
   const t = useTranslations('inspirationVideo')
+  const [mobileCloudPicker, setMobileCloudPicker] = useState<'primary' | 'references' | null>(null)
 
   const addReferenceImages = (files: File[]) => {
-    const next = [...form.referenceImages, ...files].slice(0, 8)
+    const localLimit = Math.max(0, 8 - form.referenceMobileCloudImages.length)
+    const next = [...form.referenceImages, ...files].slice(0, localLimit)
     onChange({ referenceImages: next })
   }
   const addReferenceAudios = (files: File[]) => {
@@ -79,17 +102,22 @@ export default function InspirationComposer({
     onChange({ referenceAudios: next, generateAudio: true })
   }
   const handlePrimaryChange = (event: ChangeEvent<HTMLInputElement>) => {
-    onChange({ primaryImage: event.target.files?.[0] || null })
+    onChange({
+      primaryImage: event.target.files?.[0] || null,
+      primaryMobileCloudImage: null,
+    })
     event.currentTarget.value = ''
   }
   const handlePrimaryDrop = (event: DragEvent<HTMLLabelElement>) => {
     event.preventDefault()
     const file = Array.from(event.dataTransfer.files).find((item) => item.type.startsWith('image/'))
-    if (file) onChange({ primaryImage: file })
+    if (file) onChange({ primaryImage: file, primaryMobileCloudImage: null })
   }
 
   const capabilities = models.find((model) => model.value === form.modelKey)?.capabilities?.video
-  const canSubmit = Boolean(form.prompt.trim() && (form.primaryImage || capabilities?.textToVideo) && form.modelKey && !submitting)
+  const hasPrimaryImage = Boolean(form.primaryImage || form.primaryMobileCloudImage)
+  const referenceImageCount = form.referenceImages.length + form.referenceMobileCloudImages.length
+  const canSubmit = Boolean(form.prompt.trim() && (hasPrimaryImage || capabilities?.textToVideo) && form.modelKey && !submitting)
 
   return (
     <section className="glass-surface-elevated overflow-hidden rounded-3xl border border-[var(--glass-stroke-base)]">
@@ -135,7 +163,7 @@ export default function InspirationComposer({
               <p className="mt-1 text-xs text-[var(--glass-text-tertiary)]">{t('materials.hint')}</p>
             </div>
             <span className="text-xs text-[var(--glass-text-tertiary)]">
-              {(form.primaryImage ? 1 : 0) + form.referenceImages.length + form.referenceAudios.length}/12
+              {(hasPrimaryImage ? 1 : 0) + referenceImageCount + form.referenceAudios.length}/12
             </span>
           </div>
 
@@ -145,27 +173,52 @@ export default function InspirationComposer({
                 <span className="text-xs font-medium text-[var(--glass-text-secondary)]">{t('materials.primary')}</span>
                 <span className="text-[11px] text-[var(--glass-tone-danger-fg)]">{t('materials.required')}</span>
               </div>
-              {form.primaryImage ? (
+              {form.primaryImage || form.primaryMobileCloudImage ? (
                 <div className="flex items-center gap-3">
-                  <FileThumbnail file={form.primaryImage} onRemove={() => onChange({ primaryImage: null })} />
+                  {form.primaryImage ? (
+                    <FileThumbnail file={form.primaryImage} onRemove={() => onChange({ primaryImage: null })} />
+                  ) : form.primaryMobileCloudImage ? (
+                    <CloudThumbnail
+                      src={form.primaryMobileCloudImage.assetUrl}
+                      name={form.primaryMobileCloudImage.assetName}
+                      onRemove={() => onChange({ primaryMobileCloudImage: null })}
+                    />
+                  ) : null}
                   <div className="min-w-0">
-                    <p className="truncate text-sm text-[var(--glass-text-primary)]">{form.primaryImage.name}</p>
-                    <label className="mt-2 inline-flex cursor-pointer items-center gap-1 text-xs text-[var(--glass-tone-info-fg)]">
-                      <AppIcon name="refresh" className="h-3.5 w-3.5" />{t('materials.replace')}
-                      <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handlePrimaryChange} className="hidden" />
-                    </label>
+                    <p className="truncate text-sm text-[var(--glass-text-primary)]">
+                      {form.primaryImage?.name || form.primaryMobileCloudImage?.assetName}
+                    </p>
+                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                      <label className="inline-flex cursor-pointer items-center gap-1 text-xs text-[var(--glass-tone-info-fg)]">
+                        <AppIcon name="upload" className="h-3.5 w-3.5" />{t('materials.replaceLocal')}
+                        <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handlePrimaryChange} className="hidden" />
+                      </label>
+                      <button type="button" onClick={() => setMobileCloudPicker('primary')} className="inline-flex items-center gap-1 text-xs text-[var(--glass-tone-info-fg)]">
+                        <AppIcon name="cloudUpload" className="h-3.5 w-3.5" />{t('materials.replaceMobileCloud')}
+                      </button>
+                    </div>
                   </div>
                 </div>
               ) : (
-                <label
-                  onDragOver={(event) => event.preventDefault()}
-                  onDrop={handlePrimaryDrop}
-                  className="flex min-h-24 cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-[var(--glass-stroke-strong)] bg-[var(--glass-bg-muted)] px-3 text-center transition-colors hover:border-[var(--glass-tone-info-fg)]/50"
-                >
-                  <AppIcon name="imageEdit" className="mb-2 h-5 w-5 text-[var(--glass-text-tertiary)]" />
-                  <span className="text-xs text-[var(--glass-text-secondary)]">{t('materials.uploadPrimary')}</span>
-                  <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handlePrimaryChange} className="hidden" />
-                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <label
+                    onDragOver={(event) => event.preventDefault()}
+                    onDrop={handlePrimaryDrop}
+                    className="flex min-h-24 cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-[var(--glass-stroke-strong)] bg-[var(--glass-bg-muted)] px-2 text-center transition-colors hover:border-[var(--glass-tone-info-fg)]/50"
+                  >
+                    <AppIcon name="upload" className="mb-2 h-5 w-5 text-[var(--glass-text-tertiary)]" />
+                    <span className="text-xs text-[var(--glass-text-secondary)]">{t('materials.uploadPrimary')}</span>
+                    <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handlePrimaryChange} className="hidden" />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setMobileCloudPicker('primary')}
+                    className="flex min-h-24 flex-col items-center justify-center rounded-xl border border-dashed border-[var(--glass-stroke-strong)] bg-[var(--glass-bg-muted)] px-2 text-center transition-colors hover:border-[var(--glass-tone-info-fg)]/50"
+                  >
+                    <AppIcon name="cloudUpload" className="mb-2 h-5 w-5 text-[var(--glass-text-tertiary)]" />
+                    <span className="text-xs text-[var(--glass-text-secondary)]">{t('materials.selectMobileCloud')}</span>
+                  </button>
+                </div>
               )}
             </div>
 
@@ -182,6 +235,16 @@ export default function InspirationComposer({
                     onRemove={() => onChange({ referenceImages: form.referenceImages.filter((_, itemIndex) => itemIndex !== index) })}
                   />
                 ))}
+                {form.referenceMobileCloudImages.map((asset) => (
+                  <CloudThumbnail
+                    key={asset.assetId}
+                    src={asset.assetUrl}
+                    name={asset.assetName}
+                    onRemove={() => onChange({
+                      referenceMobileCloudImages: form.referenceMobileCloudImages.filter((item) => item.assetId !== asset.assetId),
+                    })}
+                  />
+                ))}
                 {form.referenceAudios.map((file, index) => (
                   <AudioChip
                     key={`${file.name}-${file.lastModified}-${index}`}
@@ -189,13 +252,13 @@ export default function InspirationComposer({
                     onRemove={() => onChange({ referenceAudios: form.referenceAudios.filter((_, itemIndex) => itemIndex !== index) })}
                   />
                 ))}
-                <label className={`flex h-20 w-20 flex-col items-center justify-center rounded-xl border border-dashed border-[var(--glass-stroke-strong)] text-center ${referencesEnabled ? 'cursor-pointer hover:border-[var(--glass-tone-info-fg)]/50' : 'cursor-not-allowed opacity-45'}`}>
+                <label className={`flex h-20 w-20 flex-col items-center justify-center rounded-xl border border-dashed border-[var(--glass-stroke-strong)] text-center ${referencesEnabled && referenceImageCount < 8 ? 'cursor-pointer hover:border-[var(--glass-tone-info-fg)]/50' : 'cursor-not-allowed opacity-45'}`}>
                   <AppIcon name="image" className="mb-1 h-4 w-4 text-[var(--glass-text-tertiary)]" />
                   <span className="text-[11px] text-[var(--glass-text-secondary)]">{t('materials.addImage')}</span>
                   <input
                     type="file"
                     multiple
-                    disabled={!referencesEnabled}
+                    disabled={!referencesEnabled || referenceImageCount >= 8}
                     accept="image/jpeg,image/png,image/webp"
                     className="hidden"
                     onChange={(event) => {
@@ -204,6 +267,15 @@ export default function InspirationComposer({
                     }}
                   />
                 </label>
+                <button
+                  type="button"
+                  disabled={!referencesEnabled || referenceImageCount >= 8}
+                  onClick={() => setMobileCloudPicker('references')}
+                  className={`flex h-20 w-20 flex-col items-center justify-center rounded-xl border border-dashed border-[var(--glass-stroke-strong)] text-center ${referencesEnabled && referenceImageCount < 8 ? 'hover:border-[var(--glass-tone-info-fg)]/50' : 'cursor-not-allowed opacity-45'}`}
+                >
+                  <AppIcon name="cloudUpload" className="mb-1 h-4 w-4 text-[var(--glass-text-tertiary)]" />
+                  <span className="text-[11px] text-[var(--glass-text-secondary)]">{t('materials.mobileCloudImage')}</span>
+                </button>
                 <label className={`flex h-20 w-20 flex-col items-center justify-center rounded-xl border border-dashed border-[var(--glass-stroke-strong)] text-center ${referencesEnabled ? 'cursor-pointer hover:border-[var(--glass-tone-info-fg)]/50' : 'cursor-not-allowed opacity-45'}`}>
                   <AppIcon name="audioWave" className="mb-1 h-4 w-4 text-[var(--glass-text-tertiary)]" />
                   <span className="text-[11px] text-[var(--glass-text-secondary)]">{t('materials.addAudio')}</span>
@@ -285,6 +357,23 @@ export default function InspirationComposer({
           </button>
         </div>
       </div>
+      <MobileCloudImagePicker
+        open={mobileCloudPicker !== null}
+        multiple={mobileCloudPicker === 'references'}
+        maxSelection={mobileCloudPicker === 'references' ? Math.max(0, 8 - form.referenceImages.length) : 1}
+        initialSelection={mobileCloudPicker === 'references'
+          ? form.referenceMobileCloudImages
+          : form.primaryMobileCloudImage ? [form.primaryMobileCloudImage] : []}
+        onClose={() => setMobileCloudPicker(null)}
+        onConfirm={(assets) => {
+          if (mobileCloudPicker === 'primary') {
+            onChange({ primaryImage: null, primaryMobileCloudImage: assets[0] || null })
+          } else if (mobileCloudPicker === 'references') {
+            onChange({ referenceMobileCloudImages: assets })
+          }
+          setMobileCloudPicker(null)
+        }}
+      />
     </section>
   )
 }

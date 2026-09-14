@@ -34,7 +34,9 @@ const EMPTY_FORM: InspirationVideoForm = {
   duration: 5,
   generateAudio: true,
   primaryImage: null,
+  primaryMobileCloudImage: null,
   referenceImages: [],
+  referenceMobileCloudImages: [],
   referenceAudios: [],
 }
 
@@ -198,14 +200,18 @@ export default function InspirationVideoPage() {
       duration: chooseAllowed(current.duration, nextDurations),
       resolution: chooseAllowed(current.resolution, nextResolutions),
       generateAudio: chooseAllowed(current.generateAudio, nextAudioOptions),
-      ...(keepReferences ? {} : { referenceImages: [], referenceAudios: [] }),
+      ...(keepReferences ? {} : {
+        referenceImages: [],
+        referenceMobileCloudImages: [],
+        referenceAudios: [],
+      }),
     }))
     setNotice(keepReferences || !nextModel ? null : t('materials.modelChangedNotice'))
   }
 
   const handleSubmit = async () => {
     if (submitLock.current) return
-    if ((!form.primaryImage && !selectedModel?.capabilities?.video?.textToVideo) || !form.prompt.trim() || !form.modelKey) return
+    if ((!form.primaryImage && !form.primaryMobileCloudImage && !selectedModel?.capabilities?.video?.textToVideo) || !form.prompt.trim() || !form.modelKey) return
     const fileIssue = validateInspirationVideoFiles(form)
     if (fileIssue) {
       setError(fileValidationMessage(fileIssue))
@@ -232,7 +238,9 @@ export default function InspirationVideoPage() {
       payload.set('generateAudio', String(form.generateAudio))
       payload.set('locale', locale)
       if (form.primaryImage) payload.set('primaryImage', form.primaryImage)
+      if (form.primaryMobileCloudImage) payload.set('primaryMobileCloudAssetId', form.primaryMobileCloudImage.assetId)
       form.referenceImages.forEach((file) => payload.append('referenceImages', file))
+      form.referenceMobileCloudImages.forEach((asset) => payload.append('referenceMobileCloudAssetIds', asset.assetId))
       form.referenceAudios.forEach((file) => payload.append('referenceAudios', file))
 
       const response = await apiFetchWithTimeout(
@@ -283,7 +291,8 @@ export default function InspirationVideoPage() {
         const referenceImages = await Promise.all(creation.referenceImages.map((item) => download(item, true)))
         const referenceAudios = await Promise.all(creation.referenceAudios.map((item) => download(item, false)))
         setForm({ prompt: creation.prompt, modelKey: creation.modelKey, aspectRatio: creation.aspectRatio, resolution: creation.resolution,
-          duration: creation.duration, generateAudio: creation.generateAudio, primaryImage, referenceImages, referenceAudios })
+          duration: creation.duration, generateAudio: creation.generateAudio, primaryImage, primaryMobileCloudImage: null,
+          referenceImages, referenceMobileCloudImages: [], referenceAudios })
         submissionRef.current = null
         window.scrollTo({ top: 0, behavior: 'smooth' })
       } else {
@@ -369,7 +378,11 @@ export default function InspirationVideoPage() {
             onModelChange={handleModelChange}
             onSubmit={() => void handleSubmit()}
           />
-          <CreationPreview creation={bootstrap?.creations[0] || null} pendingImage={form.primaryImage} />
+          <CreationPreview
+            creation={bootstrap?.creations[0] || null}
+            pendingImage={form.primaryImage}
+            pendingImageUrl={form.primaryMobileCloudImage?.assetUrl || null}
+          />
         </div>
 
         <CreationHistory creations={bootstrap?.creations || []} models={models} busy={historyBusy} onAction={(creation, action) => void historyAction(creation, action)} />

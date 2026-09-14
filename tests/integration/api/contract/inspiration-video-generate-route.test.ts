@@ -4,6 +4,7 @@ import { TASK_TYPE } from '@/lib/task/types'
 
 const authState = vi.hoisted(() => ({ authenticated: true }))
 const submitTaskMock = vi.hoisted(() => vi.fn())
+const loadMobileCloudImageMock = vi.hoisted(() => vi.fn())
 const storageMock = vi.hoisted(() => ({
   uploadObject: vi.fn(async (_body: Buffer, key: string) => key),
   deleteObjects: vi.fn(async () => ({ deleted: [], failed: [] })),
@@ -57,6 +58,9 @@ vi.mock('@/lib/inspiration-video/workspace', () => ({
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock }))
 vi.mock('@/lib/storage', () => storageMock)
 vi.mock('@/lib/task/submitter', () => ({ submitTask: submitTaskMock }))
+vi.mock('@/lib/inspiration-video/mobile-cloud-image', () => ({
+  loadMobileCloudImage: loadMobileCloudImageMock,
+}))
 vi.mock('sharp', () => ({
   default: vi.fn(() => ({
     rotate() { return this },
@@ -65,7 +69,7 @@ vi.mock('sharp', () => ({
   })),
 }))
 
-function createRequest(options?: { references?: boolean; textOnly?: boolean }): NextRequest {
+function createRequest(options?: { references?: boolean; textOnly?: boolean; mobileCloud?: boolean }): NextRequest {
   const formData = new FormData()
   formData.set('prompt', 'A cinematic rainy neon street')
   formData.set('modelKey', 'maas-seedance::doubao-seedance-2.0')
@@ -74,9 +78,11 @@ function createRequest(options?: { references?: boolean; textOnly?: boolean }): 
   formData.set('duration', '5')
   formData.set('generateAudio', 'true')
   formData.set('locale', 'zh')
-  if (!options?.textOnly) formData.set('primaryImage', new File(['primary'], 'primary.png', { type: 'image/png' }))
+  if (options?.mobileCloud) formData.set('primaryMobileCloudAssetId', 'cloud-primary')
+  else if (!options?.textOnly) formData.set('primaryImage', new File(['primary'], 'primary.png', { type: 'image/png' }))
   if (options?.references !== false) {
-    formData.append('referenceImages', new File(['reference'], 'reference.webp', { type: 'image/webp' }))
+    if (options?.mobileCloud) formData.append('referenceMobileCloudAssetIds', 'cloud-reference')
+    else formData.append('referenceImages', new File(['reference'], 'reference.webp', { type: 'image/webp' }))
     formData.append('referenceAudios', new File(['audio'], 'reference.mp3', { type: 'audio/mpeg' }))
   }
   return new NextRequest('http://localhost/api/inspiration-video/generate', {
@@ -90,6 +96,11 @@ describe('inspiration video generate route', () => {
     vi.clearAllMocks()
     authState.authenticated = true
     submitTaskMock.mockResolvedValue({ success: true, async: true, taskId: 'task-1', status: 'queued' })
+    loadMobileCloudImageMock.mockImplementation(async (assetId: string) => ({
+      assetId,
+      assetName: `${assetId}.png`,
+      body: Buffer.from(assetId),
+    }))
   })
 
   it('submits text without uploading an image for a capable model', async () => {
@@ -132,6 +143,37 @@ describe('inspiration video generate route', () => {
       where: { id: 'creation-1' },
       data: { taskId: 'task-1' },
     })
+  })
+
+  it('validates and imports Mobile Cloud images into the existing MinIO asset flow', async () => {
+    const { POST } = await import('@/app/api/inspiration-video/generate/route')
+    const response = await POST(createRequest({ mobileCloud: true }), { params: Promise.resolve({}) })
+
+    expect(response.status).toBe(202)
+    expect(loadMobileCloudImageMock).toHaveBeenCalledWith('cloud-primary', 'primaryMobileCloudAssetId')
+    expect(loadMobileCloudImageMock).toHaveBeenCalledWith('cloud-reference', 'referenceMobileCloudAssetIds.0')
+    expect(storageMock.uploadObject).toHaveBeenCalledTimes(3)
+    expect(prismaMock.inspirationVideoAsset.createMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.arrayContaining([
+        expect.objectContaining({ kind: 'primary_image', originalName: 'cloud-primary.png' }),
+        expect.objectContaining({ kind: 'reference_image', originalName: 'cloud-reference.png' }),
+        expect.objectContaining({ kind: 'reference_audio' }),
+      ]),
+    }))
+    expect(submitTaskMock).toHaveBeenCalledWith(expect.objectContaining({
+      payload: expect.objectContaining({ generateThumbnailFromVideo: false }),
+    }))
+  })
+
+  it('does not create a record when a Mobile Cloud image cannot be resolved', async () => {
+    loadMobileCloudImageMock.mockRejectedValueOnce(new Error('mobile cloud unavailable'))
+    const { POST } = await import('@/app/api/inspiration-video/generate/route')
+    const response = await POST(createRequest({ mobileCloud: true }), { params: Promise.resolve({}) })
+
+    expect(response.status).toBeGreaterThanOrEqual(400)
+    expect(prismaMock.inspirationVideoCreation.create).not.toHaveBeenCalled()
+    expect(storageMock.uploadObject).not.toHaveBeenCalled()
+    expect(submitTaskMock).not.toHaveBeenCalled()
   })
 
   it('returns 401 before creating or uploading when unauthenticated', async () => {

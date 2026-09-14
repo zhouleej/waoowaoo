@@ -21,7 +21,9 @@ export type InspirationVideoDraft = {
   duration: number
   generateAudio: boolean
   primaryImage: UploadFile | null
+  primaryMobileCloudAssetId: string | null
   referenceImages: UploadFile[]
+  referenceMobileCloudAssetIds: string[]
   referenceAudios: UploadFile[]
 }
 
@@ -40,6 +42,18 @@ function isUploadFile(value: FormDataEntryValue): value is UploadFile {
 
 function readFiles(formData: FormData, key: string): UploadFile[] {
   return formData.getAll(key).filter(isUploadFile).filter((file) => file.size > 0)
+}
+
+function readMobileCloudAssetIds(formData: FormData, key: string, maxItems: number): string[] {
+  const values = formData.getAll(key)
+  if (values.some((value) => typeof value !== 'string')) {
+    throw new ApiError('INVALID_PARAMS', { field: key })
+  }
+  const ids = values.map((value) => String(value).trim())
+  if (ids.length > maxItems || ids.some((id) => !id || id.length > 200) || new Set(ids).size !== ids.length) {
+    throw new ApiError('INVALID_PARAMS', { field: key })
+  }
+  return ids
 }
 
 function extensionOf(fileName: string): string {
@@ -91,7 +105,13 @@ export function parseInspirationVideoDraft(formData: FormData): InspirationVideo
   const duration = readDuration(readRequiredText(formData, 'duration'))
   const generateAudio = readRequiredText(formData, 'generateAudio') !== 'false'
   const primaryImages = readFiles(formData, 'primaryImage')
+  const primaryMobileCloudAssetIds = readMobileCloudAssetIds(formData, 'primaryMobileCloudAssetId', 1)
   const referenceImages = readFiles(formData, 'referenceImages')
+  const referenceMobileCloudAssetIds = readMobileCloudAssetIds(
+    formData,
+    'referenceMobileCloudAssetIds',
+    INSPIRATION_VIDEO_LIMITS.referenceImages,
+  )
   const referenceAudios = readFiles(formData, 'referenceAudios')
 
   if (!prompt || prompt.length > INSPIRATION_VIDEO_LIMITS.promptCharacters) {
@@ -105,13 +125,17 @@ export function parseInspirationVideoDraft(formData: FormData): InspirationVideo
   if (!aspectRatio || aspectRatio.length > 20) throw new ApiError('INVALID_PARAMS', { field: 'aspectRatio' })
   if (!resolution || resolution.length > 20) throw new ApiError('INVALID_PARAMS', { field: 'resolution' })
   if (primaryImages.length > 1) throw new ApiError('INVALID_PARAMS', { field: 'primaryImage' })
-  if (referenceImages.length > INSPIRATION_VIDEO_LIMITS.referenceImages) {
+  if (primaryImages.length + primaryMobileCloudAssetIds.length > 1) {
+    throw new ApiError('INVALID_PARAMS', { field: 'primaryImage' })
+  }
+  if (referenceImages.length + referenceMobileCloudAssetIds.length > INSPIRATION_VIDEO_LIMITS.referenceImages) {
     throw new ApiError('INVALID_PARAMS', { field: 'referenceImages' })
   }
   if (referenceAudios.length > INSPIRATION_VIDEO_LIMITS.referenceAudios) {
     throw new ApiError('INVALID_PARAMS', { field: 'referenceAudios' })
   }
-  if (1 + referenceImages.length + referenceAudios.length > INSPIRATION_VIDEO_LIMITS.totalAssets) {
+  const primaryImageCount = primaryImages.length + primaryMobileCloudAssetIds.length
+  if (primaryImageCount + referenceImages.length + referenceMobileCloudAssetIds.length + referenceAudios.length > INSPIRATION_VIDEO_LIMITS.totalAssets) {
     throw new ApiError('INVALID_PARAMS', { field: 'assets' })
   }
   const totalBytes = [...primaryImages, ...referenceImages, ...referenceAudios]
@@ -136,7 +160,9 @@ export function parseInspirationVideoDraft(formData: FormData): InspirationVideo
     duration,
     generateAudio,
     primaryImage: primaryImages[0] || null,
+    primaryMobileCloudAssetId: primaryMobileCloudAssetIds[0] || null,
     referenceImages,
+    referenceMobileCloudAssetIds,
     referenceAudios,
   }
 }

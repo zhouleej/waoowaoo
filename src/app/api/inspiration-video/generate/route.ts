@@ -7,6 +7,7 @@ import { resolveProjectModelCapabilityGenerationOptions } from '@/lib/config-ser
 import { resolveBuiltinCapabilitiesByModelKey } from '@/lib/model-capabilities/lookup'
 import { resolveInspirationVideoWorkspace } from '@/lib/inspiration-video/workspace'
 import {
+  INSPIRATION_VIDEO_LIMITS,
   parseInspirationVideoDraft,
   type InspirationVideoDraft,
   type UploadFile,
@@ -18,6 +19,10 @@ import { submitTask } from '@/lib/task/submitter'
 import { TASK_TYPE } from '@/lib/task/types'
 import { findAcceptedSubmission, submissionCreationId } from '@/lib/inspiration-video/submission'
 import { createScopedLogger } from '@/lib/logging/core'
+import {
+  loadMobileCloudImage,
+  type LoadedMobileCloudImage,
+} from '@/lib/inspiration-video/mobile-cloud-image'
 
 const routeLogger = createScopedLogger({ module: 'api.inspiration-video.generate' })
 
@@ -36,19 +41,22 @@ function extensionOf(fileName: string): string {
 
 function safeOriginalName(fileName: string): string {
   if (fileName.length <= 190) return fileName
-  const extension = extensionOf(fileName)
-  return `${fileName.slice(0, Math.max(1, 185 - extension.length))}.${extension}`
+  const lastDot = fileName.lastIndexOf('.')
+  if (lastDot <= 0 || fileName.length - lastDot > 20) return fileName.slice(0, 190)
+  const extension = fileName.slice(lastDot + 1)
+  return `${fileName.slice(0, 189 - extension.length)}.${extension}`
 }
 
-async function uploadImage(
+async function uploadImageBuffer(
   creationId: string,
-  file: UploadFile,
+  body: Buffer,
+  originalName: string,
   kind: UploadedAsset['kind'],
   sortOrder: number,
 ): Promise<UploadedAsset> {
   let processed: Buffer
   try {
-    processed = await sharp(Buffer.from(await file.arrayBuffer()))
+    processed = await sharp(body)
       .rotate()
       .jpeg({ quality: 92, mozjpeg: true })
       .toBuffer()
@@ -63,11 +71,26 @@ async function uploadImage(
   return {
     kind,
     storageKey: key,
-    originalName: safeOriginalName(file.name),
+    originalName: safeOriginalName(originalName),
     mimeType: 'image/jpeg',
     sizeBytes: processed.length,
     sortOrder,
   }
+}
+
+async function uploadImage(
+  creationId: string,
+  file: UploadFile,
+  kind: UploadedAsset['kind'],
+  sortOrder: number,
+): Promise<UploadedAsset> {
+  return uploadImageBuffer(
+    creationId,
+    Buffer.from(await file.arrayBuffer()),
+    file.name,
+    kind,
+    sortOrder,
+  )
 }
 
 async function uploadAudio(
@@ -94,6 +117,10 @@ async function uploadAudio(
 async function uploadDraftAssets(
   creationId: string,
   draft: InspirationVideoDraft,
+  mobileCloudImages: {
+    primary: LoadedMobileCloudImage | null
+    references: LoadedMobileCloudImage[]
+  },
   onUploaded: (storageKey: string) => void,
 ): Promise<UploadedAsset[]> {
   const assets: UploadedAsset[] = []
@@ -101,9 +128,31 @@ async function uploadDraftAssets(
     const primaryImage = await uploadImage(creationId, draft.primaryImage, 'primary_image', 0)
     assets.push(primaryImage)
     onUploaded(primaryImage.storageKey)
+  } else if (mobileCloudImages.primary) {
+    const primaryImage = await uploadImageBuffer(
+      creationId,
+      mobileCloudImages.primary.body,
+      mobileCloudImages.primary.assetName,
+      'primary_image',
+      0,
+    )
+    assets.push(primaryImage)
+    onUploaded(primaryImage.storageKey)
   }
   for (const [index, file] of draft.referenceImages.entries()) {
     const asset = await uploadImage(creationId, file, 'reference_image', index)
+    assets.push(asset)
+    onUploaded(asset.storageKey)
+  }
+  for (const [index, image] of mobileCloudImages.references.entries()) {
+    const sortOrder = draft.referenceImages.length + index
+    const asset = await uploadImageBuffer(
+      creationId,
+      image.body,
+      image.assetName,
+      'reference_image',
+      sortOrder,
+    )
     assets.push(asset)
     onUploaded(asset.storageKey)
   }
@@ -135,7 +184,7 @@ export const POST = apiHandler(async (request: NextRequest) => {
   const locale = resolveRequiredTaskLocale(request, {
     locale: typeof formData.get('locale') === 'string' ? formData.get('locale') : undefined,
   })
-  const totalAssetBytes = [draft.primaryImage, ...draft.referenceImages, ...draft.referenceAudios]
+  const uploadedAssetBytes = [draft.primaryImage, ...draft.referenceImages, ...draft.referenceAudios]
     .filter((file): file is UploadFile => Boolean(file))
     .reduce((sum, file) => sum + file.size, 0)
   logger.event({
@@ -145,9 +194,11 @@ export const POST = apiHandler(async (request: NextRequest) => {
     durationMs: Date.now() - startedAt,
     details: {
       hasPrimaryImage: Boolean(draft.primaryImage),
+      hasPrimaryMobileCloudImage: Boolean(draft.primaryMobileCloudAssetId),
       referenceImageCount: draft.referenceImages.length,
+      referenceMobileCloudImageCount: draft.referenceMobileCloudAssetIds.length,
       referenceAudioCount: draft.referenceAudios.length,
-      totalAssetBytes,
+      uploadedAssetBytes,
     },
   })
 
@@ -172,7 +223,9 @@ export const POST = apiHandler(async (request: NextRequest) => {
     })
   }
 
-  const hasReferences = draft.referenceImages.length > 0 || draft.referenceAudios.length > 0
+  const hasReferences = draft.referenceImages.length > 0
+    || draft.referenceMobileCloudAssetIds.length > 0
+    || draft.referenceAudios.length > 0
   if (hasReferences && getProviderKey(selection.provider).toLowerCase() !== 'maas-seedance') {
     throw new ApiError('INVALID_PARAMS', {
       code: 'INSPIRATION_REFERENCES_REQUIRE_MAAS_SEEDANCE',
@@ -187,7 +240,8 @@ export const POST = apiHandler(async (request: NextRequest) => {
   }
 
   const builtinCapabilities = resolveBuiltinCapabilitiesByModelKey('video', selection.modelKey)
-  if (!draft.primaryImage && builtinCapabilities?.video?.textToVideo !== true) {
+  const hasPrimaryImage = Boolean(draft.primaryImage || draft.primaryMobileCloudAssetId)
+  if (!hasPrimaryImage && builtinCapabilities?.video?.textToVideo !== true) {
     throw new ApiError('INVALID_PARAMS', { message: '当前模型需要主图，请上传图片或选择支持纯文字生成的模型', field: 'primaryImage' })
   }
   const allowedRatios = builtinCapabilities?.video?.aspectRatios
@@ -213,6 +267,26 @@ export const POST = apiHandler(async (request: NextRequest) => {
       code: 'INSPIRATION_VIDEO_OPTIONS_INVALID',
       field: 'generationOptions',
       message: error instanceof Error ? error.message : undefined,
+    })
+  }
+
+  const [primaryMobileCloudImage, referenceMobileCloudImages] = await Promise.all([
+    draft.primaryMobileCloudAssetId
+      ? loadMobileCloudImage(draft.primaryMobileCloudAssetId, 'primaryMobileCloudAssetId')
+      : Promise.resolve(null),
+    Promise.all(draft.referenceMobileCloudAssetIds.map((assetId, index) => (
+      loadMobileCloudImage(assetId, `referenceMobileCloudAssetIds.${index}`)
+    ))),
+  ])
+  const mobileCloudAssetBytes = [primaryMobileCloudImage, ...referenceMobileCloudImages]
+    .filter((image): image is LoadedMobileCloudImage => Boolean(image))
+    .reduce((sum, image) => sum + image.body.length, 0)
+  const totalAssetBytes = uploadedAssetBytes + mobileCloudAssetBytes
+  if (totalAssetBytes > INSPIRATION_VIDEO_LIMITS.totalBytes) {
+    throw new ApiError('INVALID_PARAMS', {
+      code: 'INSPIRATION_ASSETS_TOO_LARGE',
+      field: 'assets',
+      limit: INSPIRATION_VIDEO_LIMITS.totalBytes,
     })
   }
 
@@ -252,7 +326,12 @@ export const POST = apiHandler(async (request: NextRequest) => {
 
   let result: Awaited<ReturnType<typeof submitTask>>
   try {
-    const assets = await uploadDraftAssets(creation.id, draft, (storageKey) => uploadedKeys.push(storageKey))
+    const assets = await uploadDraftAssets(
+      creation.id,
+      draft,
+      { primary: primaryMobileCloudImage, references: referenceMobileCloudImages },
+      (storageKey) => uploadedKeys.push(storageKey),
+    )
     workspaceLogger.event({
       level: 'INFO',
       action: 'inspiration.submit.assets_uploaded',
@@ -278,7 +357,9 @@ export const POST = apiHandler(async (request: NextRequest) => {
       payload: {
         videoModel: selection.modelKey,
         prompt: draft.prompt,
-        generateThumbnailFromVideo: !draft.primaryImage && draft.referenceImages.length === 0,
+        generateThumbnailFromVideo: !hasPrimaryImage
+          && draft.referenceImages.length === 0
+          && draft.referenceMobileCloudAssetIds.length === 0,
         generationOptions: {
           aspectRatio: draft.aspectRatio,
           resolution: draft.resolution,

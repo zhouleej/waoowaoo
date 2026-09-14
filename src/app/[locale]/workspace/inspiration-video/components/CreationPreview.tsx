@@ -10,6 +10,7 @@ import InspirationVideoPlayer from './InspirationVideoPlayer'
 type Props = {
   creation: InspirationVideoCreation | null
   pendingImage: File | null
+  pendingImageUrl: string | null
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -24,20 +25,20 @@ function StatusBadge({ status }: { status: string }) {
   )
 }
 
-export default function CreationPreview({ creation, pendingImage }: Props) {
+export default function CreationPreview({ creation, pendingImage, pendingImageUrl }: Props) {
   const t = useTranslations('inspirationVideo')
-  const [pendingImageUrl, setPendingImageUrl] = useState('')
+  const [pendingImageUrlFromFile, setPendingImageUrlFromFile] = useState('')
   useEffect(() => {
     if (!pendingImage) {
-      setPendingImageUrl('')
+      setPendingImageUrlFromFile('')
       return
     }
     const objectUrl = URL.createObjectURL(pendingImage)
-    setPendingImageUrl(objectUrl)
+    setPendingImageUrlFromFile(objectUrl)
     return () => URL.revokeObjectURL(objectUrl)
   }, [pendingImage])
 
-  const backgroundImage = creation?.primaryImage?.url || pendingImageUrl
+  const backgroundImage = pendingImageUrl || pendingImageUrlFromFile || creation?.primaryImage?.url
   const running = creation && ['queued', 'processing', 'settling'].includes(creation.status)
 
   return (
