@@ -7,6 +7,11 @@ import { AppIcon } from '@/components/ui/icons'
 import { MediaImageWithLoading } from '@/components/media/MediaImageWithLoading'
 import ImagePreviewModal from '@/components/ui/ImagePreviewModal'
 import { StoryboardPanelAssetUploader } from './StoryboardPanelAssetPicker'
+import MobileCloudAssetCreator, {
+  type MobileCloudAssetCreateInput,
+  type MobileCloudAssetCreateResult,
+  type MobileCloudAssetType,
+} from './MobileCloudAssetCreator'
 import type {
   CharacterAssetSummary,
   LocationAssetSummary,
@@ -14,7 +19,7 @@ import type {
 } from '@/lib/assets/contracts'
 
 type GroupType = 'AIGC' | 'LivenessFace'
-type AssetType = 'Image' | 'Video' | 'Audio'
+type AssetType = MobileCloudAssetType
 type PickerKind = 'character' | 'location' | 'prop'
 
 interface Group {
@@ -174,20 +179,24 @@ export default function MobileCloudAssetPanel({ docsUrl = 'https://ecloud.10086.
     }
   }
 
-  const createAsset = async () => {
-    if (!selectedGroupId || !assetName.trim() || !assetUrl.trim()) return
+  const createAsset = async (input: MobileCloudAssetCreateInput): Promise<MobileCloudAssetCreateResult> => {
+    if (!selectedGroupId) return { success: false, error: t('selectGroup') }
     setSaving(true)
+    setError('')
     try {
       await readData(await apiFetch('/api/asset-hub/mobile-cloud', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ resource: 'asset', groupId: selectedGroupId, assetName, assetUrl, assetType }),
+        body: JSON.stringify({ resource: 'asset', groupId: selectedGroupId, ...input }),
       }))
       setAssetName('')
       setAssetUrl('')
       await refresh()
+      return { success: true }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : t('requestFailed'))
+      const message = cause instanceof Error ? cause.message : t('requestFailed')
+      setError(message)
+      return { success: false, error: message }
     } finally {
       setSaving(false)
     }
@@ -430,16 +439,16 @@ export default function MobileCloudAssetPanel({ docsUrl = 'https://ecloud.10086.
                       <StoryboardPanelAssetUploader groupId={selectedGroupId} onUploaded={refresh} />
                     )}
                   </div>
-                  <div className="mb-3 grid gap-2 sm:grid-cols-[1fr_1.5fr_auto_auto]">
-                    <input value={assetName} onChange={(event) => setAssetName(event.target.value)} placeholder={t('assetName')} className="glass-input text-xs" />
-                    <input value={assetUrl} onChange={(event) => setAssetUrl(event.target.value)} placeholder={t('assetUrl')} className="glass-input text-xs" />
-                    <select value={assetType} onChange={(event) => setAssetType(event.target.value as AssetType)} className="glass-input text-xs">
-                      <option value="Image">{t('image')}</option>
-                      <option value="Video">{t('video')}</option>
-                      <option value="Audio">{t('audio')}</option>
-                    </select>
-                    <button type="button" onClick={createAsset} disabled={saving || !assetName.trim() || !assetUrl.trim()} className="glass-btn-tone-info rounded-lg px-3 py-2 text-xs">{t('addAsset')}</button>
-                  </div>
+                  <MobileCloudAssetCreator
+                    disabled={saving}
+                    assetName={assetName}
+                    assetUrl={assetUrl}
+                    assetType={assetType}
+                    onAssetNameChange={setAssetName}
+                    onAssetUrlChange={setAssetUrl}
+                    onAssetTypeChange={setAssetType}
+                    onCreate={createAsset}
+                  />
                 </>
               )}
               <div className="app-scrollbar max-h-[420px] min-h-[180px] overflow-y-auto pr-1">

@@ -167,9 +167,11 @@ export default function MobileCloudImagePicker({
       title={t('mobileCloudPicker.title')}
       description={t('mobileCloudPicker.description')}
       footer={footer}
+      panelClassName="flex h-[calc(100dvh-2rem)] max-h-[860px] flex-col sm:h-[calc(100dvh-3rem)]"
+      bodyClassName="min-h-0 flex-1 overflow-hidden"
     >
-      <div className="space-y-4">
-        <div className="grid gap-3 sm:grid-cols-[220px_minmax(0,1fr)_auto]">
+      <div className="flex h-full min-h-0 flex-col gap-4">
+        <div className="grid shrink-0 gap-3 sm:grid-cols-[220px_minmax(0,1fr)_auto]">
           <select
             value={groupId}
             onChange={(event) => { setGroupId(event.target.value); setPageNo(1) }}
@@ -201,19 +203,19 @@ export default function MobileCloudImagePicker({
         </div>
 
         {error ? (
-          <div className="flex items-center justify-between gap-3 rounded-xl bg-[var(--glass-tone-danger-bg)] px-3 py-2 text-sm text-[var(--glass-tone-danger-fg)]">
+          <div className="flex shrink-0 items-center justify-between gap-3 rounded-xl bg-[var(--glass-tone-danger-bg)] px-3 py-2 text-sm text-[var(--glass-tone-danger-fg)]">
             <span>{error}</span>
             <button type="button" className="shrink-0 underline" onClick={() => void loadAssets()}>{t('mobileCloudPicker.retry')}</button>
           </div>
         ) : null}
 
-        <div className="min-h-80 max-h-[55vh] overflow-y-auto pr-1">
+        <div className="app-scrollbar min-h-0 flex-1 overflow-y-auto pr-1">
           {loading ? (
-            <div className="flex min-h-80 items-center justify-center text-sm text-[var(--glass-text-secondary)]">
+            <div className="flex h-full min-h-48 items-center justify-center text-sm text-[var(--glass-text-secondary)]">
               <AppIcon name="loader" className="mr-2 h-5 w-5 animate-spin" />{t('mobileCloudPicker.loading')}
             </div>
           ) : assets.length === 0 ? (
-            <div className="flex min-h-80 flex-col items-center justify-center text-center text-[var(--glass-text-secondary)]">
+            <div className="flex h-full min-h-48 flex-col items-center justify-center text-center text-[var(--glass-text-secondary)]">
               <AppIcon name="folderOpen" className="mb-3 h-10 w-10 text-[var(--glass-text-tertiary)]" />
               <p className="text-sm font-medium">{t('mobileCloudPicker.empty')}</p>
               <p className="mt-1 text-xs text-[var(--glass-text-tertiary)]">{t('mobileCloudPicker.emptyHint')}</p>
@@ -250,7 +252,7 @@ export default function MobileCloudImagePicker({
           )}
         </div>
 
-        <div className="flex items-center justify-between text-xs text-[var(--glass-text-tertiary)]">
+        <div className="flex shrink-0 items-center justify-between text-xs text-[var(--glass-text-tertiary)]">
           <span>{t('mobileCloudPicker.total', { total })}</span>
           <div className="flex items-center gap-2">
             <button type="button" disabled={pageNo <= 1 || loading} onClick={() => setPageNo((value) => value - 1)} className="glass-btn-base glass-btn-ghost h-8 w-8 disabled:opacity-35">

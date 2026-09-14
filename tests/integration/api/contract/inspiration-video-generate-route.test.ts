@@ -161,7 +161,13 @@ describe('inspiration video generate route', () => {
       ]),
     }))
     expect(submitTaskMock).toHaveBeenCalledWith(expect.objectContaining({
-      payload: expect.objectContaining({ generateThumbnailFromVideo: false }),
+      payload: expect.objectContaining({
+        generateThumbnailFromVideo: false,
+        mobileCloudAssets: {
+          primaryImageAssetId: 'cloud-primary',
+          referenceImages: [{ assetId: 'cloud-reference', sortOrder: 0 }],
+        },
+      }),
     }))
   })
 

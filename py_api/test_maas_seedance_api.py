@@ -66,9 +66,39 @@ from py_api import maas_seedance_api as adapter
 
 
 class MaasSeedanceApiTest(unittest.TestCase):
+    def setUp(self) -> None:
+        adapter.client.volc_client.secure_http_client.response = FakeResponse(200, {"id": "unused"})
+
     def test_accepts_text_only_content(self) -> None:
         request = adapter.VideoGenerationRequest(prompt="A rainy street")
         self.assertEqual(adapter.build_content(request), [{"type": "text", "text": "A rainy street"}])
+
+    def test_builds_primary_image_content_with_the_sdk_required_parameter_shape(self) -> None:
+        image_url = "https://objects.example.com/bucket/primary.jpg?signed=fake"
+        request = adapter.VideoGenerationRequest(
+            prompt="animate this image",
+            image_url=image_url,
+        )
+
+        self.assertEqual(adapter.build_content(request), [
+            {"type": "text", "text": "animate this image"},
+            {
+                "type": "image_url",
+                "image_url": {"url": image_url},
+                "role": "reference_image",
+            },
+        ])
+
+    def test_builds_mobile_cloud_asset_id_as_a_trusted_image_uri(self) -> None:
+        request = adapter.VideoGenerationRequest(
+            prompt="animate this registered asset",
+            image_url="asset://asset-inspiration-primary",
+            reference_images=["asset://asset-inspiration-reference"],
+        )
+
+        content = adapter.build_content(request)
+        self.assertEqual(content[1]["image_url"]["url"], "asset://asset-inspiration-primary")
+        self.assertEqual(content[2]["image_url"]["url"], "asset://asset-inspiration-reference")
 
     def test_forwards_supported_resolution_to_sdk_payload(self) -> None:
         request = adapter.VideoGenerationRequest(
@@ -178,6 +208,29 @@ class MaasSeedanceApiTest(unittest.TestCase):
             "upstream_error_code": "InputImageSensitiveContentDetected.PrivacyInformation",
             "retryable": False,
         })
+
+    def test_maps_input_resource_download_failure_to_specific_parameter_error(self) -> None:
+        adapter.client.volc_client.secure_http_client.response = FakeResponse(400, {
+            "error": {
+                "code": "InvalidParameter",
+                "message": (
+                    "The parameter `content[1].image_url` specified in the request is not valid: "
+                    "resource download failed."
+                ),
+            },
+        })
+        request = adapter.VideoGenerationRequest(
+            prompt="animate this image",
+            image_url="https://objects.example.com/bucket/first.png?signed=secret",
+        )
+
+        with self.assertRaises(HTTPException) as raised:
+            adapter.create_video_generation(request, f"Bearer {adapter.INTERNAL_API_KEY}")
+
+        self.assertEqual(raised.exception.status_code, 400)
+        self.assertEqual(raised.exception.detail["code"], "INPUT_RESOURCE_DOWNLOAD_FAILED")
+        self.assertIn("content[1].image_url", raised.exception.detail["message"])
+        self.assertNotIn("signed=secret", raised.exception.detail["message"])
 
 
 if __name__ == "__main__":

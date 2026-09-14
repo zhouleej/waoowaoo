@@ -4,7 +4,7 @@ import {
   mobileCloudMaasAssetClient,
 } from '@/lib/mobile-cloud-maas/asset-client'
 import type { MobileCloudAsset } from '@/lib/mobile-cloud-maas/asset-types'
-import { SafeOutboundError, safeOutboundFetch } from '@/lib/security/safe-outbound-http'
+import { SafeOutboundError, withSafeOutboundResponse } from '@/lib/security/safe-outbound-http'
 import { INSPIRATION_VIDEO_LIMITS } from './limits'
 
 const DOWNLOAD_TIMEOUT_MS = 30_000
@@ -62,13 +62,41 @@ async function fetchAssetBody(assetUrl: string, field: string): Promise<Buffer> 
   }
 
   for (let redirectCount = 0; redirectCount <= MAX_REDIRECTS; redirectCount += 1) {
-    let response: Response
+    let result: { body: Buffer; redirectUrl?: never } | { body?: never; redirectUrl: URL }
     try {
-      response = await safeOutboundFetch(currentUrl, {
-        method: 'GET',
-        signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
-      })
+      result = await withSafeOutboundResponse(
+        currentUrl,
+        {
+          method: 'GET',
+          signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
+        },
+        async (response) => {
+          if (response.status >= 300 && response.status < 400) {
+            const location = response.headers.get('location')
+            if (!location || redirectCount === MAX_REDIRECTS) {
+              throw new ApiError('EXTERNAL_ERROR', {
+                field,
+                code: 'INSPIRATION_MOBILE_CLOUD_IMAGE_REDIRECT_INVALID',
+                message: '移动云图片地址跳转异常，请更换素材',
+              })
+            }
+            return { redirectUrl: new URL(location, currentUrl) }
+          }
+          if (!response.ok) {
+            throw new ApiError('EXTERNAL_ERROR', {
+              field,
+              code: 'INSPIRATION_MOBILE_CLOUD_IMAGE_DOWNLOAD_FAILED',
+              upstreamStatus: response.status,
+              message: '移动云图片下载失败，请稍后重试',
+            })
+          }
+          return {
+            body: await readLimitedBody(response, INSPIRATION_VIDEO_LIMITS.imageBytes, field),
+          }
+        },
+      )
     } catch (error) {
+      if (error instanceof ApiError) throw error
       const code = error instanceof SafeOutboundError && error.code === 'SSRF_BLOCKED'
         ? 'INSPIRATION_MOBILE_CLOUD_IMAGE_URL_BLOCKED'
         : 'INSPIRATION_MOBILE_CLOUD_IMAGE_DOWNLOAD_FAILED'
@@ -81,27 +109,11 @@ async function fetchAssetBody(assetUrl: string, field: string): Promise<Buffer> 
       })
     }
 
-    if (response.status >= 300 && response.status < 400) {
-      const location = response.headers.get('location')
-      if (!location || redirectCount === MAX_REDIRECTS) {
-        throw new ApiError('EXTERNAL_ERROR', {
-          field,
-          code: 'INSPIRATION_MOBILE_CLOUD_IMAGE_REDIRECT_INVALID',
-          message: '移动云图片地址跳转异常，请更换素材',
-        })
-      }
-      currentUrl = new URL(location, currentUrl)
+    if (result.redirectUrl) {
+      currentUrl = result.redirectUrl
       continue
     }
-    if (!response.ok) {
-      throw new ApiError('EXTERNAL_ERROR', {
-        field,
-        code: 'INSPIRATION_MOBILE_CLOUD_IMAGE_DOWNLOAD_FAILED',
-        upstreamStatus: response.status,
-        message: '移动云图片下载失败，请稍后重试',
-      })
-    }
-    return readLimitedBody(response, INSPIRATION_VIDEO_LIMITS.imageBytes, field)
+    return result.body
   }
 
   throw new ApiError('EXTERNAL_ERROR', {

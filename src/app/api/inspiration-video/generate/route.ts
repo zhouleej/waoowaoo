@@ -357,6 +357,13 @@ export const POST = apiHandler(async (request: NextRequest) => {
       payload: {
         videoModel: selection.modelKey,
         prompt: draft.prompt,
+        mobileCloudAssets: {
+          primaryImageAssetId: primaryMobileCloudImage?.assetId || null,
+          referenceImages: referenceMobileCloudImages.map((image, index) => ({
+            assetId: image.assetId,
+            sortOrder: draft.referenceImages.length + index,
+          })),
+        },
         generateThumbnailFromVideo: !hasPrimaryImage
           && draft.referenceImages.length === 0
           && draft.referenceMobileCloudAssetIds.length === 0,

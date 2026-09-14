@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const assetClientMock = vi.hoisted(() => ({ getAsset: vi.fn() }))
-const safeFetchMock = vi.hoisted(() => vi.fn())
+const withSafeResponseMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@/lib/mobile-cloud-maas/asset-client', () => {
   class MobileCloudMaasOpenApiError extends Error {
@@ -24,7 +24,7 @@ vi.mock('@/lib/security/safe-outbound-http', () => {
       super(message)
     }
   }
-  return { SafeOutboundError, safeOutboundFetch: safeFetchMock }
+  return { SafeOutboundError, withSafeOutboundResponse: withSafeResponseMock }
 })
 
 describe('Mobile Cloud inspiration image import', () => {
@@ -38,7 +38,11 @@ describe('Mobile Cloud inspiration image import', () => {
       assetUrl: 'https://assets.example.com/key.png',
       status: 'ACTIVE',
     })
-    safeFetchMock.mockResolvedValue(new Response('image-body', { status: 200 }))
+    withSafeResponseMock.mockImplementation(async (
+      _url: URL,
+      _init: RequestInit,
+      consume: (response: Response) => Promise<unknown>,
+    ) => consume(new Response('image-body', { status: 200 })))
   })
 
   it('loads an active image using its server-resolved URL', async () => {
@@ -46,9 +50,10 @@ describe('Mobile Cloud inspiration image import', () => {
     const result = await loadMobileCloudImage('asset-1', 'primaryMobileCloudAssetId')
 
     expect(assetClientMock.getAsset).toHaveBeenCalledWith('asset-1')
-    expect(safeFetchMock).toHaveBeenCalledWith(
+    expect(withSafeResponseMock).toHaveBeenCalledWith(
       new URL('https://assets.example.com/key.png'),
       expect.objectContaining({ method: 'GET' }),
+      expect.any(Function),
     )
     expect(result).toMatchObject({ assetId: 'asset-1', assetName: 'Key image.png' })
     expect(result.body.toString()).toBe('image-body')
@@ -69,18 +74,50 @@ describe('Mobile Cloud inspiration image import', () => {
     await expect(loadMobileCloudImage('asset-1', 'primaryMobileCloudAssetId')).rejects.toMatchObject({
       code: 'INVALID_PARAMS',
     })
-    expect(safeFetchMock).not.toHaveBeenCalled()
+    expect(withSafeResponseMock).not.toHaveBeenCalled()
   })
 
   it('rejects a declared image size above the shared image limit', async () => {
     const { loadMobileCloudImage } = await import('@/lib/inspiration-video/mobile-cloud-image')
-    safeFetchMock.mockResolvedValueOnce(new Response('small', {
+    withSafeResponseMock.mockImplementationOnce(async (
+      _url: URL,
+      _init: RequestInit,
+      consume: (response: Response) => Promise<unknown>,
+    ) => consume(new Response('small', {
       status: 200,
       headers: { 'content-length': String(10 * 1024 * 1024 + 1) },
-    }))
+    })))
 
     await expect(loadMobileCloudImage('asset-1', 'primaryMobileCloudAssetId')).rejects.toMatchObject({
       code: 'INVALID_PARAMS',
     })
+  })
+
+  it('follows redirects while each response is consumed before its pinned connection closes', async () => {
+    withSafeResponseMock
+      .mockImplementationOnce(async (
+        _url: URL,
+        _init: RequestInit,
+        consume: (response: Response) => Promise<unknown>,
+      ) => consume(new Response(null, {
+        status: 302,
+        headers: { location: 'https://cdn.example.com/key.png' },
+      })))
+      .mockImplementationOnce(async (
+        _url: URL,
+        _init: RequestInit,
+        consume: (response: Response) => Promise<unknown>,
+      ) => consume(new Response('redirected-image', { status: 200 })))
+
+    const { loadMobileCloudImage } = await import('@/lib/inspiration-video/mobile-cloud-image')
+    const result = await loadMobileCloudImage('asset-1', 'primaryMobileCloudAssetId')
+
+    expect(withSafeResponseMock).toHaveBeenNthCalledWith(
+      2,
+      new URL('https://cdn.example.com/key.png'),
+      expect.objectContaining({ method: 'GET' }),
+      expect.any(Function),
+    )
+    expect(result.body.toString()).toBe('redirected-image')
   })
 })

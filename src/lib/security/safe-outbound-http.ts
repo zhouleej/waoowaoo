@@ -85,18 +85,28 @@ export function createPinnedLookup(selected: LookupAddress): LookupFunction {
   }
 }
 
-export async function safeOutboundFetch(
+type SafeOutboundFetchImpl = (
+  url: string,
+  init: RequestInit & { dispatcher?: Dispatcher },
+) => Promise<Response>
+
+type SafeOutboundFetchOptions = {
+  lookup?: OutboundLookup
+  production?: boolean
+  fetchImpl?: SafeOutboundFetchImpl
+}
+
+async function createSafeOutboundRequest(
   input: string | URL,
-  init: RequestInit,
-  options: { lookup?: OutboundLookup; production?: boolean; fetchImpl?: (url: string, init: RequestInit & { dispatcher?: Dispatcher }) => Promise<Response> } = {},
-): Promise<Response> {
+  options: SafeOutboundFetchOptions,
+) {
   const resolved = await resolveSafeOutboundUrl(input, options)
   const selected = resolved.addresses[0]
   const connector = buildConnector({
     lookup: createPinnedLookup(selected),
   })
-  const agent = new Agent({ connect(options, callback) {
-    connector(options, (error, socket) => {
+  const agent = new Agent({ connect(connectOptions, callback) {
+    connector(connectOptions, (error, socket) => {
       if (error || !socket) return callback(error, socket)
       if (!socket.remoteAddress || isBlockedOutboundIp(socket.remoteAddress) || !resolved.addresses.some(({ address }) => address === socket.remoteAddress)) {
         socket.destroy()
@@ -105,10 +115,50 @@ export async function safeOutboundFetch(
       callback(null, socket)
     })
   } })
+  const fetchImpl = options.fetchImpl ?? (undiciFetch as unknown as SafeOutboundFetchImpl)
+  return { agent, fetchImpl, url: resolved.url.toString() }
+}
+
+/**
+ * Consumes the response while its pinned dispatcher is still open.
+ *
+ * A fetch promise resolves after response headers arrive, before a streamed
+ * response body has necessarily been read. Callers that download media must
+ * therefore consume the body before the per-request agent is closed.
+ */
+export async function withSafeOutboundResponse<T>(
+  input: string | URL,
+  init: RequestInit,
+  consume: (response: Response) => Promise<T>,
+  options: SafeOutboundFetchOptions = {},
+): Promise<T> {
+  const request = await createSafeOutboundRequest(input, options)
+  let response: Response | undefined
   try {
-    const fetchImpl = options.fetchImpl ?? (undiciFetch as unknown as typeof options.fetchImpl)
-    return await fetchImpl!(resolved.url.toString(), { ...init, redirect: 'manual', dispatcher: agent })
+    response = await request.fetchImpl(request.url, { ...init, redirect: 'manual', dispatcher: request.agent })
+    return await consume(response)
   } finally {
-    await agent.close()
+    if (response?.body && !response.bodyUsed) {
+      try {
+        await response.body.cancel()
+      } catch {
+        // The stream may already be errored or closed; the dispatcher still
+        // needs to be released below.
+      }
+    }
+    await request.agent.close()
+  }
+}
+
+export async function safeOutboundFetch(
+  input: string | URL,
+  init: RequestInit,
+  options: SafeOutboundFetchOptions = {},
+): Promise<Response> {
+  const request = await createSafeOutboundRequest(input, options)
+  try {
+    return await request.fetchImpl(request.url, { ...init, redirect: 'manual', dispatcher: request.agent })
+  } finally {
+    await request.agent.close()
   }
 }
