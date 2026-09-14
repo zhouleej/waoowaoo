@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { AppIcon } from '@/components/ui/icons'
 import type { InspirationVideoCreation } from '../types'
+import InspirationVideoPlayer from './InspirationVideoPlayer'
 
 type Props = {
   creation: InspirationVideoCreation | null
@@ -52,13 +53,14 @@ export default function CreationPreview({ creation, pendingImage }: Props) {
       <div className="p-4">
         <div className="relative flex min-h-[500px] items-center justify-center overflow-hidden rounded-2xl border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-muted)]">
           {creation?.videoUrl ? (
-            <video
+            <InspirationVideoPlayer
+              key={creation.id}
               src={creation.videoUrl}
-              poster={creation.thumbnailUrl || undefined}
-              controls
-              playsInline
-              preload="metadata"
-              className="max-h-[560px] w-full bg-black object-contain"
+              fallbackSrc={creation.videoFallbackUrl}
+              poster={creation.thumbnailUrl || creation.primaryImage?.url}
+              alt={t('preview.imageAlt')}
+              playLabel={t('actions.play')}
+              className="h-[500px] max-h-[560px] w-full"
             />
           ) : backgroundImage ? (
             <>

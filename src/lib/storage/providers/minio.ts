@@ -16,6 +16,17 @@ const DEFAULT_MINIO_REGION = 'us-east-1'
 const DEFAULT_MINIO_UPLOAD_TIMEOUT_MS = 60_000
 const MIN_MINIO_UPLOAD_TIMEOUT_MS = 1_000
 const MAX_MINIO_UPLOAD_TIMEOUT_MS = 10 * 60_000
+const VIDEO_CONTENT_TYPE_BY_EXTENSION: Readonly<Record<string, string>> = {
+  mp4: 'video/mp4',
+  webm: 'video/webm',
+  mov: 'video/quicktime',
+}
+
+function videoContentTypeForKey(key: string): string | undefined {
+  const filename = key.split(/[/?#]/).pop() || ''
+  const extension = filename.includes('.') ? filename.split('.').pop()?.toLowerCase() : undefined
+  return extension ? VIDEO_CONTENT_TYPE_BY_EXTENSION[extension] : undefined
+}
 
 type S3ClientLike = {
   send(command: unknown, options?: { abortSignal?: AbortSignal }): Promise<unknown>
@@ -184,12 +195,14 @@ export class MinioStorageProvider implements StorageProvider {
     const sdk = await this.loadSdk()
     const presigner = await this.loadPresigner()
     const client = await this.getSigningClient()
+    const responseContentType = videoContentTypeForKey(params.key)
 
     return await presigner.getSignedUrl(
       client,
       new sdk.GetObjectCommand({
         Bucket: this.bucket,
         Key: params.key,
+        ...(responseContentType ? { ResponseContentType: responseContentType } : {}),
       }),
       {
         expiresIn: params.expiresInSeconds,

@@ -35,6 +35,7 @@ export type InspirationVideoCreation = {
   referenceAudios: InspirationMedia[]
   thumbnailUrl: string | null
   videoUrl: string | null
+  videoFallbackUrl: string | null
   downloadUrl: string | null
   downloadFilename: string | null
 }

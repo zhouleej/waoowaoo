@@ -4,6 +4,7 @@ import Image from 'next/image'
 import { useLocale, useTranslations } from 'next-intl'
 import { AppIcon } from '@/components/ui/icons'
 import type { InspirationVideoCreation, InspirationVideoModel } from '../types'
+import InspirationVideoPlayer from './InspirationVideoPlayer'
 
 type Props = {
   creations: InspirationVideoCreation[]
@@ -45,13 +46,13 @@ export default function CreationHistory({ creations, models, onAction, busy }: P
             <article key={creation.id} className="glass-surface group overflow-hidden rounded-2xl border border-[var(--glass-stroke-base)] transition-transform hover:-translate-y-0.5">
               <div className="relative aspect-video overflow-hidden bg-[var(--glass-bg-muted)]">
                 {creation.videoUrl ? (
-                  <video
+                  <InspirationVideoPlayer
                     src={creation.videoUrl}
-                    poster={creation.thumbnailUrl || undefined}
-                    controls
-                    playsInline
-                    preload={creation.thumbnailUrl ? 'none' : 'metadata'}
-                    className="h-full w-full bg-black object-contain"
+                    fallbackSrc={creation.videoFallbackUrl}
+                    poster={creation.thumbnailUrl || creation.primaryImage?.url}
+                    alt={creation.prompt}
+                    playLabel={t('actions.play')}
+                    className="h-full w-full"
                   />
                 ) : creation.primaryImage ? (
                   <Image src={creation.primaryImage.url} alt={creation.prompt} fill unoptimized className="object-cover" />

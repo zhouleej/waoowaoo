@@ -59,6 +59,21 @@ describe('MinioStorageProvider signing endpoint', () => {
     expect(new URL(url).host).toBe('minio:9000')
   })
 
+  it('overrides legacy video object metadata with a browser-playable response type', async () => {
+    const provider = new MinioStorageProvider()
+    await provider.getSignedObjectUrl({ key: 'images/history-video.mp4', expiresInSeconds: 3600 })
+
+    expect(getSignedUrlMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        Bucket: 'waoowaoo',
+        Key: 'images/history-video.mp4',
+        ResponseContentType: 'video/mp4',
+      }),
+      { expiresIn: 3600 },
+    )
+  })
+
   it('rejects the conventional MinIO Console port for either S3 endpoint', () => {
     process.env.MINIO_PUBLIC_ENDPOINT = 'http://storage.example.com:9001'
     expect(() => new MinioStorageProvider()).toThrow(StorageConfigError)

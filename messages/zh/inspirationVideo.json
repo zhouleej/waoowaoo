@@ -43,6 +43,7 @@
     "generate": "立即生成",
     "submitting": "正在提交",
     "queued": "创作任务已进入队列，生成进度会自动更新。",
+    "play": "播放视频",
     "download": "下载视频",
     "modelSettings": "模型设置",
     "configureNow": "立即配置",
