@@ -1,30 +1,13 @@
 import { ApiError } from '@/lib/api-errors'
+import {
+  INSPIRATION_AUDIO_EXTENSIONS,
+  INSPIRATION_AUDIO_MIME_TYPES,
+  INSPIRATION_IMAGE_EXTENSIONS,
+  INSPIRATION_IMAGE_MIME_TYPES,
+  INSPIRATION_VIDEO_LIMITS,
+} from '@/lib/inspiration-video/limits'
 
-export const INSPIRATION_VIDEO_LIMITS = {
-  promptCharacters: 2_000,
-  imageBytes: 10 * 1024 * 1024,
-  audioBytes: 30 * 1024 * 1024,
-  referenceImages: 8,
-  referenceAudios: 3,
-  totalAssets: 12,
-  totalBytes: 80 * 1024 * 1024,
-} as const
-
-const IMAGE_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
-const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'webp'])
-const AUDIO_MIME_TYPES = new Set([
-  'audio/aac',
-  'audio/m4a',
-  'audio/mp4',
-  'audio/mpeg',
-  'audio/ogg',
-  'audio/wav',
-  'audio/wave',
-  'audio/webm',
-  'audio/x-m4a',
-  'audio/x-wav',
-])
-const AUDIO_EXTENSIONS = new Set(['aac', 'm4a', 'mp3', 'mp4', 'ogg', 'wav', 'webm'])
+export { INSPIRATION_VIDEO_LIMITS } from '@/lib/inspiration-video/limits'
 
 export type UploadFile = File & {
   arrayBuffer(): Promise<ArrayBuffer>
@@ -71,8 +54,8 @@ function validateFile(
   const extension = extensionOf(file.name)
   const mimeType = file.type.toLowerCase()
   const validType = kind === 'image'
-    ? IMAGE_MIME_TYPES.has(mimeType) && IMAGE_EXTENSIONS.has(extension)
-    : AUDIO_MIME_TYPES.has(mimeType) && AUDIO_EXTENSIONS.has(extension)
+    ? INSPIRATION_IMAGE_MIME_TYPES.has(mimeType) && INSPIRATION_IMAGE_EXTENSIONS.has(extension)
+    : INSPIRATION_AUDIO_MIME_TYPES.has(mimeType) && INSPIRATION_AUDIO_EXTENSIONS.has(extension)
   const maxBytes = kind === 'image'
     ? INSPIRATION_VIDEO_LIMITS.imageBytes
     : INSPIRATION_VIDEO_LIMITS.audioBytes

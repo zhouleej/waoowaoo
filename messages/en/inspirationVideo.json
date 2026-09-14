@@ -51,6 +51,7 @@
     "cancel": "Cancel task",
     "delete": "Delete record",
     "loadMore": "Load more",
+    "retryLoad": "Reload",
     "deleteConfirm": "Delete this creation? Media files will be retained."
   },
   "preview": {
@@ -87,8 +88,15 @@
   },
   "errors": {
     "loadFailed": "Failed to load the Inspiration Video workspace",
+    "loadTimeout": "The Inspiration Video workspace timed out while loading. Check your connection and reload.",
     "modelsFailed": "Failed to load video models",
     "submitFailed": "Failed to submit the creation",
+    "submitTimeout": "Submission timed out. The submission ID was retained; retry later to avoid creating a duplicate task.",
+    "imageType": "Image “{name}” is not supported. Upload a JPG, PNG, or WebP file.",
+    "imageSize": "Image “{name}” exceeds {limitMb} MB. Compress it and try again.",
+    "audioType": "Audio “{name}” is not supported. Upload an AAC, M4A, MP3, MP4, OGG, WAV, or WebM file.",
+    "audioSize": "Audio “{name}” exceeds {limitMb} MB. Compress it and try again.",
+    "totalSize": "All reference assets together must not exceed {limitMb} MB.",
     "refreshAfterSubmit": "Task accepted. Refresh failed; reload the page instead of submitting again."
   }
 }

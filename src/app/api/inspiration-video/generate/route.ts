@@ -17,6 +17,9 @@ import { resolveRequiredTaskLocale } from '@/lib/task/resolve-locale'
 import { submitTask } from '@/lib/task/submitter'
 import { TASK_TYPE } from '@/lib/task/types'
 import { findAcceptedSubmission, submissionCreationId } from '@/lib/inspiration-video/submission'
+import { createScopedLogger } from '@/lib/logging/core'
+
+const routeLogger = createScopedLogger({ module: 'api.inspiration-video.generate' })
 
 type UploadedAsset = {
   kind: 'primary_image' | 'reference_image' | 'reference_audio'
@@ -113,19 +116,45 @@ async function uploadDraftAssets(
 }
 
 export const POST = apiHandler(async (request: NextRequest) => {
+  const startedAt = Date.now()
+  const requestId = getRequestId(request)
   const authResult = await requireUserAuth()
   if (isErrorResponse(authResult)) return authResult
   const { session } = authResult
+  const logger = routeLogger.child({ requestId, userId: session.user.id })
+
+  logger.event({
+    level: 'INFO',
+    action: 'inspiration.submit.received',
+    message: 'Inspiration video submission received',
+    details: { contentLength: request.headers.get('content-length') },
+  })
 
   const formData = await request.formData()
   const draft = parseInspirationVideoDraft(formData)
   const locale = resolveRequiredTaskLocale(request, {
     locale: typeof formData.get('locale') === 'string' ? formData.get('locale') : undefined,
   })
+  const totalAssetBytes = [draft.primaryImage, ...draft.referenceImages, ...draft.referenceAudios]
+    .filter((file): file is UploadFile => Boolean(file))
+    .reduce((sum, file) => sum + file.size, 0)
+  logger.event({
+    level: 'INFO',
+    action: 'inspiration.submit.form_parsed',
+    message: 'Inspiration video submission form parsed',
+    durationMs: Date.now() - startedAt,
+    details: {
+      hasPrimaryImage: Boolean(draft.primaryImage),
+      referenceImageCount: draft.referenceImages.length,
+      referenceAudioCount: draft.referenceAudios.length,
+      totalAssetBytes,
+    },
+  })
 
   const resolved = await resolveInspirationVideoWorkspace(session.user.id)
   if ('error' in resolved) return resolved.error
   const { workspace } = resolved
+  const workspaceLogger = logger.child({ projectId: workspace.projectId })
   const creationId = submissionCreationId(session.user.id, workspace.id, formData.get('submissionId'))
   if (creationId) {
     const existing = await findAcceptedSubmission(creationId)
@@ -204,6 +233,13 @@ export const POST = apiHandler(async (request: NextRequest) => {
     }
     throw error
   })
+  workspaceLogger.event({
+    level: 'INFO',
+    action: 'inspiration.submit.creation_created',
+    message: 'Inspiration video creation record created',
+    durationMs: Date.now() - startedAt,
+    details: { creationId: creation.id },
+  })
   const uploadedKeys: string[] = []
 
   async function rollbackCreatedRecord() {
@@ -217,6 +253,13 @@ export const POST = apiHandler(async (request: NextRequest) => {
   let result: Awaited<ReturnType<typeof submitTask>>
   try {
     const assets = await uploadDraftAssets(creation.id, draft, (storageKey) => uploadedKeys.push(storageKey))
+    workspaceLogger.event({
+      level: 'INFO',
+      action: 'inspiration.submit.assets_uploaded',
+      message: 'Inspiration video assets uploaded',
+      durationMs: Date.now() - startedAt,
+      details: { creationId: creation.id, assetCount: assets.length, totalAssetBytes },
+    })
     await prisma.inspirationVideoAsset.createMany({
       data: assets.map((asset) => ({
         creationId: creation.id,
@@ -247,13 +290,38 @@ export const POST = apiHandler(async (request: NextRequest) => {
       dedupeKey: `inspiration_video:${creation.id}`,
     })
   } catch (error) {
+    workspaceLogger.event({
+      level: 'ERROR',
+      action: 'inspiration.submit.rolled_back',
+      message: 'Inspiration video submission failed before task acceptance',
+      durationMs: Date.now() - startedAt,
+      details: { creationId: creation.id, uploadedAssetCount: uploadedKeys.length },
+      error: error instanceof Error ? error : new Error(String(error)),
+    })
     await rollbackCreatedRecord()
     throw error
   }
 
+  workspaceLogger.event({
+    level: 'INFO',
+    action: 'inspiration.submit.task_accepted',
+    message: 'Inspiration video task accepted',
+    taskId: result.taskId,
+    durationMs: Date.now() - startedAt,
+    details: { creationId: creation.id },
+  })
+
   await prisma.inspirationVideoCreation.update({
     where: { id: creation.id },
     data: { taskId: result.taskId },
+  })
+  workspaceLogger.event({
+    level: 'INFO',
+    action: 'inspiration.submit.completed',
+    message: 'Inspiration video submission completed',
+    taskId: result.taskId,
+    durationMs: Date.now() - startedAt,
+    details: { creationId: creation.id },
   })
   return NextResponse.json({
     ...result,

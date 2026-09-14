@@ -51,6 +51,7 @@
     "cancel": "取消任务",
     "delete": "删除记录",
     "loadMore": "加载更多",
+    "retryLoad": "重新加载",
     "deleteConfirm": "删除此创作记录？媒体文件暂时保留。"
   },
   "preview": {
@@ -87,8 +88,15 @@
   },
   "errors": {
     "loadFailed": "灵感视频工作区加载失败",
+    "loadTimeout": "灵感视频工作区加载超时，请检查网络后重新加载。",
     "modelsFailed": "视频模型加载失败",
     "submitFailed": "创作任务提交失败",
+    "submitTimeout": "提交等待超时。本次提交标识已保留，请稍后直接重试，避免重复创建任务。",
+    "imageType": "图片“{name}”格式不支持，请上传 JPG、PNG 或 WebP 文件。",
+    "imageSize": "图片“{name}”超过 {limitMb} MB，请压缩后重新上传。",
+    "audioType": "音频“{name}”格式不支持，请上传 AAC、M4A、MP3、MP4、OGG、WAV 或 WebM 文件。",
+    "audioSize": "音频“{name}”超过 {limitMb} MB，请压缩后重新上传。",
+    "totalSize": "全部参考素材总大小不能超过 {limitMb} MB。",
     "refreshAfterSubmit": "任务已接收，但刷新列表失败，请刷新页面查看，无需重复提交。"
   }
 }

@@ -35,10 +35,12 @@ describe('MinioStorageProvider signing endpoint', () => {
     process.env.MINIO_ACCESS_KEY = 'app-access-key'
     process.env.MINIO_SECRET_KEY = 'app-secret-key'
     process.env.MINIO_FORCE_PATH_STYLE = 'true'
+    process.env.MINIO_UPLOAD_TIMEOUT_MS = '45000'
   })
 
   afterEach(() => {
     delete process.env.MINIO_PUBLIC_ENDPOINT
+    delete process.env.MINIO_UPLOAD_TIMEOUT_MS
   })
 
   it('uses the public endpoint client to create a host-correct presigned URL', async () => {
@@ -96,5 +98,27 @@ describe('MinioStorageProvider signing endpoint', () => {
     })
     expect(object.contentLength).toBe(4)
     expect(await new Response(object.body).text()).toBe('2345')
+  })
+
+  it('applies the configured timeout to object uploads', async () => {
+    const provider = new MinioStorageProvider()
+    s3SendMock.mockResolvedValueOnce({})
+
+    await provider.uploadObject({
+      key: 'images/input.jpg',
+      body: Buffer.from('image'),
+      contentType: 'image/jpeg',
+    })
+
+    expect(s3SendMock).toHaveBeenCalledWith(
+      expect.anything(),
+      { abortSignal: expect.any(AbortSignal) },
+    )
+  })
+
+  it('rejects an invalid upload timeout instead of allowing an unbounded request', () => {
+    process.env.MINIO_UPLOAD_TIMEOUT_MS = '0'
+    expect(() => new MinioStorageProvider()).toThrow(StorageConfigError)
+    expect(() => new MinioStorageProvider()).toThrow(/MINIO_UPLOAD_TIMEOUT_MS/)
   })
 })

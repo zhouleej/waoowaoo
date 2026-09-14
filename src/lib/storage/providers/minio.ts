@@ -10,11 +10,15 @@ import type {
   UploadObjectResult,
 } from '@/lib/storage/types'
 import { requireEnv, streamToBuffer, toFetchableUrl, validateMinioBucket, validateMinioCredential, validateMinioEndpoint } from '@/lib/storage/utils'
+import { StorageConfigError } from '@/lib/storage/errors'
 
 const DEFAULT_MINIO_REGION = 'us-east-1'
+const DEFAULT_MINIO_UPLOAD_TIMEOUT_MS = 60_000
+const MIN_MINIO_UPLOAD_TIMEOUT_MS = 1_000
+const MAX_MINIO_UPLOAD_TIMEOUT_MS = 10 * 60_000
 
 type S3ClientLike = {
-  send(command: unknown): Promise<unknown>
+  send(command: unknown, options?: { abortSignal?: AbortSignal }): Promise<unknown>
 }
 
 type S3SdkModule = {
@@ -52,6 +56,19 @@ function toWebStream(body: unknown): ReadableStream<Uint8Array> {
   throw new Error('STORAGE_OBJECT_BODY_UNREADABLE')
 }
 
+function resolveUploadTimeoutMs(rawValue: string | undefined): number {
+  if (!rawValue?.trim()) return DEFAULT_MINIO_UPLOAD_TIMEOUT_MS
+  const parsed = Number(rawValue)
+  if (!Number.isInteger(parsed)
+    || parsed < MIN_MINIO_UPLOAD_TIMEOUT_MS
+    || parsed > MAX_MINIO_UPLOAD_TIMEOUT_MS) {
+    throw new StorageConfigError(
+      `MINIO_UPLOAD_TIMEOUT_MS must be an integer between ${MIN_MINIO_UPLOAD_TIMEOUT_MS} and ${MAX_MINIO_UPLOAD_TIMEOUT_MS}`,
+    )
+  }
+  return parsed
+}
+
 export class MinioStorageProvider implements StorageProvider {
   readonly kind = 'minio' as const
 
@@ -62,6 +79,7 @@ export class MinioStorageProvider implements StorageProvider {
   private readonly forcePathStyle: boolean
   private readonly accessKeyId: string
   private readonly secretAccessKey: string
+  private readonly uploadTimeoutMs: number
   private clientPromise: Promise<S3ClientLike> | null = null
   private signingClientPromise: Promise<S3ClientLike> | null = null
 
@@ -76,6 +94,7 @@ export class MinioStorageProvider implements StorageProvider {
     this.bucket = validateMinioBucket(requireEnv('MINIO_BUCKET'))
     this.region = process.env.MINIO_REGION || DEFAULT_MINIO_REGION
     this.forcePathStyle = process.env.MINIO_FORCE_PATH_STYLE !== 'false'
+    this.uploadTimeoutMs = resolveUploadTimeoutMs(process.env.MINIO_UPLOAD_TIMEOUT_MS)
   }
 
   private async loadSdk(): Promise<S3SdkModule> {
@@ -118,12 +137,15 @@ export class MinioStorageProvider implements StorageProvider {
   async uploadObject(params: UploadObjectParams): Promise<UploadObjectResult> {
     const sdk = await this.loadSdk()
     const client = await this.getClient()
-    await client.send(new sdk.PutObjectCommand({
-      Bucket: this.bucket,
-      Key: params.key,
-      Body: params.body,
-      ContentType: params.contentType,
-    }))
+    await client.send(
+      new sdk.PutObjectCommand({
+        Bucket: this.bucket,
+        Key: params.key,
+        Body: params.body,
+        ContentType: params.contentType,
+      }),
+      { abortSignal: AbortSignal.timeout(this.uploadTimeoutMs) },
+    )
 
     return { key: params.key }
   }

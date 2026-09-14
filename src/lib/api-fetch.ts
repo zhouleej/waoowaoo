@@ -51,6 +51,48 @@ export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Pr
   return fetch(input, mergeLocaleHeader(init))
 }
 
+export class ApiRequestTimeoutError extends Error {
+  readonly timeoutMs: number
+
+  constructor(timeoutMs: number) {
+    super(`Request timed out after ${timeoutMs}ms`)
+    this.name = 'ApiRequestTimeoutError'
+    this.timeoutMs = timeoutMs
+  }
+}
+
+export async function apiFetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit | undefined,
+  timeoutMs: number,
+): Promise<Response> {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    throw new TypeError('timeoutMs must be a positive number')
+  }
+
+  const controller = new AbortController()
+  const sourceSignal = init?.signal
+  let timedOut = false
+  const abortFromSource = () => controller.abort(sourceSignal?.reason)
+  if (sourceSignal?.aborted) abortFromSource()
+  else sourceSignal?.addEventListener('abort', abortFromSource, { once: true })
+
+  const timer = setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, timeoutMs)
+
+  try {
+    return await apiFetch(input, { ...init, signal: controller.signal })
+  } catch (error) {
+    if (timedOut) throw new ApiRequestTimeoutError(timeoutMs)
+    throw error
+  } finally {
+    clearTimeout(timer)
+    sourceSignal?.removeEventListener('abort', abortFromSource)
+  }
+}
+
 function readApiErrorMessage(payload: unknown, fallback: string): string {
   if (payload && typeof payload === 'object') {
     const record = payload as Record<string, unknown>
