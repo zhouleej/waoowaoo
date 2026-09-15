@@ -328,13 +328,8 @@ export const PATCH = apiHandler(async (
         updateData.audioMediaId = null
         updateData.audioDuration = null
       }
-      if (changed || audioUrl !== undefined) {
-        await tx.novelPromotionPanel.updateMany({
-          where: { matchedVoiceLines: { some: { id: lineId } } },
-          data: { lipSyncVideoUrl: null, lipSyncVideoMediaId: null, lipSyncTaskId: null },
-        })
-      }
-      return tx.novelPromotionVoiceLine.update({
+      // Use the same lock order as generation: voice line, then dependent panels.
+      const saved = await tx.novelPromotionVoiceLine.update({
       where: { id: lineId },
       data: updateData,
       include: {
@@ -347,6 +342,16 @@ export const PATCH = apiHandler(async (
         }
       }
       })
+      if (changed || audioUrl !== undefined || (matchedPanelId !== undefined && matchedPanelId !== source.matchedPanelId)) {
+        await tx.novelPromotionPanel.updateMany({
+          where: { OR: [
+            { matchedVoiceLines: { some: { id: lineId } } },
+            ...(source.matchedPanelId ? [{ id: source.matchedPanelId }] : []),
+          ] },
+          data: { lipSyncVideoUrl: null, lipSyncVideoMediaId: null, lipSyncTaskId: null },
+        })
+      }
+      return saved
     })
     return NextResponse.json({
       success: true,

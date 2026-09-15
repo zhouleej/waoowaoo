@@ -9,6 +9,8 @@ const workerState = vi.hoisted(() => ({
 }))
 
 const generateVoiceLineMock = vi.hoisted(() => vi.fn())
+const assertTaskActiveMock = vi.hoisted(() => vi.fn(async () => undefined))
+vi.mock('@/lib/workers/utils', () => ({ assertTaskActive: assertTaskActiveMock }))
 const handleVoiceDesignTaskMock = vi.hoisted(() => vi.fn())
 const reportTaskProgressMock = vi.hoisted(() => vi.fn(async () => undefined))
 const withTaskLifecycleMock = vi.hoisted(() =>
@@ -91,6 +93,16 @@ describe('worker voice processor behavior', () => {
     mod.createVoiceWorker()
   })
 
+  it('passes cancellation checks through the actual queue processor', async () => {
+    assertTaskActiveMock.mockRejectedValueOnce(new Error('task canceled'))
+    generateVoiceLineMock.mockImplementationOnce(async (input) => {
+      await input.checkCancelled?.()
+      return { audioUrl: 'should-not-save.wav' }
+    })
+    await expect(workerState.processor!(buildJob({ type: TASK_TYPE.VOICE_LINE }))).rejects.toThrow('task canceled')
+    expect(assertTaskActiveMock).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ taskId: 'task-1' }) }), 'voice_line_generation')
+  })
+
   it('VOICE_LINE: lineId/episodeId 缺失时显式失败', async () => {
     const processor = workerState.processor
     expect(processor).toBeTruthy()
@@ -132,6 +144,7 @@ describe('worker voice processor behavior', () => {
       lineId: 'line-9',
       userId: 'user-1',
       audioModel: 'fal::voice-model',
+      checkCancelled: expect.any(Function),
     })
   })
 

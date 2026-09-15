@@ -13,6 +13,8 @@ vi.mock('@/lib/media/video-thumbnail', () => ({ extractStoredVideoFirstFrame: me
 type WorkerProcessor = (job: Job<TaskJobData>) => Promise<unknown>
 
 type PanelRow = {
+  storyboard: { episodeId: string }
+  updatedAt: Date
   id: string
   videoUrl: string | null
   imageUrl: string | null
@@ -77,10 +79,13 @@ const prismaMock = vi.hoisted(() => ({
     findUnique: vi.fn(),
     findFirst: vi.fn(),
     update: vi.fn(async () => undefined),
+    updateMany: vi.fn(async () => ({ count: 1 })),
   },
   novelPromotionVoiceLine: {
     findUnique: vi.fn(),
   },
+  $transaction: vi.fn(),
+  $queryRaw: vi.fn(),
 }))
 const storageMock = vi.hoisted(() => ({
   getSignedUrl: vi.fn((key: string) => `/api/storage/sign?key=${encodeURIComponent(key)}`),
@@ -143,12 +148,14 @@ vi.mock('@/lib/workers/user-concurrency-gate', () => concurrencyGateMock)
 function buildPanel(overrides?: Partial<PanelRow>): PanelRow {
   return {
     id: 'panel-1',
+    storyboard: { episodeId: 'episode-1' },
     videoUrl: 'cos/base-video.mp4',
     imageUrl: 'cos/panel-image.png',
     videoPrompt: 'panel prompt',
     description: 'panel description',
     firstLastFramePrompt: null,
     duration: 5,
+    updatedAt: new Date('2026-09-11T00:00:00Z'),
     ...(overrides || {}),
   }
 }
@@ -177,6 +184,8 @@ function buildJob(params: {
 describe('worker video processor behavior', () => {
   beforeEach(async () => {
     vi.clearAllMocks()
+    prismaMock.$transaction.mockImplementation(async (run) => run(prismaMock))
+    prismaMock.novelPromotionPanel.updateMany.mockResolvedValue({ count: 1 })
     workerState.processor = null
 
     prismaMock.novelPromotionPanel.findUnique.mockResolvedValue(buildPanel())
@@ -199,8 +208,10 @@ describe('worker video processor behavior', () => {
     modelContractMock.parseModelKeyStrict.mockReturnValue({ provider: 'fal' })
     prismaMock.novelPromotionVoiceLine.findUnique.mockResolvedValue({
       id: 'line-1',
+      episodeId: 'episode-1',
       audioUrl: 'cos/line-1.mp3',
       audioDuration: 1200,
+      updatedAt: new Date('2026-09-11T00:00:00Z'),
     })
     mobileCloudAssetClientMock.getAsset.mockResolvedValue({
       assetId: 'asset-panel-1',
@@ -225,6 +236,46 @@ describe('worker video processor behavior', () => {
     })
 
     await expect(processor!(job)).rejects.toThrow('VIDEO_MODEL_REQUIRED: payload.videoModel is required')
+  })
+
+  it('does not publish video if its source image or prompt changed before saving', async () => {
+    prismaMock.novelPromotionPanel.updateMany.mockResolvedValueOnce({ count: 0 })
+    await expect(workerState.processor!(buildJob({ type: TASK_TYPE.VIDEO_PANEL, payload: { videoModel: 'fal::video' } })))
+      .rejects.toThrow('VIDEO_SOURCE_CHANGED')
+  })
+
+  it('rejects legacy cross-project lip-sync tasks before contacting a provider', async () => {
+    prismaMock.novelPromotionPanel.findUnique.mockImplementationOnce(async ({ where }) =>
+      where.storyboard?.episode?.novelPromotionProject?.projectId === 'project-1' ? null : buildPanel())
+    await expect(workerState.processor!(buildJob({ type: TASK_TYPE.LIP_SYNC, payload: { voiceLineId: 'line-1' } })))
+      .rejects.toThrow('Lip-sync panel not found')
+    expect(utilsMock.resolveLipSyncVideoSource).not.toHaveBeenCalled()
+  })
+
+  it('rejects a voice from a different episode in an already queued task', async () => {
+    prismaMock.novelPromotionVoiceLine.findUnique.mockResolvedValueOnce({ id: 'line-1', episodeId: 'foreign-episode', audioUrl: 'voice.wav' })
+    await expect(workerState.processor!(buildJob({ type: TASK_TYPE.LIP_SYNC, payload: { voiceLineId: 'line-1' } })))
+      .rejects.toThrow('LIP_SYNC_VOICE_EPISODE_MISMATCH')
+    expect(utilsMock.resolveLipSyncVideoSource).not.toHaveBeenCalled()
+  })
+
+  it('rejects first-last-frame output if the last frame was replaced while generating', async () => {
+    prismaMock.novelPromotionPanel.findFirst.mockResolvedValueOnce(buildPanel({ id: 'tail', imageUrl: 'old-tail.png' }))
+    prismaMock.novelPromotionPanel.findUnique.mockResolvedValueOnce(buildPanel())
+    prismaMock.novelPromotionPanel.findUnique.mockResolvedValueOnce(buildPanel({ id: 'tail', imageUrl: 'new-tail.png' }))
+    await expect(workerState.processor!(buildJob({ type: TASK_TYPE.VIDEO_PANEL, payload: {
+      videoModel: 'fal::video', firstLastFrame: { lastFrameStoryboardId: 's', lastFramePanelIndex: 1, flModel: 'fal::video' },
+    } }))).rejects.toThrow('VIDEO_SOURCE_CHANGED')
+    expect(prismaMock.novelPromotionPanel.updateMany).not.toHaveBeenCalled()
+  })
+
+  it('does not publish lip sync based on audio that was replaced during generation', async () => {
+    utilsMock.resolveLipSyncVideoSource.mockImplementationOnce(async () => {
+      prismaMock.novelPromotionVoiceLine.findUnique.mockResolvedValue({ id: 'line-1', audioUrl: 'new.wav' })
+      return 'https://provider.example/stale.mp4'
+    })
+    await expect(workerState.processor!(buildJob({ type: TASK_TYPE.LIP_SYNC, payload: { voiceLineId: 'line-1' } })))
+      .rejects.toThrow('LIP_SYNC_SOURCE_CHANGED')
   })
   it('rejects first-last-frame generation without a selected last image', async () => {
     await expect(workerState.processor!(buildJob({ type: TASK_TYPE.VIDEO_PANEL,
@@ -272,7 +323,8 @@ describe('worker video processor behavior', () => {
     expect(processor).toBeTruthy()
     modelContractMock.parseModelKeyStrict.mockReturnValue({ provider: 'maas-seedance' })
     prismaMock.novelPromotionPanel.findUnique.mockResolvedValueOnce(buildPanel({ imageUrl: '/api/files/images/first.png' }))
-    prismaMock.novelPromotionPanel.findFirst.mockResolvedValueOnce(buildPanel({ imageUrl: 'images/last.png' }))
+    prismaMock.novelPromotionPanel.findFirst.mockResolvedValueOnce(buildPanel({ id: 'tail', imageUrl: 'images/last.png' }))
+    prismaMock.novelPromotionPanel.findUnique.mockResolvedValueOnce(buildPanel({ id: 'tail', imageUrl: 'images/last.png' }))
 
     await processor!(buildJob({
       type: TASK_TYPE.VIDEO_PANEL,
@@ -324,8 +376,8 @@ describe('worker video processor behavior', () => {
       videoUrl: 'cos/lip-sync/video.mp4',
       actualVideoTokens: 108000,
     })
-    expect(prismaMock.novelPromotionPanel.update).toHaveBeenCalledWith({
-      where: { id: 'panel-1' },
+    expect(prismaMock.novelPromotionPanel.updateMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({ id: 'panel-1', imageUrl: 'cos/panel-image.png', videoPrompt: 'panel prompt' }),
       data: expect.objectContaining({
         videoUrl: 'cos/lip-sync/video.mp4', videoMediaId: null,
         lipSyncVideoUrl: null, lipSyncVideoMediaId: null, lipSyncTaskId: null,
@@ -423,8 +475,8 @@ describe('worker video processor behavior', () => {
       }),
     )
 
-    expect(prismaMock.novelPromotionPanel.update).toHaveBeenCalledWith({
-      where: { id: 'panel-1' },
+    expect(prismaMock.novelPromotionPanel.updateMany).toHaveBeenCalledWith({
+      where: { id: 'panel-1', updatedAt: new Date('2026-09-11T00:00:00Z'), videoUrl: 'cos/base-video.mp4' },
       data: {
         lipSyncVideoUrl: 'cos/lip-sync/video.mp4',
         lipSyncVideoMediaId: null,

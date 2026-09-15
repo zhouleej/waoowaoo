@@ -48,10 +48,13 @@ const prismaMock = vi.hoisted(() => ({
     findUnique: vi.fn(),
     findFirst: vi.fn(),
     update: vi.fn(async () => undefined),
+    updateMany: vi.fn(async () => ({ count: 1 })),
   },
   novelPromotionVoiceLine: {
     findUnique: vi.fn(),
   },
+  $transaction: vi.fn(),
+  $queryRaw: vi.fn(),
 }))
 
 vi.mock('bullmq', () => ({
@@ -109,15 +112,20 @@ function toJob(data: TaskJobData): Job<TaskJobData> {
 describe('chain contract - video queue behavior', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    prismaMock.$transaction.mockImplementation(async (run) => run(prismaMock))
     queueState.addCallsByQueue.clear()
     workerState.processor = null
     prismaMock.novelPromotionPanel.findUnique.mockResolvedValue({
       id: 'panel-1',
+      storyboard: { episodeId: 'episode-1' },
       videoUrl: 'cos/base-video.mp4',
+      updatedAt: new Date('2026-09-11T00:00:00Z'),
     })
     prismaMock.novelPromotionVoiceLine.findUnique.mockResolvedValue({
       id: 'line-1',
+      episodeId: 'episode-1',
       audioUrl: 'cos/line-1.mp3',
+      updatedAt: new Date('2026-09-11T00:00:00Z'),
     })
   })
 
@@ -193,8 +201,8 @@ describe('chain contract - video queue behavior', () => {
       voiceLineId: 'line-1',
       lipSyncVideoUrl: 'cos/lip-sync/video.mp4',
     })
-    expect(prismaMock.novelPromotionPanel.update).toHaveBeenCalledWith({
-      where: { id: 'panel-1' },
+    expect(prismaMock.novelPromotionPanel.updateMany).toHaveBeenCalledWith({
+      where: { id: 'panel-1', updatedAt: new Date('2026-09-11T00:00:00Z'), videoUrl: 'cos/base-video.mp4' },
       data: {
         lipSyncVideoUrl: 'cos/lip-sync/video.mp4',
         lipSyncVideoMediaId: null,

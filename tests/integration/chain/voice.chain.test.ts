@@ -1,3 +1,4 @@
+vi.mock('@/lib/workers/utils', () => ({ assertTaskActive: async () => {} }))
 import type { Job } from 'bullmq'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { TASK_TYPE, type TaskJobData } from '@/lib/task/types'
@@ -167,6 +168,7 @@ describe('chain contract - voice queue behavior', () => {
       lineId: 'line-1',
       userId: 'user-1',
       audioModel: 'fal::voice-model',
+      checkCancelled: expect.any(Function),
     })
   })
 })

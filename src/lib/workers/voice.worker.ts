@@ -5,6 +5,7 @@ import { QUEUE_NAME } from '@/lib/task/queues'
 import { TASK_TYPE, type TaskJobData } from '@/lib/task/types'
 import { reportTaskProgress, withTaskLifecycle } from './shared'
 import { handleVoiceDesignTask } from './handlers/voice-design'
+import { assertTaskActive } from './utils'
 
 type AnyObj = Record<string, unknown>
 
@@ -30,6 +31,7 @@ async function handleVoiceLineTask(job: Job<TaskJobData>) {
     lineId,
     userId: job.data.userId,
     audioModel,
+    checkCancelled: () => assertTaskActive(job, 'voice_line_generation'),
   })
 
   await reportTaskProgress(job, 95, { stage: 'generate_voice_persist', lineId })
