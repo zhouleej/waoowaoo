@@ -266,7 +266,7 @@ export async function generateVoiceLine(params: {
   }
 
   const audioKey = `voice/${params.projectId}/${episodeId}/${line.id}.wav`
-  const cosKey = await uploadObject(generated.audioData, audioKey)
+  const cosKey = await uploadObject(generated.audioData, audioKey, 3, 'audio/wav')
 
   await checkCancelled?.()
 

@@ -9,6 +9,7 @@ const clip = z.object({
   trim: z.object({ from: frame, to: frame }).optional(),
   attachment: z.object({ audio: audio.optional(), subtitle: subtitle.optional() }).optional(),
   dialogue: z.array(z.object({ from: frame, durationInFrames: frame.min(1), audio: audio.optional(), subtitle: subtitle.optional() })).max(100).optional(),
+  muteSourceAudio: z.boolean().optional(),
   transition: z.object({ type: z.enum(['none', 'dissolve', 'fade', 'slide']), durationInFrames: frame.max(120) }).optional(),
   metadata: z.object({ panelId: z.string().min(1), storyboardId: z.string().min(1), description: z.string().optional() }),
 })

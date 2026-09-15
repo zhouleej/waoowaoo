@@ -165,7 +165,7 @@ const ClipRenderer: React.FC<ClipRendererProps> = ({
             <OffthreadVideo
                 src={clip.src}
                 startFrom={clip.trim?.from || 0}
-                muted={!!clip.attachment?.audio || !!clip.dialogue?.some((line) => line.audio)}
+                muted={!!clip.attachment?.audio || !!clip.dialogue?.some((line) => line.audio) || clip.muteSourceAudio === true}
                 style={{
                     width: '100%',
                     height: '100%',

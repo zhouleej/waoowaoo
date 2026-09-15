@@ -57,8 +57,32 @@ function buildJsonResponse(payload: unknown, status = 200): Response {
   } as unknown as Response
 }
 
-function buildBinaryResponse(contentType: string, data: string): Response {
-  const bytes = new TextEncoder().encode(data)
+function buildWavBuffer(durationMs: number): Buffer {
+  const sampleRate = 16000
+  const channels = 1
+  const bitsPerSample = 16
+  const blockAlign = channels * (bitsPerSample / 8)
+  const byteRate = sampleRate * blockAlign
+  const dataLength = Math.round((durationMs / 1000) * byteRate)
+  const output = Buffer.alloc(44 + dataLength)
+  output.write('RIFF', 0, 'ascii')
+  output.writeUInt32LE(36 + dataLength, 4)
+  output.write('WAVE', 8, 'ascii')
+  output.write('fmt ', 12, 'ascii')
+  output.writeUInt32LE(16, 16)
+  output.writeUInt16LE(1, 20)
+  output.writeUInt16LE(channels, 22)
+  output.writeUInt32LE(sampleRate, 24)
+  output.writeUInt32LE(byteRate, 28)
+  output.writeUInt16LE(blockAlign, 32)
+  output.writeUInt16LE(bitsPerSample, 34)
+  output.write('data', 36, 'ascii')
+  output.writeUInt32LE(dataLength, 40)
+  return output
+}
+
+function buildBinaryResponse(contentType: string, data: string | Buffer): Response {
+  const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : data
   return {
     ok: true,
     status: 200,
@@ -110,7 +134,7 @@ describe('lip-sync bailian submit', () => {
         return buildBinaryResponse('video/mp4', 'video-bytes')
       }
       if (url === 'http://localhost:3000/api/storage/sign?key=voice%2Fdemo.wav') {
-        return buildBinaryResponse('audio/wav', 'audio-bytes')
+        return buildBinaryResponse('audio/wav', buildWavBuffer(3000))
       }
       if (url === UPLOAD_HOST) {
         return {
@@ -179,6 +203,7 @@ describe('lip-sync bailian submit', () => {
   })
 
   it('throws explicit error when bailian task id is missing', async () => {
+    const audioDataUrl = `data:audio/wav;base64,${buildWavBuffer(3000).toString('base64')}`
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)
       if (url.startsWith(`${POLICY_ENDPOINT}?action=getPolicy&model=videoretalk`)) {
@@ -213,7 +238,7 @@ describe('lip-sync bailian submit', () => {
     await expect(generateLipSync(
       {
         videoUrl: 'data:video/mp4;base64,dmk=',
-        audioUrl: 'data:audio/wav;base64,YXU=',
+        audioUrl: audioDataUrl,
         audioDurationMs: 3000,
         videoDurationMs: 5000,
       },

@@ -14,7 +14,20 @@ describe('editor assembly', () => {
     expect(project.config).toEqual({ fps: 30, width: 1080, height: 1920 })
     expect(project.timeline[0].src).toBe('second.mp4')
     expect(project.timeline[0].dialogue?.map((line) => line.audio?.voiceLineId)).toEqual(['b', 'c'])
+    expect(project.timeline[0].muteSourceAudio).toBe(true)
     expect(project.timeline[0].durationInFrames).toBe(120)
+    expect(editorProjectSchema.safeParse(project).success).toBe(true)
+  })
+  it('keeps embedded exact audio enabled for a single-line lip-sync clip', () => {
+    const project = assembleEditorProject('ep', [
+      { id: 'panel', storyboardId: 's', videoUrl: 'base.mp4', lipSyncVideoUrl: 'lip-sync.mp4' },
+    ], [
+      { id: 'line', matchedPanelId: 'panel', content: 'Exact dialogue', audioUrl: 'line.wav' },
+    ])
+
+    expect(project.timeline[0].src).toBe('lip-sync.mp4')
+    expect(project.timeline[0].dialogue?.[0].audio).toBeUndefined()
+    expect(project.timeline[0].muteSourceAudio).toBe(false)
     expect(editorProjectSchema.safeParse(project).success).toBe(true)
   })
   it('rejects invalid dimensions and duplicate clips', () => {

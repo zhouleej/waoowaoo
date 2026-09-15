@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const normalizeToOriginalMediaUrlMock = vi.hoisted(() => vi.fn(async (input: string) => input))
 const uploadObjectMock = vi.hoisted(() => vi.fn(async () => 'voice/temp/lip-sync-preprocessed/test.wav'))
 const getSignedUrlMock = vi.hoisted(() => vi.fn(() => '/api/storage/sign?key=voice%2Ftemp%2Flip-sync-preprocessed%2Ftest.wav'))
+const normalizeAudioToWavMock = vi.hoisted(() => vi.fn(async (buffer: Buffer) => buffer))
 const toFetchableUrlMock = vi.hoisted(() => vi.fn((input: string) => {
   if (input.startsWith('http://') || input.startsWith('https://') || input.startsWith('data:')) return input
   if (input.startsWith('/')) return `https://public.example.com${input}`
@@ -11,6 +12,10 @@ const toFetchableUrlMock = vi.hoisted(() => vi.fn((input: string) => {
 
 vi.mock('@/lib/media/outbound-image', () => ({
   normalizeToOriginalMediaUrl: normalizeToOriginalMediaUrlMock,
+}))
+
+vi.mock('@/lib/media/audio-normalization', () => ({
+  normalizeAudioToWav: normalizeAudioToWavMock,
 }))
 
 vi.mock('@/lib/storage', () => ({
@@ -196,4 +201,33 @@ describe('lipsync preprocess', () => {
     expect(fetchMock).toHaveBeenCalled()
     expect(uploadObjectMock).not.toHaveBeenCalled()
   })
+
+  it('normalizes historical non-WAV audio before Bailian preprocessing', async () => {
+    const mp3Bytes = Buffer.from('ID3 historical audio')
+    const normalizedWav = buildWav(1000)
+    const video = buildMp4WithDuration(5000)
+    normalizeAudioToWavMock.mockResolvedValueOnce(normalizedWav)
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('video.mp4')) return buildBinaryResponse(video, 'video/mp4')
+      if (url.includes('legacy.wav')) return buildBinaryResponse(mp3Bytes, 'application/octet-stream')
+      throw new Error(`unexpected fetch: ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch)
+
+    const result = await preprocessLipSyncParams(
+      {
+        videoUrl: 'https://assets.example.com/video.mp4',
+        audioUrl: 'https://assets.example.com/legacy.wav',
+      },
+      { providerKey: 'bailian' },
+    )
+
+    expect(normalizeAudioToWavMock).toHaveBeenCalledWith(mp3Bytes)
+    expect(result.paddedAudio).toBe(true)
+    expect(result.params.audioDurationMs).toBeGreaterThan(LIPSYNC_STRICT_MIN_FOR_TEST)
+    expect(result.params.audioUrl.startsWith('data:audio/wav;base64,')).toBe(true)
+  })
 })
+
+const LIPSYNC_STRICT_MIN_FOR_TEST = 2000

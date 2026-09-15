@@ -1,10 +1,12 @@
 import { randomUUID } from 'node:crypto'
 import { logInfo as _ulogInfo } from '@/lib/logging/core'
 import { normalizeToOriginalMediaUrl } from '@/lib/media/outbound-image'
+import { normalizeAudioToWav } from '@/lib/media/audio-normalization'
 import { toFetchableUrl } from '@/lib/storage/utils'
 import type { LipSyncParams } from '@/lib/lipsync/types'
 
-const LIPSYNC_MIN_AUDIO_DURATION_MS = 2000
+const LIPSYNC_STRICT_MIN_AUDIO_DURATION_MS = 2000
+const LIPSYNC_TARGET_MIN_AUDIO_DURATION_MS = 2200
 
 export type LipSyncProviderKey = 'fal' | 'vidu' | 'bailian'
 
@@ -333,10 +335,11 @@ export async function preprocessLipSyncParams(
   let audioDurationMs = inputAudioDurationMs
 
   const needsDurationProbe = audioDurationMs === null
-  const shouldPadByKnown = audioDurationMs !== null && audioDurationMs < LIPSYNC_MIN_AUDIO_DURATION_MS
+  const shouldPadByKnown = audioDurationMs !== null && audioDurationMs < LIPSYNC_TARGET_MIN_AUDIO_DURATION_MS
   const shouldTrimByKnown = audioDurationMs !== null && videoDurationMs !== null && audioDurationMs > videoDurationMs
+  const shouldNormalizeForBailian = context.providerKey === 'bailian'
 
-  if (!needsDurationProbe && !shouldPadByKnown && !shouldTrimByKnown) {
+  if (!needsDurationProbe && !shouldPadByKnown && !shouldTrimByKnown && !shouldNormalizeForBailian) {
     return {
       params: {
         ...params,
@@ -348,25 +351,30 @@ export async function preprocessLipSyncParams(
   }
 
   const audioBinary = await loadBinaryFromInput(params.audioUrl)
-  if (!audioBinary.mimeType.includes('wav') && parseWavInfo(audioBinary.buffer) === null) {
-    throw new Error('LIPSYNC_AUDIO_PREPROCESS_WAV_REQUIRED')
-  }
+  let processedAudio = await normalizeAudioToWav(audioBinary.buffer)
+  const normalizedAudio = processedAudio !== audioBinary.buffer
 
-  const parsedAudioDuration = getWavDurationMs(audioBinary.buffer)
-  if (audioDurationMs === null) {
+  const parsedAudioDuration = getWavDurationMs(processedAudio)
+  if (audioDurationMs === null || normalizedAudio) {
     if (parsedAudioDuration === null) {
       throw new Error('LIPSYNC_AUDIO_DURATION_PARSE_FAILED')
     }
     audioDurationMs = parsedAudioDuration
   }
 
-  let processedAudio = audioBinary.buffer
   let paddedAudio = false
   let trimmedAudio = false
 
-  if (audioDurationMs < LIPSYNC_MIN_AUDIO_DURATION_MS) {
-    processedAudio = padWavToMinDuration(processedAudio, LIPSYNC_MIN_AUDIO_DURATION_MS)
-    audioDurationMs = getWavDurationMs(processedAudio) ?? LIPSYNC_MIN_AUDIO_DURATION_MS
+  if (videoDurationMs !== null && videoDurationMs <= LIPSYNC_STRICT_MIN_AUDIO_DURATION_MS) {
+    throw new Error('LIPSYNC_VIDEO_DURATION_TOO_SHORT')
+  }
+
+  const paddingTargetMs = videoDurationMs === null
+    ? LIPSYNC_TARGET_MIN_AUDIO_DURATION_MS
+    : Math.min(LIPSYNC_TARGET_MIN_AUDIO_DURATION_MS, videoDurationMs)
+  if (audioDurationMs < paddingTargetMs) {
+    processedAudio = padWavToMinDuration(processedAudio, paddingTargetMs)
+    audioDurationMs = getWavDurationMs(processedAudio) ?? paddingTargetMs
     paddedAudio = true
   }
 
@@ -376,7 +384,11 @@ export async function preprocessLipSyncParams(
     trimmedAudio = true
   }
 
-  if (!paddedAudio && !trimmedAudio) {
+  if (audioDurationMs <= LIPSYNC_STRICT_MIN_AUDIO_DURATION_MS) {
+    throw new Error('LIPSYNC_AUDIO_DURATION_TOO_SHORT')
+  }
+
+  if (!normalizedAudio && !paddedAudio && !trimmedAudio) {
     return {
       params: {
         ...params,
@@ -390,7 +402,7 @@ export async function preprocessLipSyncParams(
 
   const providerAudioInput = await toProviderAudioInput(context.providerKey, processedAudio)
 
-  _ulogInfo(`[LipSync Preprocess] provider=${context.providerKey} padded=${paddedAudio} trimmed=${trimmedAudio} audioDurationMs=${audioDurationMs} videoDurationMs=${videoDurationMs ?? 'unknown'}`)
+  _ulogInfo(`[LipSync Preprocess] provider=${context.providerKey} normalized=${normalizedAudio} padded=${paddedAudio} trimmed=${trimmedAudio} audioDurationMs=${audioDurationMs} videoDurationMs=${videoDurationMs ?? 'unknown'}`)
 
   return {
     params: {
@@ -404,4 +416,4 @@ export async function preprocessLipSyncParams(
   }
 }
 
-export const LIPSYNC_PREPROCESS_AUDIO_MIN_MS = LIPSYNC_MIN_AUDIO_DURATION_MS
+export const LIPSYNC_PREPROCESS_AUDIO_MIN_MS = LIPSYNC_TARGET_MIN_AUDIO_DURATION_MS

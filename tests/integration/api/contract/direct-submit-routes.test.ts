@@ -175,6 +175,7 @@ const prismaMock = vi.hoisted(() => ({
     })),
   },
   novelPromotionVoiceLine: {
+    count: vi.fn(async () => 0),
     findMany: vi.fn(async () => [
       { id: 'line-1', speaker: 'Narrator', content: 'hello world voice line' },
     ]),
@@ -273,7 +274,9 @@ vi.mock('@/lib/media/outbound-image', () => ({
   })),
 }))
 vi.mock('@/lib/model-capabilities/lookup', () => ({
-  resolveBuiltinCapabilitiesByModelKey: vi.fn(() => ({ video: { firstlastframe: true } })),
+  resolveBuiltinCapabilitiesByModelKey: vi.fn(() => ({
+    video: { firstlastframe: true, generateAudioOptions: [true, false] },
+  })),
 }))
 vi.mock('@/lib/model-pricing/lookup', () => ({
   resolveBuiltinPricing: resolveBuiltinPricingMock,
@@ -666,6 +669,33 @@ describe('api contract - direct submit routes (behavior)', () => {
         generationOptions: expect.objectContaining({ duration: 4, resolution: '1080p' }),
       }),
     }))
+  })
+
+  it('generate-video disables native generated speech before validation and billing when the panel has dialogue', async () => {
+    prismaMock.novelPromotionVoiceLine.count.mockResolvedValueOnce(1)
+    const routeFile = 'src/app/api/novel-promotion/[projectId]/generate-video/route.ts'
+    const body = {
+      videoModel: 'maas-seedance:tenant-1::doubao-seedance-2.0',
+      storyboardId: 'storyboard-1',
+      panelIndex: 0,
+      generationOptions: { duration: 4, generateAudio: true },
+    }
+
+    const response = await invokePostRoute({
+      routeFile,
+      body,
+      params: { projectId: 'project-1' },
+      expectedTaskType: TASK_TYPE.VIDEO_PANEL,
+      expectedTargetType: 'NovelPromotionPanel',
+      expectedProjectId: 'project-1',
+    })
+
+    expect(response.status).toBe(200)
+    const expectedPayload = expect.objectContaining({
+      generationOptions: expect.objectContaining({ duration: 4, generateAudio: false }),
+    })
+    expect(buildDefaultTaskBillingInfoMock).toHaveBeenLastCalledWith(TASK_TYPE.VIDEO_PANEL, expectedPayload)
+    expect(submitTaskMock).toHaveBeenLastCalledWith(expect.objectContaining({ payload: expectedPayload }))
   })
 
   it('keeps expected coverage size', () => {

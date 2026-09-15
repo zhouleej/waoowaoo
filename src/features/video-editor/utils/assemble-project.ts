@@ -27,6 +27,9 @@ export function assembleEditorProject(episodeId: string, panels: Panel[], voices
         durationInFrames: Math.max(Math.round((panel.duration || 3) * 30), cursor),
         // Lip-sync output already contains audio. Do not overlay it a second time.
         dialogue: useLipSync ? dialogue.map((line) => ({ ...line, audio: undefined })) : dialogue,
+        // Base model speech is not authoritative for scripted dialogue. Lip-sync
+        // output already carries the exact TTS audio and must remain audible.
+        muteSourceAudio: !useLipSync && dialogue.length > 0,
         metadata: { panelId: panel.id, storyboardId: panel.storyboardId, description: panel.description || undefined },
       }
     }),

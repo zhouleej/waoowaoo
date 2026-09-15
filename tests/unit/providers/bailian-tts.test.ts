@@ -1,4 +1,34 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+const normalizeAudioToWavMock = vi.hoisted(() => vi.fn(async (buffer: Buffer) => {
+  if (buffer.length >= 12
+    && buffer.subarray(0, 4).toString('ascii') === 'RIFF'
+    && buffer.subarray(8, 12).toString('ascii') === 'WAVE') {
+    return buffer
+  }
+  const sampleRate = 16000
+  const dataLength = sampleRate
+  const output = Buffer.alloc(44 + dataLength)
+  output.write('RIFF', 0, 'ascii')
+  output.writeUInt32LE(36 + dataLength, 4)
+  output.write('WAVE', 8, 'ascii')
+  output.write('fmt ', 12, 'ascii')
+  output.writeUInt32LE(16, 16)
+  output.writeUInt16LE(1, 20)
+  output.writeUInt16LE(1, 22)
+  output.writeUInt32LE(sampleRate, 24)
+  output.writeUInt32LE(sampleRate * 2, 28)
+  output.writeUInt16LE(2, 32)
+  output.writeUInt16LE(16, 34)
+  output.write('data', 36, 'ascii')
+  output.writeUInt32LE(dataLength, 40)
+  return output
+}))
+
+vi.mock('@/lib/media/audio-normalization', () => ({
+  normalizeAudioToWav: normalizeAudioToWavMock,
+}))
+
 import { synthesizeWithBailianTTS } from '@/lib/providers/bailian/tts'
 
 function buildWavBuffer(durationMs: number): Buffer {
@@ -140,6 +170,38 @@ describe('bailian tts synthesis', () => {
       error: 'BAILIAN_TTS_VOICE_ID_REQUIRED',
     })
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('normalizes a non-WAV single-segment response and drops its stale provider URL', async () => {
+    const providerBytes = Buffer.from('ID3 provider mp3 bytes')
+    const fetchMock = vi.fn(async (input: string) => {
+      if (input.includes('/multimodal-generation/generation')) {
+        return {
+          ok: true,
+          text: async () => JSON.stringify({
+            output: { audio: { url: 'https://audio.example/segment.mp3' } },
+            request_id: 'req-mp3',
+          }),
+        }
+      }
+      return {
+        ok: true,
+        status: 200,
+        arrayBuffer: async () => providerBytes.buffer.slice(
+          providerBytes.byteOffset,
+          providerBytes.byteOffset + providerBytes.byteLength,
+        ),
+      }
+    })
+    vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch)
+
+    const result = await synthesizeWithBailianTTS({ text: '测试台词', voiceId: 'voice_3' }, 'bl-key')
+
+    expect(result.success).toBe(true)
+    expect(normalizeAudioToWavMock).toHaveBeenCalledWith(providerBytes)
+    expect(result.audioData?.subarray(0, 4).toString('ascii')).toBe('RIFF')
+    expect(result.audioDuration).toBe(500)
+    expect(result.audioUrl).toBeUndefined()
   })
 })
 

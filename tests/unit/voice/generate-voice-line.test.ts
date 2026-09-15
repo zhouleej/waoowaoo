@@ -126,7 +126,12 @@ describe('generate voice line with bailian provider', () => {
       modelId: 'qwen3-tts-vd-2026-01-26',
       languageType: 'Chinese',
     }, 'bl-key')
-    expect(uploadObjectMock).toHaveBeenCalledTimes(1)
+    expect(uploadObjectMock).toHaveBeenCalledWith(
+      expect.any(Buffer),
+      'voice/project-1/episode-1/line-1.wav',
+      3,
+      'audio/wav',
+    )
     expect(prismaMock.novelPromotionVoiceLine.update).toHaveBeenCalledWith({
       where: { id: 'line-1' },
       data: {

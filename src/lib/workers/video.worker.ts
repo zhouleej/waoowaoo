@@ -31,6 +31,11 @@ type VideoOptionValue = string | number | boolean
 type VideoOptionMap = Record<string, VideoOptionValue>
 type VideoGenerationMode = 'normal' | 'firstlastframe'
 type PanelRecord = NonNullable<Awaited<ReturnType<typeof prisma.novelPromotionPanel.findUnique>>>
+type PanelDialogueLine = {
+  speaker: string
+  content: string
+  lineIndex: number
+}
 
 function isTrustedAssetUri(value: unknown): value is string {
   return typeof value === 'string' && /^asset:\/\/[A-Za-z0-9._:-]+$/.test(value.trim())
@@ -142,19 +147,18 @@ async function generateVideoForPanel(
   const firstLastCustomPrompt = typeof firstLastFramePayload?.customPrompt === 'string' ? firstLastFramePayload.customPrompt : null
   const persistedFirstLastPrompt = firstLastFramePayload ? panel.firstLastFramePrompt : null
   const customPrompt = typeof payload.customPrompt === 'string' ? payload.customPrompt : null
-  const prompt = firstLastCustomPrompt || persistedFirstLastPrompt || customPrompt || panel.videoPrompt || panel.description
-  if (!prompt) {
+  const basePrompt = firstLastCustomPrompt || persistedFirstLastPrompt || customPrompt || panel.videoPrompt || panel.description
+  if (!basePrompt) {
     throw new Error(`Panel ${panel.id} has no video prompt`)
   }
+  const dialogueLines = await getPanelDialogueLines(panel.id)
+  const prompt = appendDialoguePerformancePrompt(basePrompt, dialogueLines)
 
   const sourceImageUrl = toSignedUrlIfCos(panel.imageUrl, 7200)
   if (!sourceImageUrl) {
     throw new Error(`Panel ${panel.id} image url invalid`)
   }
   const generationMode: VideoGenerationMode = firstLastFramePayload ? 'firstlastframe' : 'normal'
-  const requestedGenerateAudio = typeof generationOptions.generateAudio === 'boolean'
-    ? generationOptions.generateAudio
-    : undefined
   let model = modelId
 
   if (firstLastFramePayload) {
@@ -169,6 +173,13 @@ async function generateVideoForPanel(
   }
 
   const parsedVideoModel = parseModelKeyStrict(model)
+  const modelCapabilities = resolveBuiltinCapabilitiesByModelKey('video', model)
+  const canDisableGeneratedAudio = modelCapabilities?.video?.generateAudioOptions?.includes(false) === true
+  const requestedGenerateAudio = dialogueLines.length > 0 && canDisableGeneratedAudio
+    ? false
+    : typeof generationOptions.generateAudio === 'boolean'
+      ? generationOptions.generateAudio
+      : undefined
   const usePublicMediaUrl = getProviderKey(parsedVideoModel?.provider).toLowerCase() === 'maas-seedance'
   const publicMediaOptions = { absoluteBaseUrl: getPublicBaseUrl() }
   const sourceAssetUri = usePublicMediaUrl
@@ -458,4 +469,25 @@ export function createVideoWorker() {
       concurrency: resolveVideoWorkerConcurrency(),
     },
   )
+}
+
+async function getPanelDialogueLines(panelId: string): Promise<PanelDialogueLine[]> {
+  const lines = await prisma.novelPromotionVoiceLine.findMany({
+    where: { matchedPanelId: panelId },
+    select: {
+      speaker: true,
+      content: true,
+      lineIndex: true,
+    },
+    orderBy: { lineIndex: 'asc' },
+  })
+  return lines.filter((line) => line.content.trim().length > 0)
+}
+
+function appendDialoguePerformancePrompt(prompt: string, lines: PanelDialogueLine[]): string {
+  if (lines.length === 0) return prompt
+  const dialogue = lines
+    .map((line) => `${line.speaker.trim() || '角色'}：“${line.content.trim()}”`)
+    .join('\n')
+  return `${prompt}\n\n对白表演参考（仅用于人物表演、口型和节奏，准确声音由后期台词音轨合成，不要生成字幕或画面文字）：\n${dialogue}`
 }

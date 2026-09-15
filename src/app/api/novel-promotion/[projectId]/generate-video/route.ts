@@ -76,6 +76,37 @@ function resolveVideoModelKeyFromPayload(payload: Record<string, unknown>): stri
   return null
 }
 
+function applyDialogueAudioPolicy(payload: Record<string, unknown>, hasDialogue: boolean): Record<string, unknown> {
+  if (!hasDialogue) return payload
+  const modelKey = resolveVideoModelKeyFromPayload(payload)
+  if (!modelKey) return payload
+  const capabilities = resolveBuiltinCapabilitiesByModelKey('video', modelKey)
+  if (capabilities?.video?.generateAudioOptions?.includes(false) !== true) return payload
+
+  const rawGenerationOptions = payload.generationOptions
+  const generationOptions = isRecord(rawGenerationOptions) ? rawGenerationOptions : {}
+  return {
+    ...payload,
+    generationOptions: {
+      ...generationOptions,
+      generateAudio: false,
+    },
+  }
+}
+
+async function findDialoguePanelIds(panelIds: string[]): Promise<Set<string>> {
+  if (panelIds.length === 0) return new Set()
+  const lines = await prisma.novelPromotionVoiceLine.findMany({
+    where: {
+      matchedPanelId: { in: panelIds },
+      content: { not: '' },
+    },
+    select: { matchedPanelId: true },
+    distinct: ['matchedPanelId'],
+  })
+  return new Set(lines.flatMap((line) => line.matchedPanelId ? [line.matchedPanelId] : []))
+}
+
 function requireVideoModelKeyFromPayload(payload: unknown): string {
   if (!isRecord(payload) || typeof payload.videoModel !== 'string' || !parseModelKeyStrict(payload.videoModel)) {
     throw new ApiError('INVALID_PARAMS', {
@@ -228,12 +259,6 @@ export const POST = apiHandler(async (
     const tail = await requireNovelPromotionPanelByStoryboardIndexInProject(projectId, last.lastFrameStoryboardId, Number(last.lastFramePanelIndex))
     if (!tail.imageUrl) throw new ApiError('INVALID_PARAMS', { message: '所选尾帧尚未生成图片' })
   }
-  await validateVideoCapabilityCombination({
-    payload: body,
-    projectId,
-    userId: session.user.id,
-  })
-
   if (isBatch) {
     const episodeId = typeof body.episodeId === 'string' ? body.episodeId : null
     if (!episodeId) {
@@ -263,9 +288,27 @@ export const POST = apiHandler(async (
       return NextResponse.json({ tasks: [], total: 0 })
     }
 
+    const dialoguePanelIds = await findDialoguePanelIds(panels.map((panel) => panel.id))
+    const payloadByPanelId = new Map(panels.map((panel) => [
+      panel.id,
+      applyDialogueAudioPolicy(body, dialoguePanelIds.has(panel.id)),
+    ]))
+    const uniquePayloads = new Map<string, Record<string, unknown>>()
+    for (const payload of payloadByPanelId.values()) {
+      uniquePayloads.set(JSON.stringify(payload.generationOptions || {}), payload)
+    }
+    for (const payload of uniquePayloads.values()) {
+      await validateVideoCapabilityCombination({
+        payload,
+        projectId,
+        userId: session.user.id,
+      })
+    }
+
     const results = await collectBatchSubmissions(
-      panels, async (panel) =>
-        submitTask({
+      panels, async (panel) => {
+        const panelPayload = payloadByPanelId.get(panel.id) || body
+        return await submitTask({
           userId: session.user.id,
           locale,
           requestId: getRequestId(request),
@@ -274,12 +317,13 @@ export const POST = apiHandler(async (
           type: TASK_TYPE.VIDEO_PANEL,
           targetType: 'NovelPromotionPanel',
           targetId: panel.id,
-          payload: withTaskUiPayload(body, {
+          payload: withTaskUiPayload(panelPayload, {
             hasOutputAtStart: await hasPanelVideoOutput(panel.id),
           }),
           dedupeKey: `video_panel:${panel.id}`,
-          billingInfo: buildVideoPanelBillingInfoOrThrow(body),
-        }),
+          billingInfo: buildVideoPanelBillingInfoOrThrow(panelPayload),
+        })
+      },
     )
 
     return NextResponse.json({ tasks: results.accepted, total: panels.length, rejected: results.rejected })
@@ -292,6 +336,18 @@ export const POST = apiHandler(async (
   }
 
   const panel = await requireNovelPromotionPanelByStoryboardIndexInProject(projectId, storyboardId, Number(panelIndex))
+  const dialogueCount = await prisma.novelPromotionVoiceLine.count({
+    where: {
+      matchedPanelId: panel.id,
+      content: { not: '' },
+    },
+  })
+  const panelPayload = applyDialogueAudioPolicy(body, dialogueCount > 0)
+  await validateVideoCapabilityCombination({
+    payload: panelPayload,
+    projectId,
+    userId: session.user.id,
+  })
 
   const result = await submitTask({
     userId: session.user.id,
@@ -301,11 +357,11 @@ export const POST = apiHandler(async (
     type: TASK_TYPE.VIDEO_PANEL,
     targetType: 'NovelPromotionPanel',
     targetId: panel.id,
-    payload: withTaskUiPayload(body, {
+    payload: withTaskUiPayload(panelPayload, {
       hasOutputAtStart: await hasPanelVideoOutput(panel.id),
     }),
     dedupeKey: `video_panel:${panel.id}`,
-    billingInfo: buildVideoPanelBillingInfoOrThrow(body),
+    billingInfo: buildVideoPanelBillingInfoOrThrow(panelPayload),
   })
 
   return NextResponse.json(result)

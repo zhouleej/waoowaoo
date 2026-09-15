@@ -2,23 +2,11 @@ import { spawn } from 'node:child_process'
 import { Readable } from 'node:stream'
 import sharp from 'sharp'
 import { getObjectStream } from '@/lib/storage'
+import { resolveFfmpegExecutable } from '@/lib/media/ffmpeg-runtime'
 
 const MAX_FRAME_BYTES = 32 * 1024 * 1024
 const MAX_ERROR_BYTES = 16 * 1024
 const EXTRACTION_TIMEOUT_MS = 60_000
-
-async function resolveFfmpegExecutable(): Promise<string> {
-  const configured = process.env.FFMPEG_PATH?.trim()
-  if (configured) return configured
-
-  const { RenderInternals } = await import('@remotion/renderer')
-  return RenderInternals.getExecutablePath({
-    type: 'ffmpeg',
-    indent: false,
-    logLevel: 'error',
-    binariesDirectory: process.env.REMOTION_BINARIES_DIRECTORY?.trim() || null,
-  })
-}
 
 async function decodeFirstFrame(video: ReadableStream<Uint8Array>): Promise<Buffer> {
   const executable = await resolveFfmpegExecutable()

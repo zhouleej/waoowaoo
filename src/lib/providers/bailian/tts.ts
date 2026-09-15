@@ -1,4 +1,5 @@
 import { toFetchableUrl } from '@/lib/storage/utils'
+import { normalizeAudioToWav } from '@/lib/media/audio-normalization'
 
 export const BAILIAN_TTS_MODEL_ID = 'qwen3-tts-vd-2026-01-26'
 const BAILIAN_TTS_ENDPOINT = 'https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation'
@@ -342,9 +343,10 @@ export async function synthesizeWithBailianTTS(
         modelId,
         apiKey,
       })
-      buffers.push(result.audioBuffer)
+      const normalizedAudio = await normalizeAudioToWav(result.audioBuffer)
+      buffers.push(normalizedAudio)
       totalCharacters += result.characters
-      if (!firstAudioUrl && result.audioUrl) {
+      if (!firstAudioUrl && result.audioUrl && normalizedAudio === result.audioBuffer) {
         firstAudioUrl = result.audioUrl
       }
       if (result.requestId) {

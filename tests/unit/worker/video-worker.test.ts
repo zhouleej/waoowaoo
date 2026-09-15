@@ -80,6 +80,7 @@ const prismaMock = vi.hoisted(() => ({
   },
   novelPromotionVoiceLine: {
     findUnique: vi.fn(),
+    findMany: vi.fn(),
   },
 }))
 const storageMock = vi.hoisted(() => ({
@@ -202,6 +203,7 @@ describe('worker video processor behavior', () => {
       audioUrl: 'cos/line-1.mp3',
       audioDuration: 1200,
     })
+    prismaMock.novelPromotionVoiceLine.findMany.mockResolvedValue([])
     mobileCloudAssetClientMock.getAsset.mockResolvedValue({
       assetId: 'asset-panel-1',
       assetName: 'panel material',
@@ -226,6 +228,36 @@ describe('worker video processor behavior', () => {
 
     await expect(processor!(job)).rejects.toThrow('VIDEO_MODEL_REQUIRED: payload.videoModel is required')
   })
+  it('VIDEO_PANEL: passes exact dialogue as performance context and disables native model speech', async () => {
+    prismaMock.novelPromotionVoiceLine.findMany.mockResolvedValueOnce([
+      { speaker: '张三', content: '我们现在就出发。', lineIndex: 0 },
+      { speaker: '李四', content: '好，我跟你一起去。', lineIndex: 1 },
+    ])
+
+    await workerState.processor!(buildJob({
+      type: TASK_TYPE.VIDEO_PANEL,
+      payload: {
+        videoModel: 'maas-seedance::doubao-seedance-2.0',
+        generationOptions: { generateAudio: true },
+      },
+    }))
+
+    expect(prismaMock.novelPromotionVoiceLine.findMany).toHaveBeenCalledWith({
+      where: { matchedPanelId: 'panel-1' },
+      select: { speaker: true, content: true, lineIndex: true },
+      orderBy: { lineIndex: 'asc' },
+    })
+    expect(utilsMock.resolveVideoSourceFromGeneration).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        options: expect.objectContaining({
+          generateAudio: false,
+          prompt: expect.stringContaining('张三：“我们现在就出发。”'),
+        }),
+      }),
+    )
+  })
+
   it('rejects first-last-frame generation without a selected last image', async () => {
     await expect(workerState.processor!(buildJob({ type: TASK_TYPE.VIDEO_PANEL,
       payload: { videoModel: 'maas-seedance::doubao-seedance-2.0', firstLastFrame: { flModel: 'maas-seedance::doubao-seedance-2.0' } },
