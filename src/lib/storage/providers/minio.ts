@@ -1,10 +1,36 @@
-import type { DeleteObjectsResult, SignedUrlParams, StorageProvider, UploadObjectParams, UploadObjectResult } from '@/lib/storage/types'
+import { Readable } from 'node:stream'
+import type {
+  DeleteObjectsResult,
+  ObjectByteRange,
+  SignedUrlParams,
+  StorageObjectMetadata,
+  StorageObjectStream,
+  StorageProvider,
+  UploadObjectParams,
+  UploadObjectStreamParams,
+  UploadObjectResult,
+} from '@/lib/storage/types'
 import { requireEnv, streamToBuffer, toFetchableUrl, validateMinioBucket, validateMinioCredential, validateMinioEndpoint } from '@/lib/storage/utils'
+import { StorageConfigError } from '@/lib/storage/errors'
 
 const DEFAULT_MINIO_REGION = 'us-east-1'
+const DEFAULT_MINIO_UPLOAD_TIMEOUT_MS = 60_000
+const MIN_MINIO_UPLOAD_TIMEOUT_MS = 1_000
+const MAX_MINIO_UPLOAD_TIMEOUT_MS = 10 * 60_000
+const VIDEO_CONTENT_TYPE_BY_EXTENSION: Readonly<Record<string, string>> = {
+  mp4: 'video/mp4',
+  webm: 'video/webm',
+  mov: 'video/quicktime',
+}
+
+function videoContentTypeForKey(key: string): string | undefined {
+  const filename = key.split(/[/?#]/).pop() || ''
+  const extension = filename.includes('.') ? filename.split('.').pop()?.toLowerCase() : undefined
+  return extension ? VIDEO_CONTENT_TYPE_BY_EXTENSION[extension] : undefined
+}
 
 type S3ClientLike = {
-  send(command: unknown): Promise<unknown>
+  send(command: unknown, options?: { abortSignal?: AbortSignal }): Promise<unknown>
 }
 
 type S3SdkModule = {
@@ -13,10 +39,46 @@ type S3SdkModule = {
   DeleteObjectCommand: new (input: Record<string, unknown>) => unknown
   DeleteObjectsCommand: new (input: Record<string, unknown>) => unknown
   GetObjectCommand: new (input: Record<string, unknown>) => unknown
+  HeadObjectCommand: new (input: Record<string, unknown>) => unknown
 }
 
 type PresignerModule = {
   getSignedUrl: (client: S3ClientLike, command: unknown, options: { expiresIn: number }) => Promise<string>
+}
+
+function toWebStream(body: unknown): ReadableStream<Uint8Array> {
+  if (body && typeof body === 'object') {
+    const sdkBody = body as {
+      transformToWebStream?: () => ReadableStream<Uint8Array>
+      pipe?: (...args: unknown[]) => unknown
+    }
+    if (typeof sdkBody.transformToWebStream === 'function') return sdkBody.transformToWebStream()
+    if (typeof sdkBody.pipe === 'function') {
+      return Readable.toWeb(body as Readable) as ReadableStream<Uint8Array>
+    }
+  }
+  if (body instanceof Uint8Array) {
+    return new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(body)
+        controller.close()
+      },
+    })
+  }
+  throw new Error('STORAGE_OBJECT_BODY_UNREADABLE')
+}
+
+function resolveUploadTimeoutMs(rawValue: string | undefined): number {
+  if (!rawValue?.trim()) return DEFAULT_MINIO_UPLOAD_TIMEOUT_MS
+  const parsed = Number(rawValue)
+  if (!Number.isInteger(parsed)
+    || parsed < MIN_MINIO_UPLOAD_TIMEOUT_MS
+    || parsed > MAX_MINIO_UPLOAD_TIMEOUT_MS) {
+    throw new StorageConfigError(
+      `MINIO_UPLOAD_TIMEOUT_MS must be an integer between ${MIN_MINIO_UPLOAD_TIMEOUT_MS} and ${MAX_MINIO_UPLOAD_TIMEOUT_MS}`,
+    )
+  }
+  return parsed
 }
 
 export class MinioStorageProvider implements StorageProvider {
@@ -29,6 +91,7 @@ export class MinioStorageProvider implements StorageProvider {
   private readonly forcePathStyle: boolean
   private readonly accessKeyId: string
   private readonly secretAccessKey: string
+  private readonly uploadTimeoutMs: number
   private clientPromise: Promise<S3ClientLike> | null = null
   private signingClientPromise: Promise<S3ClientLike> | null = null
 
@@ -43,6 +106,7 @@ export class MinioStorageProvider implements StorageProvider {
     this.bucket = validateMinioBucket(requireEnv('MINIO_BUCKET'))
     this.region = process.env.MINIO_REGION || DEFAULT_MINIO_REGION
     this.forcePathStyle = process.env.MINIO_FORCE_PATH_STYLE !== 'false'
+    this.uploadTimeoutMs = resolveUploadTimeoutMs(process.env.MINIO_UPLOAD_TIMEOUT_MS)
   }
 
   private async loadSdk(): Promise<S3SdkModule> {
@@ -85,12 +149,35 @@ export class MinioStorageProvider implements StorageProvider {
   async uploadObject(params: UploadObjectParams): Promise<UploadObjectResult> {
     const sdk = await this.loadSdk()
     const client = await this.getClient()
-    await client.send(new sdk.PutObjectCommand({
-      Bucket: this.bucket,
-      Key: params.key,
-      Body: params.body,
-      ContentType: params.contentType,
-    }))
+    await client.send(
+      new sdk.PutObjectCommand({
+        Bucket: this.bucket,
+        Key: params.key,
+        Body: params.body,
+        ContentType: params.contentType,
+      }),
+      { abortSignal: AbortSignal.timeout(this.uploadTimeoutMs) },
+    )
+
+    return { key: params.key }
+  }
+
+  async uploadObjectStream(params: UploadObjectStreamParams): Promise<UploadObjectResult> {
+    if (!Number.isSafeInteger(params.contentLength) || params.contentLength < 0) {
+      throw new Error('STORAGE_STREAM_CONTENT_LENGTH_INVALID')
+    }
+    const sdk = await this.loadSdk()
+    const client = await this.getClient()
+    await client.send(
+      new sdk.PutObjectCommand({
+        Bucket: this.bucket,
+        Key: params.key,
+        Body: params.body,
+        ContentLength: params.contentLength,
+        ContentType: params.contentType,
+      }),
+      { abortSignal: AbortSignal.timeout(this.uploadTimeoutMs) },
+    )
 
     return { key: params.key }
   }
@@ -129,12 +216,17 @@ export class MinioStorageProvider implements StorageProvider {
     const sdk = await this.loadSdk()
     const presigner = await this.loadPresigner()
     const client = await this.getSigningClient()
+    const responseContentType = videoContentTypeForKey(params.key)
 
     return await presigner.getSignedUrl(
       client,
       new sdk.GetObjectCommand({
         Bucket: this.bucket,
         Key: params.key,
+        ...(responseContentType ? { ResponseContentType: responseContentType } : {}),
+        ...(params.responseContentDisposition
+          ? { ResponseContentDisposition: params.responseContentDisposition }
+          : {}),
       }),
       {
         expiresIn: params.expiresInSeconds,
@@ -150,6 +242,56 @@ export class MinioStorageProvider implements StorageProvider {
       Key: key,
     })) as { Body?: unknown }
     return await streamToBuffer(result.Body)
+  }
+
+  async getObjectMetadata(key: string): Promise<StorageObjectMetadata> {
+    const sdk = await this.loadSdk()
+    const client = await this.getClient()
+    const result = await client.send(new sdk.HeadObjectCommand({
+      Bucket: this.bucket,
+      Key: key,
+    })) as {
+      ContentLength?: number
+      ContentType?: string
+      ETag?: string
+      LastModified?: Date
+    }
+    if (!Number.isSafeInteger(result.ContentLength) || (result.ContentLength ?? -1) < 0) {
+      throw new Error('STORAGE_OBJECT_SIZE_INVALID')
+    }
+    return {
+      size: result.ContentLength as number,
+      contentType: result.ContentType,
+      etag: result.ETag,
+      lastModified: result.LastModified,
+    }
+  }
+
+  async getObjectStream(key: string, range?: ObjectByteRange): Promise<StorageObjectStream> {
+    const sdk = await this.loadSdk()
+    const client = await this.getClient()
+    const result = await client.send(new sdk.GetObjectCommand({
+      Bucket: this.bucket,
+      Key: key,
+      ...(range ? { Range: `bytes=${range.start}-${range.end}` } : {}),
+    })) as {
+      Body?: unknown
+      ContentLength?: number
+      ContentType?: string
+      ETag?: string
+      LastModified?: Date
+    }
+    const expectedLength = range ? range.end - range.start + 1 : result.ContentLength
+    if (!Number.isSafeInteger(expectedLength) || (expectedLength ?? -1) < 0) {
+      throw new Error('STORAGE_OBJECT_STREAM_SIZE_INVALID')
+    }
+    return {
+      body: toWebStream(result.Body),
+      contentLength: expectedLength as number,
+      contentType: result.ContentType,
+      etag: result.ETag,
+      lastModified: result.LastModified,
+    }
   }
 
   extractStorageKey(input: string | null | undefined): string | null {

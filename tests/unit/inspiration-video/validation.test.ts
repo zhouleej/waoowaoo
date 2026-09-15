@@ -43,6 +43,35 @@ describe('inspiration video input validation', () => {
     expect(parseInspirationVideoDraft(formData).primaryImage).toBeNull()
   })
 
+  it('accepts Mobile Cloud image IDs without treating them as uploaded files', () => {
+    const formData = createBaseFormData()
+    formData.delete('primaryImage')
+    formData.set('primaryMobileCloudAssetId', 'cloud-primary')
+    formData.append('referenceMobileCloudAssetIds', 'cloud-reference-1')
+    formData.append('referenceMobileCloudAssetIds', 'cloud-reference-2')
+
+    const parsed = parseInspirationVideoDraft(formData)
+
+    expect(parsed.primaryImage).toBeNull()
+    expect(parsed.primaryMobileCloudAssetId).toBe('cloud-primary')
+    expect(parsed.referenceMobileCloudAssetIds).toEqual(['cloud-reference-1', 'cloud-reference-2'])
+  })
+
+  it('rejects conflicting local and Mobile Cloud primary images', () => {
+    const formData = createBaseFormData()
+    formData.set('primaryMobileCloudAssetId', 'cloud-primary')
+    expect(() => parseInspirationVideoDraft(formData)).toThrow(ApiError)
+  })
+
+  it('applies the reference image limit across local and Mobile Cloud images', () => {
+    const formData = createBaseFormData()
+    for (let index = 0; index < INSPIRATION_VIDEO_LIMITS.referenceImages; index += 1) {
+      formData.append('referenceImages', new File(['image'], `reference-${index}.jpg`, { type: 'image/jpeg' }))
+    }
+    formData.append('referenceMobileCloudAssetIds', 'one-too-many')
+    expect(() => parseInspirationVideoDraft(formData)).toThrow(ApiError)
+  })
+
   it('rejects an unsupported audio file type', () => {
     const formData = createBaseFormData()
     formData.append('referenceAudios', new File(['not audio'], 'notes.txt', { type: 'text/plain' }))

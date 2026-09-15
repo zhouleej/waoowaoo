@@ -54,6 +54,9 @@ class FakeMaasSeedanceClient:
             return "unused"
         raise FakeAICCException("create seedance task error")
 
+    def query_video_generation_task(self, _task_id: str) -> dict[str, object]:
+        return {"status": "processing"}
+
 
 fake_maas_seedance = ModuleType("maas_seedance")
 fake_maas_seedance.MaasSeedanceClient = FakeMaasSeedanceClient
@@ -63,9 +66,39 @@ from py_api import maas_seedance_api as adapter
 
 
 class MaasSeedanceApiTest(unittest.TestCase):
+    def setUp(self) -> None:
+        adapter.client.volc_client.secure_http_client.response = FakeResponse(200, {"id": "unused"})
+
     def test_accepts_text_only_content(self) -> None:
         request = adapter.VideoGenerationRequest(prompt="A rainy street")
         self.assertEqual(adapter.build_content(request), [{"type": "text", "text": "A rainy street"}])
+
+    def test_builds_primary_image_content_with_the_sdk_required_parameter_shape(self) -> None:
+        image_url = "https://objects.example.com/bucket/primary.jpg?signed=fake"
+        request = adapter.VideoGenerationRequest(
+            prompt="animate this image",
+            image_url=image_url,
+        )
+
+        self.assertEqual(adapter.build_content(request), [
+            {"type": "text", "text": "animate this image"},
+            {
+                "type": "image_url",
+                "image_url": {"url": image_url},
+                "role": "reference_image",
+            },
+        ])
+
+    def test_builds_mobile_cloud_asset_id_as_a_trusted_image_uri(self) -> None:
+        request = adapter.VideoGenerationRequest(
+            prompt="animate this registered asset",
+            image_url="asset://asset-inspiration-primary",
+            reference_images=["asset://asset-inspiration-reference"],
+        )
+
+        content = adapter.build_content(request)
+        self.assertEqual(content[1]["image_url"]["url"], "asset://asset-inspiration-primary")
+        self.assertEqual(content[2]["image_url"]["url"], "asset://asset-inspiration-reference")
 
     def test_forwards_supported_resolution_to_sdk_payload(self) -> None:
         request = adapter.VideoGenerationRequest(
@@ -150,6 +183,54 @@ class MaasSeedanceApiTest(unittest.TestCase):
 
         self.assertEqual(raised.exception.status_code, 422)
         self.assertEqual(raised.exception.detail["code"], "SENSITIVE_CONTENT")
+
+    def test_preserves_structured_failure_reason_from_status_query(self) -> None:
+        task_info = {
+            "status": "failed",
+            "error": {
+                "code": "InputImageSensitiveContentDetected.PrivacyInformation",
+                "message": "The input image did not pass the content review.",
+            },
+        }
+
+        with patch.object(adapter.client, "query_video_generation_task", return_value=task_info):
+            response = adapter.get_video_generation(
+                "task-sensitive",
+                f"Bearer {adapter.INTERNAL_API_KEY}",
+            )
+
+        self.assertEqual(response, {
+            "id": "task-sensitive",
+            "status": "failed",
+            "raw_status": "failed",
+            "error": "The input image did not pass the content review.",
+            "error_code": "SENSITIVE_CONTENT",
+            "upstream_error_code": "InputImageSensitiveContentDetected.PrivacyInformation",
+            "retryable": False,
+        })
+
+    def test_maps_input_resource_download_failure_to_specific_parameter_error(self) -> None:
+        adapter.client.volc_client.secure_http_client.response = FakeResponse(400, {
+            "error": {
+                "code": "InvalidParameter",
+                "message": (
+                    "The parameter `content[1].image_url` specified in the request is not valid: "
+                    "resource download failed."
+                ),
+            },
+        })
+        request = adapter.VideoGenerationRequest(
+            prompt="animate this image",
+            image_url="https://objects.example.com/bucket/first.png?signed=secret",
+        )
+
+        with self.assertRaises(HTTPException) as raised:
+            adapter.create_video_generation(request, f"Bearer {adapter.INTERNAL_API_KEY}")
+
+        self.assertEqual(raised.exception.status_code, 400)
+        self.assertEqual(raised.exception.detail["code"], "INPUT_RESOURCE_DOWNLOAD_FAILED")
+        self.assertIn("content[1].image_url", raised.exception.detail["message"])
+        self.assertNotIn("signed=secret", raised.exception.detail["message"])
 
 
 if __name__ == "__main__":

@@ -23,6 +23,7 @@ import {
     useAssetActions,
     useRefreshAssets,
     useGlobalFolders,
+    useSaveAssetHubCharacterDesignedVoice,
     useSSE,
 } from '@/lib/query/hooks'
 import { queryKeys } from '@/lib/query/keys'
@@ -49,6 +50,7 @@ export default function AssetHubPage() {
     const locationActions = useAssetActions({ scope: 'global', kind: 'location' })
     const propActions = useAssetActions({ scope: 'global', kind: 'prop' })
     const refreshAssets = useRefreshAssets({ scope: 'global' })
+    const saveDesignedCharacterVoiceMutation = useSaveAssetHubCharacterDesignedVoice()
 
     const loading = foldersLoading || assetsLoading
     useSSE({ projectId: 'global-asset-hub', enabled: true })
@@ -221,31 +223,17 @@ export default function AssetHubPage() {
         if (!voiceDesignCharacter) return
 
         try {
-            const res = await apiFetch('/api/asset-hub/character-voice', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    characterId: voiceDesignCharacter.id,
-                    voiceId,
-                    audioBase64
-                })
+            await saveDesignedCharacterVoiceMutation.mutateAsync({
+                characterId: voiceDesignCharacter.id,
+                voiceId,
+                audioBase64,
             })
-
-            if (res.ok) {
-                alert(t('voiceDesignSaved', { name: voiceDesignCharacter.name }))
-                queryClient.invalidateQueries({ queryKey: queryKeys.globalAssets.characters() })
-                refreshAssets()
-            } else {
-                const data = await res.json()
-                alert(
-                    typeof data.error === 'string'
-                        ? t('saveVoiceFailedDetail', { error: data.error })
-                        : t('saveVoiceFailed'),
-                )
-            }
-        } catch (error) {
+            alert(t('voiceDesignSaved', { name: voiceDesignCharacter.name }))
+        } catch (error: unknown) {
             _ulogError('保存声音失败:', error)
-            alert(t('saveVoiceFailed'))
+            const message = error instanceof Error ? error.message : t('saveVoiceFailed')
+            alert(t('saveVoiceFailedDetail', { error: message }))
+            throw error
         }
     }
 

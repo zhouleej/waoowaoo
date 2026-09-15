@@ -6,9 +6,18 @@ import { useLocale, useTranslations } from 'next-intl'
 import Navbar from '@/components/Navbar'
 import { AppIcon } from '@/components/ui/icons'
 import { Link, useRouter } from '@/i18n/navigation'
-import { apiFetch } from '@/lib/api-fetch'
+import { ApiRequestTimeoutError, apiFetch, apiFetchWithTimeout } from '@/lib/api-fetch'
 import { readApiErrorMessage } from '@/lib/api/read-error-message'
+import {
+  createInspirationSubmissionId,
+  type InspirationFileValidationIssue,
+  validateInspirationVideoFiles,
+} from '@/lib/inspiration-video/client'
 import { filterNormalVideoModelOptions } from '@/lib/model-capabilities/video-model-options'
+import {
+  applyInspirationVideoProgress,
+  shouldRefreshInspirationVideoWorkspace,
+} from '@/lib/inspiration-video/live-state'
 import { useSSE } from '@/lib/query/hooks/useSSE'
 import type { SSEEvent } from '@/lib/task/types'
 import InspirationComposer from './components/InspirationComposer'
@@ -29,9 +38,14 @@ const EMPTY_FORM: InspirationVideoForm = {
   duration: 5,
   generateAudio: true,
   primaryImage: null,
+  primaryMobileCloudImage: null,
   referenceImages: [],
+  referenceMobileCloudImages: [],
   referenceAudios: [],
 }
+
+const WORKSPACE_REQUEST_TIMEOUT_MS = 30_000
+const SUBMIT_REQUEST_TIMEOUT_MS = 180_000
 
 function getDurationOptions(model: InspirationVideoModel | undefined): number[] {
   const options = model?.capabilities?.video?.durationOptions
@@ -67,6 +81,7 @@ export default function InspirationVideoPage() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [loadAttempt, setLoadAttempt] = useState(0)
   const refreshTimerRef = useRef<number | null>(null)
   const submissionRef = useRef<{ form: InspirationVideoForm; id: string } | null>(null)
   const submitLock = useRef(false)
@@ -77,7 +92,7 @@ export default function InspirationVideoPage() {
   }, [router, status])
 
   const refreshWorkspace = useCallback(async () => {
-    const response = await apiFetch('/api/inspiration-video')
+    const response = await apiFetchWithTimeout('/api/inspiration-video', undefined, WORKSPACE_REQUEST_TIMEOUT_MS)
     if (!response.ok) throw new Error(await readApiErrorMessage(response, t('errors.loadFailed')))
     const data = await response.json() as InspirationVideoBootstrap
     setBootstrap((current) => current ? { ...data, nextCursor: current.nextCursor,
@@ -89,13 +104,14 @@ export default function InspirationVideoPage() {
   useEffect(() => {
     if (status !== 'authenticated' || !session) return
     let active = true
+    const controller = new AbortController()
     const load = async () => {
       setLoading(true)
       setError(null)
       try {
         const [workspaceResponse, modelsResponse] = await Promise.all([
-          apiFetch('/api/inspiration-video'),
-          apiFetch('/api/user/models'),
+          apiFetchWithTimeout('/api/inspiration-video', { signal: controller.signal }, WORKSPACE_REQUEST_TIMEOUT_MS),
+          apiFetchWithTimeout('/api/user/models', { signal: controller.signal }, WORKSPACE_REQUEST_TIMEOUT_MS),
         ])
         if (!workspaceResponse.ok) {
           throw new Error(await readApiErrorMessage(workspaceResponse, t('errors.loadFailed')))
@@ -123,7 +139,11 @@ export default function InspirationVideoPage() {
           generateAudio: chooseAllowed(current.generateAudio, audioOptions),
         }))
       } catch (loadError) {
-        if (active) setError(loadError instanceof Error ? loadError.message : t('errors.loadFailed'))
+        if (active) {
+          setError(loadError instanceof ApiRequestTimeoutError
+            ? t('errors.loadTimeout')
+            : loadError instanceof Error ? loadError.message : t('errors.loadFailed'))
+        }
       } finally {
         if (active) setLoading(false)
       }
@@ -131,15 +151,21 @@ export default function InspirationVideoPage() {
     void load()
     return () => {
       active = false
+      controller.abort()
     }
-  }, [session, status, t])
+  }, [loadAttempt, session, status, t])
 
   const handleSSEEvent = useCallback((event: SSEEvent) => {
     if (event.targetType !== 'InspirationVideoCreation') return
+    setBootstrap((current) => current ? {
+      ...current,
+      creations: applyInspirationVideoProgress(current.creations, event),
+    } : current)
+    if (!shouldRefreshInspirationVideoWorkspace(event)) return
     if (refreshTimerRef.current !== null) window.clearTimeout(refreshTimerRef.current)
     refreshTimerRef.current = window.setTimeout(() => {
       void refreshWorkspace().catch(() => undefined)
-    }, 300)
+    }, 500)
   }, [refreshWorkspace])
 
   useEffect(() => () => {
@@ -161,6 +187,15 @@ export default function InspirationVideoPage() {
   const audioOptions = useMemo(() => getAudioOptions(selectedModel), [selectedModel])
   const referencesEnabled = selectedModel?.providerKey?.toLowerCase() === 'maas-seedance'
 
+  const fileValidationMessage = (issue: InspirationFileValidationIssue): string => {
+    const limitMb = Math.floor(issue.limitBytes / (1024 * 1024))
+    if (issue.code === 'imageType') return t('errors.imageType', { name: issue.fileName || '' })
+    if (issue.code === 'imageSize') return t('errors.imageSize', { name: issue.fileName || '', limitMb })
+    if (issue.code === 'audioType') return t('errors.audioType', { name: issue.fileName || '' })
+    if (issue.code === 'audioSize') return t('errors.audioSize', { name: issue.fileName || '', limitMb })
+    return t('errors.totalSize', { limitMb })
+  }
+
   const handleModelChange = (modelKey: string) => {
     const nextModel = models.find((model) => model.value === modelKey)
     const nextDurations = getDurationOptions(nextModel)
@@ -174,22 +209,36 @@ export default function InspirationVideoPage() {
       duration: chooseAllowed(current.duration, nextDurations),
       resolution: chooseAllowed(current.resolution, nextResolutions),
       generateAudio: chooseAllowed(current.generateAudio, nextAudioOptions),
-      ...(keepReferences ? {} : { referenceImages: [], referenceAudios: [] }),
+      ...(keepReferences ? {} : {
+        referenceImages: [],
+        referenceMobileCloudImages: [],
+        referenceAudios: [],
+      }),
     }))
     setNotice(keepReferences || !nextModel ? null : t('materials.modelChangedNotice'))
   }
 
   const handleSubmit = async () => {
     if (submitLock.current) return
-    if ((!form.primaryImage && !selectedModel?.capabilities?.video?.textToVideo) || !form.prompt.trim() || !form.modelKey) return
+    if ((!form.primaryImage && !form.primaryMobileCloudImage && !selectedModel?.capabilities?.video?.textToVideo) || !form.prompt.trim() || !form.modelKey) return
+    const fileIssue = validateInspirationVideoFiles(form)
+    if (fileIssue) {
+      setError(fileValidationMessage(fileIssue))
+      return
+    }
     setSubmitting(true)
     submitLock.current = true
-    if (submissionRef.current?.form !== form) submissionRef.current = { form, id: crypto.randomUUID() }
     setError(null)
     setNotice(null)
     try {
+      if (submissionRef.current?.form !== form) {
+        submissionRef.current = { form, id: createInspirationSubmissionId() }
+      }
+      const submission = submissionRef.current
+      if (!submission) throw new Error(t('errors.submitFailed'))
+
       const payload = new FormData()
-      payload.set('submissionId', submissionRef.current.id)
+      payload.set('submissionId', submission.id)
       payload.set('prompt', form.prompt.trim())
       payload.set('modelKey', form.modelKey)
       payload.set('aspectRatio', form.aspectRatio)
@@ -198,19 +247,24 @@ export default function InspirationVideoPage() {
       payload.set('generateAudio', String(form.generateAudio))
       payload.set('locale', locale)
       if (form.primaryImage) payload.set('primaryImage', form.primaryImage)
+      if (form.primaryMobileCloudImage) payload.set('primaryMobileCloudAssetId', form.primaryMobileCloudImage.assetId)
       form.referenceImages.forEach((file) => payload.append('referenceImages', file))
+      form.referenceMobileCloudImages.forEach((asset) => payload.append('referenceMobileCloudAssetIds', asset.assetId))
       form.referenceAudios.forEach((file) => payload.append('referenceAudios', file))
 
-      const response = await apiFetch('/api/inspiration-video/generate', {
-        method: 'POST',
-        body: payload,
-      })
+      const response = await apiFetchWithTimeout(
+        '/api/inspiration-video/generate',
+        { method: 'POST', body: payload },
+        SUBMIT_REQUEST_TIMEOUT_MS,
+      )
       if (!response.ok) throw new Error(await readApiErrorMessage(response, t('errors.submitFailed')))
       submissionRef.current = null
       setNotice(t('actions.queued'))
-      await refreshWorkspace().catch(() => setError(t('errors.refreshAfterSubmit')))
+      void refreshWorkspace().catch(() => setError(t('errors.refreshAfterSubmit')))
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : t('errors.submitFailed'))
+      setError(submitError instanceof ApiRequestTimeoutError
+        ? t('errors.submitTimeout')
+        : submitError instanceof Error ? submitError.message : t('errors.submitFailed'))
     } finally {
       setSubmitting(false)
       submitLock.current = false
@@ -246,7 +300,8 @@ export default function InspirationVideoPage() {
         const referenceImages = await Promise.all(creation.referenceImages.map((item) => download(item, true)))
         const referenceAudios = await Promise.all(creation.referenceAudios.map((item) => download(item, false)))
         setForm({ prompt: creation.prompt, modelKey: creation.modelKey, aspectRatio: creation.aspectRatio, resolution: creation.resolution,
-          duration: creation.duration, generateAudio: creation.generateAudio, primaryImage, referenceImages, referenceAudios })
+          duration: creation.duration, generateAudio: creation.generateAudio, primaryImage, primaryMobileCloudImage: null,
+          referenceImages, referenceMobileCloudImages: [], referenceAudios })
         submissionRef.current = null
         window.scrollTo({ top: 0, behavior: 'smooth' })
       } else {
@@ -293,6 +348,11 @@ export default function InspirationVideoPage() {
           <div className="mb-5 flex items-start gap-3 rounded-2xl border border-[var(--glass-tone-danger-fg)]/20 bg-[var(--glass-tone-danger-bg)] px-4 py-3 text-sm text-[var(--glass-tone-danger-fg)]">
             <AppIcon name="alert" className="mt-0.5 h-4 w-4 shrink-0" />
             <span className="flex-1">{error}</span>
+            {!bootstrap ? (
+              <button type="button" className="shrink-0 font-medium underline underline-offset-2" onClick={() => setLoadAttempt((current) => current + 1)}>
+                {t('actions.retryLoad')}
+              </button>
+            ) : null}
             <button type="button" onClick={() => setError(null)}><AppIcon name="close" className="h-4 w-4" /></button>
           </div>
         ) : null}
@@ -327,7 +387,11 @@ export default function InspirationVideoPage() {
             onModelChange={handleModelChange}
             onSubmit={() => void handleSubmit()}
           />
-          <CreationPreview creation={bootstrap?.creations[0] || null} pendingImage={form.primaryImage} />
+          <CreationPreview
+            creation={bootstrap?.creations[0] || null}
+            pendingImage={form.primaryImage}
+            pendingImageUrl={form.primaryMobileCloudImage?.assetUrl || null}
+          />
         </div>
 
         <CreationHistory creations={bootstrap?.creations || []} models={models} busy={historyBusy} onAction={(creation, action) => void historyAction(creation, action)} />

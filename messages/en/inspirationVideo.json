@@ -19,15 +19,37 @@
     "primary": "Key image / first frame",
     "required": "Required",
     "replace": "Replace image",
-    "uploadPrimary": "Upload or drop a key image",
+    "replaceLocal": "Replace locally",
+    "replaceMobileCloud": "Replace from Mobile Cloud",
+    "uploadPrimary": "Upload or drop locally",
+    "selectMobileCloud": "Choose from Mobile Cloud",
     "references": "Reference assets",
     "referenceLimit": "Up to 8 images and 3 audio files",
     "addImage": "Image",
+    "mobileCloudImage": "Cloud image",
+    "mobileCloudTag": "Cloud",
     "addAudio": "Audio",
     "mobileCloudOnly": "Multi-reference input currently requires the Mobile Cloud Seedance 2.0 model. Other models support prompts and a key image.",
     "modelChangedNotice": "Reference images and audio were cleared after switching to a standard video model.",
     "optionalPrimary": "Image optional: leave it empty to generate from text.",
     "requiredPrimary": "This model requires an image."
+  },
+  "mobileCloudPicker": {
+    "title": "Choose Mobile Cloud images",
+    "description": "Only active image assets are shown. Selected images are securely imported into this system's MinIO when submitted.",
+    "group": "Asset group",
+    "allGroups": "All groups",
+    "searchPlaceholder": "Search by asset name",
+    "search": "Search",
+    "loading": "Loading Mobile Cloud assets",
+    "loadFailed": "Failed to load Mobile Cloud assets",
+    "retry": "Retry",
+    "empty": "No active image assets",
+    "emptyHint": "Add an image to the Mobile Cloud asset library and wait until it becomes active.",
+    "selectedCount": "Selected {count}/{max}",
+    "total": "{total} total",
+    "cancel": "Cancel",
+    "confirm": "Confirm selection"
   },
   "parameters": {
     "model": "Video model",
@@ -43,6 +65,7 @@
     "generate": "Generate now",
     "submitting": "Submitting",
     "queued": "Your creation is queued. Progress will update automatically.",
+    "play": "Play video",
     "download": "Download",
     "modelSettings": "Model settings",
     "configureNow": "Configure now",
@@ -51,6 +74,7 @@
     "cancel": "Cancel task",
     "delete": "Delete record",
     "loadMore": "Load more",
+    "retryLoad": "Reload",
     "deleteConfirm": "Delete this creation? Media files will be retained."
   },
   "preview": {
@@ -87,8 +111,15 @@
   },
   "errors": {
     "loadFailed": "Failed to load the Inspiration Video workspace",
+    "loadTimeout": "The Inspiration Video workspace timed out while loading. Check your connection and reload.",
     "modelsFailed": "Failed to load video models",
     "submitFailed": "Failed to submit the creation",
+    "submitTimeout": "Submission timed out. The submission ID was retained; retry later to avoid creating a duplicate task.",
+    "imageType": "Image “{name}” is not supported. Upload a JPG, PNG, or WebP file.",
+    "imageSize": "Image “{name}” exceeds {limitMb} MB. Compress it and try again.",
+    "audioType": "Audio “{name}” is not supported. Upload an AAC, M4A, MP3, MP4, OGG, WAV, or WebM file.",
+    "audioSize": "Audio “{name}” exceeds {limitMb} MB. Compress it and try again.",
+    "totalSize": "All reference assets together must not exceed {limitMb} MB.",
     "refreshAfterSubmit": "Task accepted. Refresh failed; reload the page instead of submitting again."
   }
 }

@@ -19,15 +19,37 @@
     "primary": "主图 / 首帧",
     "required": "必选",
     "replace": "更换图片",
-    "uploadPrimary": "上传主图或拖入图片",
+    "replaceLocal": "本地更换",
+    "replaceMobileCloud": "从移动云更换",
+    "uploadPrimary": "本地上传或拖入",
+    "selectMobileCloud": "从移动云素材库选择",
     "references": "参考素材",
     "referenceLimit": "参考图最多 8 张，声音最多 3 个",
     "addImage": "参考图",
+    "mobileCloudImage": "移动云图片",
+    "mobileCloudTag": "移动云",
     "addAudio": "参考声音",
     "mobileCloudOnly": "多素材参考当前仅支持移动云 Seedance 2.0 模型；其他模型可使用文案和主图。",
     "modelChangedNotice": "已切换到普通视频模型，参考图和参考声音已清空。",
     "optionalPrimary": "主图可选：不上传图片时，直接根据文字生成视频。",
     "requiredPrimary": "当前模型需要主图。"
+  },
+  "mobileCloudPicker": {
+    "title": "选择移动云图片素材",
+    "description": "仅显示已就绪的图片素材；确认后，生成时会安全导入本系统 MinIO。",
+    "group": "素材分组",
+    "allGroups": "全部分组",
+    "searchPlaceholder": "按素材名称搜索",
+    "search": "搜索",
+    "loading": "正在加载移动云素材",
+    "loadFailed": "移动云素材加载失败",
+    "retry": "重试",
+    "empty": "暂无可用图片素材",
+    "emptyHint": "请先在移动云素材资产库中添加图片并等待素材变为可用状态。",
+    "selectedCount": "已选 {count}/{max}",
+    "total": "共 {total} 项",
+    "cancel": "取消",
+    "confirm": "确认选择"
   },
   "parameters": {
     "model": "视频模型",
@@ -43,6 +65,7 @@
     "generate": "立即生成",
     "submitting": "正在提交",
     "queued": "创作任务已进入队列，生成进度会自动更新。",
+    "play": "播放视频",
     "download": "下载视频",
     "modelSettings": "模型设置",
     "configureNow": "立即配置",
@@ -51,6 +74,7 @@
     "cancel": "取消任务",
     "delete": "删除记录",
     "loadMore": "加载更多",
+    "retryLoad": "重新加载",
     "deleteConfirm": "删除此创作记录？媒体文件暂时保留。"
   },
   "preview": {
@@ -87,8 +111,15 @@
   },
   "errors": {
     "loadFailed": "灵感视频工作区加载失败",
+    "loadTimeout": "灵感视频工作区加载超时，请检查网络后重新加载。",
     "modelsFailed": "视频模型加载失败",
     "submitFailed": "创作任务提交失败",
+    "submitTimeout": "提交等待超时。本次提交标识已保留，请稍后直接重试，避免重复创建任务。",
+    "imageType": "图片“{name}”格式不支持，请上传 JPG、PNG 或 WebP 文件。",
+    "imageSize": "图片“{name}”超过 {limitMb} MB，请压缩后重新上传。",
+    "audioType": "音频“{name}”格式不支持，请上传 AAC、M4A、MP3、MP4、OGG、WAV 或 WebM 文件。",
+    "audioSize": "音频“{name}”超过 {limitMb} MB，请压缩后重新上传。",
+    "totalSize": "全部参考素材总大小不能超过 {limitMb} MB。",
     "refreshAfterSubmit": "任务已接收，但刷新列表失败，请刷新页面查看，无需重复提交。"
   }
 }

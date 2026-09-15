@@ -15,6 +15,8 @@ export interface GlassModalShellProps {
   closeOnBackdrop?: boolean
   closeOnEsc?: boolean
   showCloseButton?: boolean
+  panelClassName?: string
+  bodyClassName?: string
 }
 
 function cx(...names: Array<string | false | null | undefined>) {
@@ -31,7 +33,9 @@ export default function GlassModalShell({
   size = 'md',
   closeOnBackdrop = true,
   closeOnEsc = true,
-  showCloseButton = true
+  showCloseButton = true,
+  panelClassName,
+  bodyClassName,
 }: GlassModalShellProps) {
   useEffect(() => {
     if (!open || !closeOnEsc) return
@@ -65,9 +69,9 @@ export default function GlassModalShell({
           if (closeOnBackdrop) onClose()
         }}
       />
-      <div className={cx('glass-surface-modal relative z-10 w-full overflow-hidden', maxWidthClass)}>
+      <div className={cx('glass-surface-modal relative z-10 w-full overflow-hidden', maxWidthClass, panelClassName)}>
         {(title || description || showCloseButton) && (
-          <div className="flex items-start justify-between gap-4 px-5 py-4 sm:px-6">
+          <div className="flex shrink-0 items-start justify-between gap-4 px-5 py-4 sm:px-6">
             <div>
               {title ? <h2 className="text-lg font-semibold text-[var(--glass-text-primary)] sm:text-xl">{title}</h2> : null}
               {description ? <p className="mt-1 text-sm text-[var(--glass-text-secondary)]">{description}</p> : null}
@@ -85,13 +89,13 @@ export default function GlassModalShell({
           </div>
         )}
 
-        <div className="glass-divider" />
-        <div className="px-5 py-4 sm:px-6 sm:py-5">{children}</div>
+        <div className="glass-divider shrink-0" />
+        <div className={cx('px-5 py-4 sm:px-6 sm:py-5', bodyClassName)}>{children}</div>
 
         {footer ? (
           <>
-            <div className="glass-divider" />
-            <div className="px-5 py-4 sm:px-6">{footer}</div>
+            <div className="glass-divider shrink-0" />
+            <div className="shrink-0 px-5 py-4 sm:px-6">{footer}</div>
           </>
         ) : null}
       </div>

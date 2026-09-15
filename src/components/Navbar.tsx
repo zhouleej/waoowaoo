@@ -9,6 +9,7 @@ import { usePlatformAdminCheck } from '@/hooks/common/usePlatformAdminCheck'
 import { Link } from '@/i18n/navigation'
 import { buildAuthenticatedHomeTarget } from '@/lib/home/default-route'
 import { APP_VERSION } from '@/lib/app-meta'
+import { navigateWithDocumentReload } from '@/lib/navigation/document-navigation'
 
 
 export default function Navbar() {
@@ -56,6 +57,7 @@ export default function Navbar() {
                   )}
                   <Link
                     href={{ pathname: '/workspace' }}
+                    onClick={navigateWithDocumentReload}
                     className="text-sm text-[var(--glass-text-secondary)] hover:text-[var(--glass-text-primary)] font-medium transition-colors flex items-center gap-1"
                   >
                     <AppIcon name="monitor" className="w-4 h-4" />

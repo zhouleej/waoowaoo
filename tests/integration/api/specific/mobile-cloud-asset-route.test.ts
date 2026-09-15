@@ -170,6 +170,94 @@ describe('api specific - Mobile Cloud asset route', () => {
     expect(assetClientMock.createGroup).toHaveBeenCalledWith({ groupType: 'AIGC', groupName: 'x'.repeat(64), description: 'd'.repeat(300) })
   })
 
+  it('converts a local MinIO sign route into a public URL before creating an asset', async () => {
+    installAuthMocks()
+    mockAuthenticated('user-a')
+    const localSignUrl = '/api/storage/sign?key=images%2Ftemp-user-a.png&expires=3600'
+    outboundImageMock.normalizeToOriginalMediaUrl.mockResolvedValueOnce(
+      'https://minio.example.com/waoowaoo/images/temp-user-a.png?signed=1',
+    )
+    assetClientMock.createAsset.mockResolvedValueOnce({ assetId: 'asset-local-1' })
+    const mod = await import('@/app/api/asset-hub/mobile-cloud/route')
+
+    const response = await mod.POST(buildMockRequest({
+      path: '/api/asset-hub/mobile-cloud',
+      method: 'POST',
+      body: {
+        resource: 'asset',
+        groupId: 'g-1',
+        assetName: '本地上传图片',
+        assetUrl: localSignUrl,
+        assetType: 'Image',
+      },
+    }), { params: Promise.resolve({}) })
+
+    expect(response.status).toBe(201)
+    expect(outboundImageMock.normalizeToOriginalMediaUrl).toHaveBeenCalledWith(
+      localSignUrl,
+      expect.objectContaining({ absoluteBaseUrl: expect.any(String) }),
+    )
+    expect(assetClientMock.createAsset).toHaveBeenCalledWith({
+      groupId: 'g-1',
+      assetName: '本地上传图片',
+      assetUrl: 'https://minio.example.com/waoowaoo/images/temp-user-a.png?signed=1',
+      assetType: 'Image',
+    })
+  })
+
+  it('uses only the authenticated user local-upload key when one is supplied', async () => {
+    installAuthMocks()
+    mockAuthenticated('user-a')
+    const storageKey = 'images/temp-user-a-1789384036091-random.png'
+    outboundImageMock.normalizeToOriginalMediaUrl.mockResolvedValueOnce(
+      'https://minio.example.com/waoowaoo/images/temp-user-a.png?signed=1',
+    )
+    assetClientMock.createAsset.mockResolvedValueOnce({ assetId: 'asset-local-2' })
+    const mod = await import('@/app/api/asset-hub/mobile-cloud/route')
+
+    const response = await mod.POST(buildMockRequest({
+      path: '/api/asset-hub/mobile-cloud',
+      method: 'POST',
+      body: {
+        resource: 'asset',
+        groupId: 'g-1',
+        assetName: '本地上传图片',
+        assetUrl: '/api/storage/sign?key=ignored',
+        assetStorageKey: storageKey,
+        assetType: 'Image',
+      },
+    }), { params: Promise.resolve({}) })
+
+    expect(response.status).toBe(201)
+    expect(outboundImageMock.normalizeToOriginalMediaUrl).toHaveBeenCalledWith(
+      storageKey,
+      expect.objectContaining({ absoluteBaseUrl: expect.any(String) }),
+    )
+  })
+
+  it('rejects a local-upload key that belongs to another user', async () => {
+    installAuthMocks()
+    mockAuthenticated('user-a')
+    const mod = await import('@/app/api/asset-hub/mobile-cloud/route')
+
+    const response = await mod.POST(buildMockRequest({
+      path: '/api/asset-hub/mobile-cloud',
+      method: 'POST',
+      body: {
+        resource: 'asset',
+        groupId: 'g-1',
+        assetName: '越权图片',
+        assetUrl: '/api/storage/sign?key=ignored',
+        assetStorageKey: 'images/temp-user-b-1789384036091-random.png',
+        assetType: 'Image',
+      },
+    }), { params: Promise.resolve({}) })
+
+    expect(response.status).toBe(403)
+    expect(outboundImageMock.normalizeToOriginalMediaUrl).not.toHaveBeenCalled()
+    expect(assetClientMock.createAsset).not.toHaveBeenCalled()
+  })
+
   it('registers authorized storyboard images as virtual-human materials and persists their asset mapping', async () => {
     installAuthMocks()
     mockAuthenticated('user-a')

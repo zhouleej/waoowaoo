@@ -1,11 +1,22 @@
-import { ALL_FORMATS, BufferSource, Input } from 'mediabunny'
-import { getObjectBuffer } from '@/lib/storage'
+import { ALL_FORMATS, Input, StreamSource } from 'mediabunny'
+import { getObjectMetadata, getObjectStream } from '@/lib/storage'
 import { ensureMediaObjectFromStorageKey } from './service'
 
+const VIDEO_METADATA_CACHE_BYTES = 4 * 1024 * 1024
+
 export async function inspectGeneratedVideo(storageKey: string) {
-  const data = await getObjectBuffer(storageKey)
+  const metadata = await getObjectMetadata(storageKey)
   const input = new Input({
-    source: new BufferSource(data),
+    source: new StreamSource({
+      getSize: () => metadata.size,
+      read: async (start, end) => {
+        if (end <= start) return new Uint8Array()
+        const object = await getObjectStream(storageKey, { start, end: end - 1 })
+        return object.body
+      },
+      maxCacheSize: VIDEO_METADATA_CACHE_BYTES,
+      prefetchProfile: 'network',
+    }),
     formats: ALL_FORMATS,
   })
   let durationInSeconds: number
@@ -42,7 +53,7 @@ export async function inspectGeneratedVideo(storageKey: string) {
     durationMs,
     width,
     height,
-    sizeBytes: data.length,
+    sizeBytes: metadata.size,
     mimeType: 'video/mp4',
   })
   return { durationMs, width, height, fps }

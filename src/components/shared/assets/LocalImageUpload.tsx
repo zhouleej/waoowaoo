@@ -8,7 +8,17 @@ import { useUploadAssetHubTempMedia } from '@/lib/query/hooks'
 const MAX_SIZE = 10 * 1024 * 1024
 const IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
 
-export default function LocalImageUpload({ value, onChange, disabled = false }: { value: string | null; onChange: (value: string | null) => void; disabled?: boolean }) {
+export default function LocalImageUpload({
+  value,
+  onChange,
+  onUploaded,
+  disabled = false,
+}: {
+  value: string | null
+  onChange: (value: string | null) => void
+  onUploaded?: (file: File, result: { url: string; key?: string }) => void
+  disabled?: boolean
+}) {
   const t = useTranslations('assetModal')
   const inputRef = useRef<HTMLInputElement>(null)
   const upload = useUploadAssetHubTempMedia()
@@ -24,6 +34,7 @@ export default function LocalImageUpload({ value, onChange, disabled = false }: 
     if (file.size > MAX_SIZE) { setError(t('upload.tooLarge')); return }
     const localUrl = URL.createObjectURL(file)
     setPreview(localUrl)
+    onChange(null)
     try {
       const base64 = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader()
@@ -34,8 +45,10 @@ export default function LocalImageUpload({ value, onChange, disabled = false }: 
       const result = await upload.mutateAsync({ imageBase64: base64 })
       if (!result.url) throw new Error(t('errors.uploadFailed'))
       onChange(result.url)
+      onUploaded?.(file, { url: result.url, ...(result.key ? { key: result.key } : {}) })
     } catch (cause) {
       setPreview(value)
+      onChange(value)
       setError(cause instanceof Error ? cause.message : t('errors.uploadFailed'))
     }
   }

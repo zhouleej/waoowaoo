@@ -92,8 +92,7 @@ export function useTTSGeneration({
             alert(t('tts.voiceDesignSaved', { name: voiceDesignCharacter.name }))
         } catch (error: unknown) {
             alert(t('tts.saveVoiceDesignFailed', { error: getErrorMessage(error, t('common.unknownError')) }))
-        } finally {
-            setVoiceDesignCharacter(null)
+            throw error
         }
     }
 

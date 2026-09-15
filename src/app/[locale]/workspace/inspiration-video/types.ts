@@ -1,4 +1,5 @@
 import type { ModelCapabilities } from '@/lib/model-config-contract'
+import type { MobileCloudAsset } from '@/lib/mobile-cloud-maas/asset-types'
 
 export type InspirationVideoModel = {
   value: string
@@ -33,7 +34,11 @@ export type InspirationVideoCreation = {
   primaryImage: InspirationMedia | null
   referenceImages: InspirationMedia[]
   referenceAudios: InspirationMedia[]
+  thumbnailUrl: string | null
   videoUrl: string | null
+  videoFallbackUrl: string | null
+  downloadUrl: string | null
+  downloadFilename: string | null
 }
 
 export type InspirationVideoBootstrap = {
@@ -47,6 +52,11 @@ export type InspirationVideoBootstrap = {
   creations: InspirationVideoCreation[]
 }
 
+export type MobileCloudImageSelection = Pick<
+  MobileCloudAsset,
+  'assetId' | 'assetName' | 'assetUrl' | 'groupId'
+>
+
 export type InspirationVideoForm = {
   prompt: string
   modelKey: string
@@ -55,6 +65,8 @@ export type InspirationVideoForm = {
   duration: number
   generateAudio: boolean
   primaryImage: File | null
+  primaryMobileCloudImage: MobileCloudImageSelection | null
   referenceImages: File[]
+  referenceMobileCloudImages: MobileCloudImageSelection[]
   referenceAudios: File[]
 }

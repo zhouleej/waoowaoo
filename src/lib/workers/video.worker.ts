@@ -24,6 +24,7 @@ import { getSignedUrl } from '@/lib/storage'
 import { mobileCloudMaasAssetClient } from '@/lib/mobile-cloud-maas/asset-client'
 import { handleInspirationVideoTask } from './handlers/inspiration-video'
 import { inspectGeneratedVideo } from '@/lib/media/video-metadata'
+import { resolveVideoWorkerConcurrency } from './video-concurrency'
 
 type AnyObj = Record<string, unknown>
 type VideoOptionValue = string | number | boolean
@@ -454,7 +455,7 @@ export function createVideoWorker() {
     }),
     {
       connection: queueRedis,
-      concurrency: Number.parseInt(process.env.QUEUE_CONCURRENCY_VIDEO || '4', 10) || 4,
+      concurrency: resolveVideoWorkerConcurrency(),
     },
   )
 }

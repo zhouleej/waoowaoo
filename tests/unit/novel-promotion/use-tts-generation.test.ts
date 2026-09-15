@@ -93,7 +93,7 @@ describe('useTTSGeneration', () => {
     globalThis.alert = originalAlert
   })
 
-  it('does not send a second voice update request after designed voice save succeeds', async () => {
+  it('does not send a second voice update request or close state before the dialog handles success', async () => {
     const hook = useTTSGeneration({ projectId: 'project-1' })
 
     await hook.handleVoiceDesignSave('voice-1', 'base64-audio')
@@ -107,6 +107,16 @@ describe('useTTSGeneration', () => {
     expect(updateVoiceSettingsMutateAsyncMock).not.toHaveBeenCalled()
     expect(refreshAssetsMock).toHaveBeenCalledTimes(1)
     expect(globalThis.alert).toHaveBeenCalledWith('voice saved:Hero')
-    expect(setVoiceDesignCharacterMock).toHaveBeenCalledWith(null)
+    expect(setVoiceDesignCharacterMock).not.toHaveBeenCalled()
+  })
+
+  it('propagates save failures so the dialog remains open', async () => {
+    saveDesignedVoiceMutateAsyncMock.mockRejectedValueOnce(new Error('save failed'))
+    const hook = useTTSGeneration({ projectId: 'project-1' })
+
+    await expect(hook.handleVoiceDesignSave('voice-1', 'base64-audio')).rejects.toThrow('save failed')
+
+    expect(globalThis.alert).toHaveBeenCalledWith('save failed:save failed')
+    expect(setVoiceDesignCharacterMock).not.toHaveBeenCalled()
   })
 })

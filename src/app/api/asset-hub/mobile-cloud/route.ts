@@ -80,6 +80,23 @@ function requireHttpUrl(value: unknown): string {
   return normalized
 }
 
+async function requireOutboundAssetUrl(value: unknown): Promise<string> {
+  const input = text(value, 2048)
+  try {
+    const normalized = await normalizeToOriginalMediaUrl(input, {
+      absoluteBaseUrl: getPublicBaseUrl(),
+    })
+    return requireHttpUrl(normalized)
+  } catch (error) {
+    if (error instanceof ApiError) throw error
+    throw new ApiError('INVALID_PARAMS', {
+      field: 'assetUrl',
+      code: 'MOBILE_CLOUD_ASSET_URL_INVALID',
+      message: '素材地址无法转换为移动云可访问的公网地址，请检查 MinIO 公网地址配置',
+    })
+  }
+}
+
 function panelAssetName(input: {
   episodeName: string
   episodeNumber: number
@@ -209,6 +226,7 @@ export const GET = apiHandler(async (request: NextRequest) => {
 export const POST = apiHandler(async (request: NextRequest) => {
   const auth = await requireUserAuth()
   if (isErrorResponse(auth)) return auth
+  const { session } = auth
   const body = await request.json() as Record<string, unknown>
   const resource = text(body.resource, 40)
 
@@ -224,10 +242,22 @@ export const POST = apiHandler(async (request: NextRequest) => {
       return NextResponse.json({ success: true, data }, { status: 201 })
     }
     if (resource === 'asset') {
+      let assetUrlInput = body.assetUrl
+      if (body.assetStorageKey !== undefined) {
+        const assetStorageKey = text(body.assetStorageKey, 2048)
+        if (!assetStorageKey.startsWith(`images/temp-${session.user.id}-`)) {
+          throw new ApiError('FORBIDDEN', {
+            field: 'assetStorageKey',
+            code: 'MOBILE_CLOUD_LOCAL_ASSET_FORBIDDEN',
+          })
+        }
+        assetUrlInput = assetStorageKey
+      }
+      const assetUrl = await requireOutboundAssetUrl(assetUrlInput)
       const data = await mobileCloudMaasAssetClient.createAsset({
         groupId: text(body.groupId, 200),
         assetName: text(body.assetName, 64),
-        assetUrl: requireHttpUrl(body.assetUrl),
+        assetUrl,
         assetType: requireEnum(body.assetType, ASSET_TYPES),
       })
       return NextResponse.json({ success: true, data }, { status: 201 })

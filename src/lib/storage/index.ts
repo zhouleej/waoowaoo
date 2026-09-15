@@ -1,6 +1,12 @@
+import { createReadStream, createWriteStream } from 'node:fs'
+import { mkdtemp, rm, stat } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import { Readable, Transform } from 'node:stream'
+import { pipeline } from 'node:stream/promises'
 import { createScopedLogger } from '@/lib/logging/core'
 import { createStorageProvider } from '@/lib/storage/factory'
-import type { DeleteObjectsResult, StorageProvider } from '@/lib/storage/types'
+import type { DeleteObjectsResult, ObjectByteRange, StorageProvider } from '@/lib/storage/types'
 import { DEFAULT_SIGNED_URL_EXPIRES_SECONDS, withRetry } from '@/lib/storage/utils'
 
 const storageLogger = createScopedLogger({
@@ -9,6 +15,8 @@ const storageLogger = createScopedLogger({
 
 const UPLOAD_MAX_RETRIES = 3
 const RETRY_DELAY_BASE_MS = 2000
+const DEFAULT_VIDEO_TRANSFER_TIMEOUT_MS = 10 * 60_000
+const DEFAULT_VIDEO_TRANSFER_MAX_BYTES = 2 * 1024 * 1024 * 1024
 
 let providerSingleton: StorageProvider | null = null
 
@@ -51,6 +59,21 @@ export async function uploadObject(
   return result.key
 }
 
+export async function uploadObjectStream(
+  body: Readable,
+  key: string,
+  contentLength: number,
+  contentType?: string,
+): Promise<string> {
+  const result = await getStorageProvider().uploadObjectStream({
+    key,
+    body,
+    contentLength,
+    contentType,
+  })
+  return result.key
+}
+
 export async function deleteObject(key: string): Promise<void> {
   await getStorageProvider().deleteObject(key)
 }
@@ -67,10 +90,23 @@ export async function getObjectBuffer(key: string): Promise<Buffer> {
   return await getStorageProvider().getObjectBuffer(key)
 }
 
-export async function getSignedObjectUrl(key: string, expiresInSeconds: number = DEFAULT_SIGNED_URL_EXPIRES_SECONDS): Promise<string> {
+export async function getObjectMetadata(key: string) {
+  return await getStorageProvider().getObjectMetadata(key)
+}
+
+export async function getObjectStream(key: string, range?: ObjectByteRange) {
+  return await getStorageProvider().getObjectStream(key, range)
+}
+
+export async function getSignedObjectUrl(
+  key: string,
+  expiresInSeconds: number = DEFAULT_SIGNED_URL_EXPIRES_SECONDS,
+  responseContentDisposition?: string,
+): Promise<string> {
   return await getStorageProvider().getSignedObjectUrl({
     key,
     expiresInSeconds,
+    responseContentDisposition,
   })
 }
 
@@ -122,19 +158,55 @@ export async function downloadAndUploadVideo(
   requestHeaders?: Record<string, string>,
 ): Promise<string> {
   return await withRetry(async () => {
-    const response = await fetch(toFetchableUrl(videoUrl), {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; VideoDownloader/1.0)',
-        ...(requestHeaders || {}),
-      },
-    })
+    const transferController = new AbortController()
+    const transferTimeout = setTimeout(() => transferController.abort(), DEFAULT_VIDEO_TRANSFER_TIMEOUT_MS)
+    const temporaryDirectory = await mkdtemp(path.join(tmpdir(), 'wakuwaku-video-'))
+    const temporaryFile = path.join(temporaryDirectory, 'source.mp4')
+    try {
+      const response = await fetch(toFetchableUrl(videoUrl), {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; VideoDownloader/1.0)',
+          ...(requestHeaders || {}),
+        },
+        signal: transferController.signal,
+      })
+      if (!response.ok) {
+        throw new Error(`Failed to download video: ${response.status} ${response.statusText}`)
+      }
+      if (!response.body) {
+        throw new Error('Failed to download video: empty response body')
+      }
+      const declaredLength = Number(response.headers.get('content-length'))
+      if (Number.isFinite(declaredLength) && declaredLength > DEFAULT_VIDEO_TRANSFER_MAX_BYTES) {
+        throw new Error('VIDEO_TRANSFER_TOO_LARGE')
+      }
 
-    if (!response.ok) {
-      throw new Error(`Failed to download video: ${response.status} ${response.statusText}`)
+      let receivedBytes = 0
+      const sizeGuard = new Transform({
+        transform(chunk: Buffer, _encoding, callback) {
+          receivedBytes += chunk.length
+          if (receivedBytes > DEFAULT_VIDEO_TRANSFER_MAX_BYTES) {
+            callback(new Error('VIDEO_TRANSFER_TOO_LARGE'))
+            return
+          }
+          callback(null, chunk)
+        },
+      })
+      const responseStream = Readable.fromWeb(
+        response.body as import('node:stream/web').ReadableStream<Uint8Array>,
+      )
+      await pipeline(responseStream, sizeGuard, createWriteStream(temporaryFile, { flags: 'wx' }))
+
+      const fileStats = await stat(temporaryFile)
+      if (fileStats.size <= 0 || fileStats.size !== receivedBytes) {
+        throw new Error('VIDEO_TRANSFER_INCOMPLETE')
+      }
+      const contentType = response.headers.get('content-type')?.split(';')[0]?.trim() || 'video/mp4'
+      return await uploadObjectStream(createReadStream(temporaryFile), key, fileStats.size, contentType)
+    } finally {
+      clearTimeout(transferTimeout)
+      await rm(temporaryDirectory, { recursive: true, force: true })
     }
-
-    const buffer = Buffer.from(await response.arrayBuffer())
-    return await uploadObject(buffer, key, 1)
   }, maxRetries, RETRY_DELAY_BASE_MS)
 }
 

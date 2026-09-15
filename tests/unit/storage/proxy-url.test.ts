@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
-import { getStorageProxyUrl, verifyStorageProxySignature } from '@/lib/storage/proxy-url'
+import { getStorageDownloadUrl, getStorageProxyUrl, verifyStorageProxySignature } from '@/lib/storage/proxy-url'
 
 describe('storage proxy url', () => {
   const originalSecret = process.env.STORAGE_PROXY_SECRET
@@ -39,5 +39,21 @@ describe('storage proxy url', () => {
       Number(url.searchParams.get('expires')),
       url.searchParams.get('signature') || '',
     )).toBe(false)
+  })
+
+  it('signs the attachment disposition and filename against tampering', () => {
+    const url = new URL(
+      getStorageDownloadUrl('inspiration/video.mp4', '灵感视频_test.mp4', 600),
+      'https://app.example',
+    )
+    const key = url.searchParams.get('key') || ''
+    const expires = Number(url.searchParams.get('expires'))
+    const signature = url.searchParams.get('signature') || ''
+    const filename = url.searchParams.get('filename') || ''
+
+    expect(url.searchParams.get('disposition')).toBe('attachment')
+    expect(verifyStorageProxySignature(key, expires, signature, 'attachment', filename)).toBe(true)
+    expect(verifyStorageProxySignature(key, expires, signature, 'attachment', 'other.mp4')).toBe(false)
+    expect(verifyStorageProxySignature(key, expires, signature)).toBe(false)
   })
 })

@@ -16,6 +16,9 @@ describe('inspiration history actions', () => {
   it('retries with saved settings and the same material identity', async () => {
     expect((await (await run('retry')).json()).taskId).toBe('retry-task')
     expect(state.submit).toHaveBeenCalledWith(expect.objectContaining({ targetId: 'creation', dedupeKey: 'inspiration_video:creation' }))
+    expect(state.submit).toHaveBeenCalledWith(expect.objectContaining({
+      payload: expect.not.objectContaining({ generateThumbnailFromVideo: true }),
+    }))
   })
   it('rejects another workspace and active task deletion', async () => {
     state.owned = false

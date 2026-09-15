@@ -5,10 +5,12 @@ import { useEffect, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { AppIcon } from '@/components/ui/icons'
 import type { InspirationVideoCreation } from '../types'
+import InspirationVideoPlayer from './InspirationVideoPlayer'
 
 type Props = {
   creation: InspirationVideoCreation | null
   pendingImage: File | null
+  pendingImageUrl: string | null
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -23,20 +25,20 @@ function StatusBadge({ status }: { status: string }) {
   )
 }
 
-export default function CreationPreview({ creation, pendingImage }: Props) {
+export default function CreationPreview({ creation, pendingImage, pendingImageUrl }: Props) {
   const t = useTranslations('inspirationVideo')
-  const [pendingImageUrl, setPendingImageUrl] = useState('')
+  const [pendingImageUrlFromFile, setPendingImageUrlFromFile] = useState('')
   useEffect(() => {
     if (!pendingImage) {
-      setPendingImageUrl('')
+      setPendingImageUrlFromFile('')
       return
     }
     const objectUrl = URL.createObjectURL(pendingImage)
-    setPendingImageUrl(objectUrl)
+    setPendingImageUrlFromFile(objectUrl)
     return () => URL.revokeObjectURL(objectUrl)
   }, [pendingImage])
 
-  const backgroundImage = creation?.primaryImage?.url || pendingImageUrl
+  const backgroundImage = pendingImageUrl || pendingImageUrlFromFile || creation?.primaryImage?.url
   const running = creation && ['queued', 'processing', 'settling'].includes(creation.status)
 
   return (
@@ -52,7 +54,15 @@ export default function CreationPreview({ creation, pendingImage }: Props) {
       <div className="p-4">
         <div className="relative flex min-h-[500px] items-center justify-center overflow-hidden rounded-2xl border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-muted)]">
           {creation?.videoUrl ? (
-            <video src={creation.videoUrl} controls playsInline preload="metadata" className="max-h-[560px] w-full bg-black object-contain" />
+            <InspirationVideoPlayer
+              key={creation.id}
+              src={creation.videoUrl}
+              fallbackSrc={creation.videoFallbackUrl}
+              poster={creation.thumbnailUrl || creation.primaryImage?.url}
+              alt={t('preview.imageAlt')}
+              playLabel={t('actions.play')}
+              className="h-[500px] max-h-[560px] w-full"
+            />
           ) : backgroundImage ? (
             <>
               <Image src={backgroundImage} alt={t('preview.imageAlt')} fill unoptimized className={`object-cover ${running ? 'scale-105 blur-[2px]' : ''}`} />
@@ -92,7 +102,11 @@ export default function CreationPreview({ creation, pendingImage }: Props) {
               </div>
             ) : null}
             {creation.videoUrl ? (
-              <a href={creation.videoUrl} target="_blank" rel="noreferrer" download className="glass-btn-base glass-btn-secondary flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm">
+              <a
+                href={creation.downloadUrl || creation.videoUrl}
+                download={creation.downloadFilename || true}
+                className="glass-btn-base glass-btn-secondary flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm"
+              >
                 <AppIcon name="download" className="h-4 w-4" />{t('actions.download')}
               </a>
             ) : null}

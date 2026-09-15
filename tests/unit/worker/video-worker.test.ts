@@ -1,7 +1,14 @@
-vi.mock('@/lib/media/video-metadata', () => ({ inspectGeneratedVideo: async () => ({ durationMs: 5000, width: 1280, height: 720, fps: 30 }) }))
 import type { Job } from 'bullmq'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { TASK_TYPE, type TaskJobData } from '@/lib/task/types'
+
+const mediaMock = vi.hoisted(() => ({
+  inspect: vi.fn(async () => ({ durationMs: 5000, width: 1280, height: 720, fps: 30 })),
+  extractThumbnail: vi.fn(async () => Buffer.from('thumbnail')),
+}))
+
+vi.mock('@/lib/media/video-metadata', () => ({ inspectGeneratedVideo: mediaMock.inspect }))
+vi.mock('@/lib/media/video-thumbnail', () => ({ extractStoredVideoFirstFrame: mediaMock.extractThumbnail }))
 
 type WorkerProcessor = (job: Job<TaskJobData>) => Promise<unknown>
 
@@ -62,6 +69,10 @@ const prismaMock = vi.hoisted(() => ({
     findUnique: vi.fn(),
     update: vi.fn(async () => undefined),
   },
+  inspirationVideoAsset: {
+    create: vi.fn(async () => undefined),
+    update: vi.fn(async () => undefined),
+  },
   novelPromotionPanel: {
     findUnique: vi.fn(),
     findFirst: vi.fn(),
@@ -73,7 +84,9 @@ const prismaMock = vi.hoisted(() => ({
 }))
 const storageMock = vi.hoisted(() => ({
   getSignedUrl: vi.fn((key: string) => `/api/storage/sign?key=${encodeURIComponent(key)}`),
+  getSignedObjectUrl: vi.fn(async (key: string) => `https://objects.example/${key}?signed=1`),
   getStorageProxyUrl: vi.fn((key: string) => `/api/storage/proxy?key=${encodeURIComponent(key)}&expires=proxy`),
+  uploadObject: vi.fn(async (_body: Buffer, key: string) => key),
 }))
 const mobileCloudAssetClientMock = vi.hoisted(() => ({
   getAsset: vi.fn(),
@@ -116,7 +129,7 @@ vi.mock('@/lib/mobile-cloud-maas/asset-client', () => ({
 }))
 vi.mock('@/lib/model-capabilities/lookup', () => ({
   resolveBuiltinCapabilitiesByModelKey: vi.fn(() => ({
-    video: { firstlastframe: true, generateAudioOptions: [true, false] },
+    video: { firstlastframe: true, generateAudioOptions: [true, false], textToVideo: true },
   })),
 }))
 vi.mock('@/lib/model-config-contract', () => modelContractMock)
@@ -431,7 +444,7 @@ describe('worker video processor behavior', () => {
     await expect(processor!(unsupportedJob)).rejects.toThrow('Unsupported video task type')
   })
 
-  it('VIDEO_PANEL: inspiration creation passes image and audio references and persists its own output', async () => {
+  it('VIDEO_PANEL: inspiration creation passes direct signed media URLs and persists its own output', async () => {
     const processor = workerState.processor
     expect(processor).toBeTruthy()
     modelContractMock.parseModelKeyStrict.mockReturnValue({ provider: 'maas-seedance' })
@@ -447,14 +460,19 @@ describe('worker video processor behavior', () => {
       expect.anything(),
       expect.objectContaining({
         modelId: 'maas-seedance::doubao-seedance-2.0',
+        imageUrl: 'https://objects.example/inspiration/primary.jpg?signed=1',
         options: expect.objectContaining({
           prompt: 'A slow camera push through a rainy neon street',
-          referenceImages: ['https://app.example/api/storage/proxy?key=inspiration%2Freference.jpg&expires=proxy'],
-          referenceAudios: ['https://app.example/api/storage/proxy?key=inspiration%2Freference.mp3&expires=proxy'],
+          referenceImages: ['https://objects.example/inspiration/reference.jpg?signed=1'],
+          referenceAudios: ['https://objects.example/inspiration/reference.mp3?signed=1'],
           generateAudio: true,
         }),
       }),
     )
+    expect(storageMock.getSignedObjectUrl).toHaveBeenCalledTimes(3)
+    expect(storageMock.getSignedObjectUrl).toHaveBeenCalledWith('inspiration/primary.jpg', 7_200)
+    expect(storageMock.getSignedObjectUrl).toHaveBeenCalledWith('inspiration/reference.jpg', 7_200)
+    expect(storageMock.getSignedObjectUrl).toHaveBeenCalledWith('inspiration/reference.mp3', 7_200)
     expect(utilsMock.uploadVideoSourceToCos).toHaveBeenCalledWith(
       'https://provider.example/video.mp4',
       'inspiration-video',
@@ -470,7 +488,179 @@ describe('worker video processor behavior', () => {
       videoUrl: 'inspiration-video/result.mp4',
       metadata: { durationMs: 5000, width: 1280, height: 720, fps: 30 },
     })
+    expect(mediaMock.extractThumbnail).not.toHaveBeenCalled()
     expect(prismaMock.novelPromotionPanel.update).not.toHaveBeenCalled()
+  })
+
+  it('VIDEO_PANEL: inspiration creation passes selected Mobile Cloud asset IDs as trusted asset URIs', async () => {
+    const processor = workerState.processor
+    expect(processor).toBeTruthy()
+    modelContractMock.parseModelKeyStrict.mockReturnValue({ provider: 'maas-seedance' })
+    mobileCloudAssetClientMock.getAsset.mockImplementation(async (assetId: string) => ({
+      assetId,
+      assetName: assetId,
+      assetType: 'Image',
+      status: 'ACTIVE',
+      groupId: 'group-1',
+      assetUrl: `https://mobile-cloud.example/${assetId}.png`,
+    }))
+
+    await processor!(buildJob({
+      type: TASK_TYPE.VIDEO_PANEL,
+      targetType: 'InspirationVideoCreation',
+      targetId: 'creation-1',
+      payload: {
+        mobileCloudAssets: {
+          primaryImageAssetId: 'asset-inspiration-primary',
+          referenceImages: [{ assetId: 'asset-inspiration-reference', sortOrder: 0 }],
+        },
+      },
+    }))
+
+    expect(mobileCloudAssetClientMock.getAsset).toHaveBeenCalledWith('asset-inspiration-primary')
+    expect(mobileCloudAssetClientMock.getAsset).toHaveBeenCalledWith('asset-inspiration-reference')
+    expect(utilsMock.resolveVideoSourceFromGeneration).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        imageUrl: 'asset://asset-inspiration-primary',
+        options: expect.objectContaining({
+          referenceImages: ['asset://asset-inspiration-reference'],
+          referenceAudios: ['https://objects.example/inspiration/reference.mp3?signed=1'],
+        }),
+      }),
+    )
+    expect(storageMock.getSignedObjectUrl).toHaveBeenCalledTimes(1)
+    expect(storageMock.getSignedObjectUrl).toHaveBeenCalledWith('inspiration/reference.mp3', 7_200)
+  })
+
+  it('VIDEO_PANEL: inspiration creation preserves local and Mobile Cloud reference image order', async () => {
+    const processor = workerState.processor
+    expect(processor).toBeTruthy()
+    modelContractMock.parseModelKeyStrict.mockReturnValue({ provider: 'maas-seedance' })
+    prismaMock.inspirationVideoCreation.findUnique.mockResolvedValueOnce({
+      id: 'creation-mixed-references',
+      prompt: 'Mix a local composition guide with a registered subject asset',
+      modelKey: 'maas-seedance::doubao-seedance-2.0',
+      aspectRatio: '16:9',
+      resolution: '720p',
+      duration: 5,
+      generateAudio: true,
+      workspace: { projectId: 'project-1' },
+      assets: [
+        { kind: 'primary_image', storageKey: 'inspiration/primary.jpg', sortOrder: 0 },
+        { kind: 'reference_image', storageKey: 'inspiration/local-reference.jpg', sortOrder: 0 },
+        { kind: 'reference_image', storageKey: 'inspiration/cloud-reference-copy.jpg', sortOrder: 1 },
+      ],
+    })
+    mobileCloudAssetClientMock.getAsset.mockImplementation(async (assetId: string) => ({
+      assetId,
+      assetName: assetId,
+      assetType: 'Image',
+      status: 'ACTIVE',
+      groupId: 'group-1',
+      assetUrl: `https://mobile-cloud.example/${assetId}.png`,
+    }))
+
+    await processor!(buildJob({
+      type: TASK_TYPE.VIDEO_PANEL,
+      targetType: 'InspirationVideoCreation',
+      targetId: 'creation-mixed-references',
+      payload: {
+        mobileCloudAssets: {
+          primaryImageAssetId: null,
+          referenceImages: [{ assetId: 'asset-cloud-reference', sortOrder: 1 }],
+        },
+      },
+    }))
+
+    expect(utilsMock.resolveVideoSourceFromGeneration).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        imageUrl: 'https://objects.example/inspiration/primary.jpg?signed=1',
+        options: expect.objectContaining({
+          referenceImages: [
+            'https://objects.example/inspiration/local-reference.jpg?signed=1',
+            'asset://asset-cloud-reference',
+          ],
+        }),
+      }),
+    )
+    expect(storageMock.getSignedObjectUrl).not.toHaveBeenCalledWith(
+      'inspiration/cloud-reference-copy.jpg',
+      7_200,
+    )
+  })
+
+  it('VIDEO_PANEL: extracts a thumbnail only for an explicitly marked new text-only creation', async () => {
+    const processor = workerState.processor
+    expect(processor).toBeTruthy()
+    modelContractMock.parseModelKeyStrict.mockReturnValue({ provider: 'maas-seedance' })
+    utilsMock.uploadVideoSourceToCos.mockResolvedValueOnce('inspiration-video/result.mp4')
+    prismaMock.inspirationVideoCreation.findUnique.mockResolvedValueOnce({
+      id: 'creation-text-only',
+      prompt: 'A text-only cinematic prompt',
+      modelKey: 'maas-seedance::doubao-seedance-2.0',
+      aspectRatio: '16:9',
+      resolution: '720p',
+      duration: 5,
+      generateAudio: true,
+      workspace: { projectId: 'project-1' },
+      assets: [],
+    })
+
+    await processor!(buildJob({
+      type: TASK_TYPE.VIDEO_PANEL,
+      targetType: 'InspirationVideoCreation',
+      targetId: 'creation-text-only',
+      payload: { generateThumbnailFromVideo: true },
+    }))
+
+    expect(mediaMock.extractThumbnail).toHaveBeenCalledWith('inspiration-video/result.mp4')
+    expect(storageMock.uploadObject).toHaveBeenCalledWith(
+      Buffer.from('thumbnail'),
+      'images/inspiration-video/creation-text-only/output-thumbnail.jpg',
+      3,
+      'image/jpeg',
+    )
+    expect(prismaMock.inspirationVideoAsset.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        creationId: 'creation-text-only',
+        kind: 'output_thumbnail',
+        storageKey: 'images/inspiration-video/creation-text-only/output-thumbnail.jpg',
+      }),
+    })
+  })
+
+  it('VIDEO_PANEL: keeps the completed video when optional thumbnail extraction fails', async () => {
+    const processor = workerState.processor
+    expect(processor).toBeTruthy()
+    modelContractMock.parseModelKeyStrict.mockReturnValue({ provider: 'maas-seedance' })
+    utilsMock.uploadVideoSourceToCos.mockResolvedValueOnce('inspiration-video/result.mp4')
+    mediaMock.extractThumbnail.mockRejectedValueOnce(new Error('ffmpeg unavailable'))
+    prismaMock.inspirationVideoCreation.findUnique.mockResolvedValueOnce({
+      id: 'creation-without-thumbnail',
+      prompt: 'A text-only cinematic prompt',
+      modelKey: 'maas-seedance::doubao-seedance-2.0',
+      aspectRatio: '16:9',
+      resolution: '720p',
+      duration: 5,
+      generateAudio: true,
+      workspace: { projectId: 'project-1' },
+      assets: [],
+    })
+
+    await expect(processor!(buildJob({
+      type: TASK_TYPE.VIDEO_PANEL,
+      targetType: 'InspirationVideoCreation',
+      targetId: 'creation-without-thumbnail',
+      payload: { generateThumbnailFromVideo: true },
+    }))).resolves.toMatchObject({ videoUrl: 'inspiration-video/result.mp4' })
+
+    expect(prismaMock.inspirationVideoCreation.update).toHaveBeenCalledWith({
+      where: { id: 'creation-without-thumbnail' },
+      data: { outputVideoKey: 'inspiration-video/result.mp4' },
+    })
+    expect(prismaMock.inspirationVideoAsset.create).not.toHaveBeenCalled()
   })
 
   it('VIDEO_PANEL: MAAS sends a registered active storyboard material as an asset URI', async () => {

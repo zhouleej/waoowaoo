@@ -1,6 +1,19 @@
 import fs from 'node:fs/promises'
+import { createReadStream, createWriteStream } from 'node:fs'
 import path from 'node:path'
-import type { DeleteObjectsResult, SignedUrlParams, StorageProvider, UploadObjectParams, UploadObjectResult } from '@/lib/storage/types'
+import { Readable, Transform } from 'node:stream'
+import { pipeline } from 'node:stream/promises'
+import type {
+  DeleteObjectsResult,
+  ObjectByteRange,
+  SignedUrlParams,
+  StorageObjectMetadata,
+  StorageObjectStream,
+  StorageProvider,
+  UploadObjectParams,
+  UploadObjectStreamParams,
+  UploadObjectResult,
+} from '@/lib/storage/types'
 import { normalizeKey, toFetchableUrl } from '@/lib/storage/utils'
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR || './data/uploads'
@@ -18,6 +31,35 @@ export class LocalStorageProvider implements StorageProvider {
     await fs.mkdir(path.dirname(filePath), { recursive: true })
     await fs.writeFile(filePath, params.body)
     return { key: normalizedKey }
+  }
+
+  async uploadObjectStream(params: UploadObjectStreamParams): Promise<UploadObjectResult> {
+    if (!Number.isSafeInteger(params.contentLength) || params.contentLength < 0) {
+      throw new Error('STORAGE_STREAM_CONTENT_LENGTH_INVALID')
+    }
+    const normalizedKey = normalizeKey(params.key)
+    const filePath = resolveUploadPath(normalizedKey)
+    const temporaryPath = `${filePath}.${process.pid}.${Math.random().toString(36).slice(2, 10)}.tmp`
+    await fs.mkdir(path.dirname(filePath), { recursive: true })
+    let writtenBytes = 0
+    const counter = new Transform({
+      transform(chunk: Buffer, _encoding, callback) {
+        writtenBytes += chunk.length
+        callback(null, chunk)
+      },
+    })
+    try {
+      await pipeline(params.body, counter, createWriteStream(temporaryPath, { flags: 'wx' }))
+      if (writtenBytes !== params.contentLength) {
+        throw new Error('STORAGE_STREAM_CONTENT_LENGTH_MISMATCH')
+      }
+      await fs.rename(temporaryPath, filePath)
+      return { key: normalizedKey }
+    } finally {
+      await fs.unlink(temporaryPath).catch((error: NodeJS.ErrnoException) => {
+        if (error.code !== 'ENOENT') throw error
+      })
+    }
   }
 
   async deleteObject(key: string): Promise<void> {
@@ -55,6 +97,27 @@ export class LocalStorageProvider implements StorageProvider {
 
   async getObjectBuffer(key: string): Promise<Buffer> {
     return await fs.readFile(resolveUploadPath(key))
+  }
+
+  async getObjectMetadata(key: string): Promise<StorageObjectMetadata> {
+    const stats = await fs.stat(resolveUploadPath(key))
+    return {
+      size: stats.size,
+      etag: `W/\"${stats.size.toString(16)}-${Math.trunc(stats.mtimeMs).toString(16)}\"`,
+      lastModified: stats.mtime,
+    }
+  }
+
+  async getObjectStream(key: string, range?: ObjectByteRange): Promise<StorageObjectStream> {
+    const filePath = resolveUploadPath(key)
+    const stats = await fs.stat(filePath)
+    const nodeStream = createReadStream(filePath, range ? { start: range.start, end: range.end } : undefined)
+    return {
+      body: Readable.toWeb(nodeStream) as ReadableStream<Uint8Array>,
+      contentLength: range ? range.end - range.start + 1 : stats.size,
+      etag: `W/\"${stats.size.toString(16)}-${Math.trunc(stats.mtimeMs).toString(16)}\"`,
+      lastModified: stats.mtime,
+    }
   }
 
   extractStorageKey(input: string | null | undefined): string | null {

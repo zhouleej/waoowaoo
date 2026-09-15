@@ -179,6 +179,38 @@ def normalize_status(raw: Any) -> str:
     return "processing"
 
 
+def normalize_task_failure(task_info: dict[str, Any]) -> dict[str, Any]:
+    raw_error = task_info.get("error") or task_info.get("message") or "Maas Seedance task failed"
+    upstream_code: str | None = None
+    message: str
+
+    def compact(value: Any, fallback: str = "") -> str:
+        normalized = " ".join(str(value).split())[:1000]
+        return normalized or fallback
+
+    if isinstance(raw_error, dict):
+        raw_code = raw_error.get("code") or raw_error.get("type")
+        if raw_code is not None:
+            upstream_code = compact(raw_code) or None
+        raw_message = raw_error.get("message") or raw_error.get("detail") or raw_error.get("reason")
+        message = compact(raw_message or upstream_code, "Maas Seedance task failed")
+    else:
+        message = compact(raw_error, "Maas Seedance task failed")
+
+    combined = f"{upstream_code or ''} {message}".lower()
+    sensitive = any(marker in combined for marker in (
+        "sensitive",
+        "privacyinformation",
+        "content policy",
+    ))
+    return {
+        "error": message,
+        "error_code": "SENSITIVE_CONTENT" if sensitive else "GENERATION_FAILED",
+        "upstream_error_code": upstream_code,
+        "retryable": not sensitive,
+    }
+
+
 VIDEO_TMP_DIR.mkdir(parents=True, exist_ok=True)
 client = MaasSeedanceClient(
     maas_base_url=MAAS_BASE_URL,
@@ -274,6 +306,35 @@ def _raise_sdk_create_task_error(sdk_error: Exception | None = None) -> None:
 
     upstream_error = body.get("error") if isinstance(body, dict) else None
     upstream_code = upstream_error.get("code") if isinstance(upstream_error, dict) else None
+    upstream_message = upstream_error.get("message") if isinstance(upstream_error, dict) else None
+    if (
+        upstream_code == "InvalidParameter"
+        and isinstance(upstream_message, str)
+        and "resource download failed" in upstream_message.lower()
+    ):
+        parameter = "input media"
+        parameter_marker = "The parameter `"
+        marker_start = upstream_message.find(parameter_marker)
+        if marker_start >= 0:
+            value_start = marker_start + len(parameter_marker)
+            value_end = upstream_message.find("`", value_start)
+            if value_end > value_start:
+                parameter = upstream_message[value_start:value_end]
+        logger.warning(
+            "Maas Seedance could not download an input resource: status=%s parameter=%s",
+            status_code,
+            parameter,
+        )
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "INPUT_RESOURCE_DOWNLOAD_FAILED",
+                "message": (
+                    f"Mobile Cloud could not download {parameter}. "
+                    "Verify that the MinIO public endpoint and its TLS certificate are reachable from the internet."
+                ),
+            },
+        )
     if isinstance(upstream_code, str) and upstream_code.startswith("InputImageSensitiveContentDetected"):
         logger.warning(
             "Maas Seedance rejected an input image during content safety review: status=%s code=%s",
@@ -333,19 +394,30 @@ def create_video_generation(
     if request.watermark is not None:
         payload["watermark"] = request.watermark
 
-    logger.info(
-        "MAAS request_data before SDK call: %s",
-        json.dumps(payload, ensure_ascii=False),
-    )
-
-    # #region debug-point A-E:python-before-sdk
-    _report_debug_urls("py_api/maas_seedance_api.py:before-sdk", [
+    media_urls = [
         *([("image_url", request.image_url)] if request.image_url else []),
         *([("last_frame_image_url", request.last_frame_image_url)] if request.last_frame_image_url else []),
         *((f"reference_images[{index}]", value) for index, value in enumerate(request.reference_images)),
         *((f"reference_videos[{index}]", value) for index, value in enumerate(request.reference_videos)),
         *((f"reference_audios[{index}]", value) for index, value in enumerate(request.reference_audios)),
-    ])
+    ]
+    logger.info(
+        "MAAS request parameters before SDK call: content=%s ratio=%s resolution=%s duration=%s "
+        "generate_audio=%s watermark=%s media=%s",
+        [
+            {"index": index, "type": item.get("type"), "role": item.get("role")}
+            for index, item in enumerate(payload["content"])
+        ],
+        payload.get("ratio"),
+        payload.get("resolution"),
+        payload.get("duration"),
+        payload.get("generate_audio"),
+        payload.get("watermark"),
+        [_debug_url_metadata(field_name, value) for field_name, value in media_urls],
+    )
+
+    # #region debug-point A-E:python-before-sdk
+    _report_debug_urls("py_api/maas_seedance_api.py:before-sdk", media_urls)
     # #endregion
 
     _clear_sdk_create_task_response()
@@ -378,7 +450,16 @@ def get_video_generation(
     if status == "succeeded":
         response["video_url"] = f"/v1/videos/generations/{task_id}/content"
     if status == "failed":
-        response["error"] = task_info.get("error") or task_info.get("message") or "Maas Seedance task failed"
+        failure = normalize_task_failure(task_info)
+        response.update(failure)
+        logger.warning(
+            "MAAS Seedance task failed: task_id=%s raw_status=%s error_code=%s upstream_error_code=%s message=%s",
+            task_id,
+            raw_status,
+            failure["error_code"],
+            failure["upstream_error_code"],
+            failure["error"],
+        )
     return response
 
 

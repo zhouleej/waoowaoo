@@ -8,6 +8,10 @@ import type { AbstractIntlMessages } from 'next-intl'
 import Navbar from '@/components/Navbar'
 
 const useSessionMock = vi.fn()
+const renderedLinks = vi.hoisted(() => [] as Array<{
+  href: string
+  onClick?: unknown
+}>)
 
 vi.mock('next-auth/react', () => ({
   useSession: () => useSessionMock(),
@@ -43,6 +47,7 @@ vi.mock('@/i18n/navigation', () => ({
     children: React.ReactNode
   } & Record<string, unknown>) => {
     const resolvedHref = typeof href === 'string' ? href : href.pathname
+    renderedLinks.push({ href: resolvedHref, onClick: props.onClick })
     return createElement('a', { href: resolvedHref, ...props }, children)
   },
 }))
@@ -85,6 +90,7 @@ const renderWithIntl = (node: ReactElement) => {
 describe('Navbar download logs entry', () => {
   beforeEach(() => {
     useSessionMock.mockReset()
+    renderedLinks.length = 0
   })
 
   it('renders the download logs entry on the far-right action group for signed-in users', () => {
@@ -100,6 +106,7 @@ describe('Navbar download logs entry', () => {
     expect(html).toContain('href="/home"')
     expect(html).toContain('href="/api/admin/download-logs"')
     expect(html).toContain('download=""')
+    expect(renderedLinks.find((link) => link.href === '/workspace')?.onClick).toBeTypeOf('function')
   })
 
   it('does not render the download logs entry for signed-out users', () => {

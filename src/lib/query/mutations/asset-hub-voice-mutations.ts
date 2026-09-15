@@ -1,6 +1,8 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { resolveTaskResponse } from '@/lib/task/client'
+import { queryKeys } from '../keys'
 import {
+  invalidateQueryTemplates,
   requestJsonWithError,
   requestTaskResponseWithError,
   requestVoidWithError,
@@ -90,6 +92,34 @@ export function useSaveDesignedAssetHubVoice() {
       return res
     },
     onSuccess: invalidateVoices,
+  })
+}
+
+export function useSaveAssetHubCharacterDesignedVoice() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (payload: {
+      characterId: string
+      voiceId: string
+      audioBase64: string
+    }) => {
+      return await requestJsonWithError<{ audioUrl?: string }>('/api/asset-hub/character-voice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          characterId: payload.characterId,
+          voiceDesign: {
+            voiceId: payload.voiceId,
+            audioBase64: payload.audioBase64,
+          },
+        }),
+      }, 'Failed to save designed character voice')
+    },
+    onSuccess: () => invalidateQueryTemplates(queryClient, [
+      queryKeys.assets.all('global'),
+      queryKeys.globalAssets.characters(),
+    ]),
   })
 }
 
