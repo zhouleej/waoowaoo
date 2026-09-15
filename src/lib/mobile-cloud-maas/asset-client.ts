@@ -242,21 +242,25 @@ export function createMobileCloudMaasAssetClient(options: AssetClientOptions = {
       return mapGroup(asRecord(await request('PUT', `/api/openapi-maas/exp/aicc/v2/asset-group/${encodeURIComponent(trimId(groupId, 'GROUP_ID'))}`, { body: input })))
     },
     async deleteGroup(groupId: string) {
-      await request('DELETE', `/api/openapi-maas/exp/aicc/v2/asset-group/${encodeURIComponent(trimId(groupId, 'GROUP_ID'))}`)
+      const deleted = await request<unknown>('DELETE', `/api/openapi-maas/exp/aicc/v2/asset-group/${encodeURIComponent(trimId(groupId, 'GROUP_ID'))}`)
+      if (deleted !== true) {
+        throw new MobileCloudMaasOpenApiError('invalid-response', 'MOBILE_CLOUD_ASSET_DELETE_RESPONSE_INVALID')
+      }
+      return true
     },
     async listAssets(input: {
+      groupType: MobileCloudAssetGroupType
       pageNo?: number
       pageSize?: number
       groupIds?: string[]
-      groupType?: MobileCloudAssetGroupType
       assetName?: string
       statuses?: MobileCloudAssetStatus[]
-    } = {}): Promise<MobileCloudPage<MobileCloudAsset>> {
+    }): Promise<MobileCloudPage<MobileCloudAsset>> {
       const body = {
         pageNo: input.pageNo ?? 1,
         pageSize: input.pageSize ?? 50,
+        groupType: input.groupType,
         ...(input.groupIds?.length ? { groupIds: input.groupIds } : {}),
-        ...(input.groupType ? { groupType: input.groupType } : {}),
         ...(input.assetName ? { assetName: input.assetName } : {}),
         ...(input.statuses?.length ? { statuses: input.statuses } : {}),
       }
@@ -274,7 +278,11 @@ export function createMobileCloudMaasAssetClient(options: AssetClientOptions = {
       return mapAsset(asRecord(await request('PUT', `/api/openapi-maas/exp/aicc/v2/asset/${encodeURIComponent(trimId(assetId, 'ASSET_ID'))}`, { body: input })))
     },
     async deleteAsset(assetId: string) {
-      await request('DELETE', `/api/openapi-maas/exp/aicc/v2/asset/${encodeURIComponent(trimId(assetId, 'ASSET_ID'))}`)
+      const deleted = await request<unknown>('DELETE', `/api/openapi-maas/exp/aicc/v2/asset/${encodeURIComponent(trimId(assetId, 'ASSET_ID'))}`)
+      if (deleted !== true) {
+        throw new MobileCloudMaasOpenApiError('invalid-response', 'MOBILE_CLOUD_ASSET_DELETE_RESPONSE_INVALID')
+      }
+      return true
     },
     async createRealPersonAuthSession(): Promise<MobileCloudRealPersonSession> {
       const body = asRecord(await request('POST', '/api/openapi-maas/exp/aicc/v2/real-person-auth/sessions'))

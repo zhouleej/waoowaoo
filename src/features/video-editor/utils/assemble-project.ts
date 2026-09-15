@@ -22,14 +22,15 @@ export function assembleEditorProject(episodeId: string, panels: Panel[], voices
       // One lip-sync output is based on one selected line. For multi-line shots,
       // use the base clip and lay out all dialogue instead of dropping later lines.
       const useLipSync = !!panel.lipSyncVideoUrl && (dialogue.length <= 1 || !panel.videoUrl)
+      const hasDialogueAudio = dialogue.some((line) => !!line.audio)
       return {
         id: `clip_${panel.id}`, src: useLipSync ? panel.lipSyncVideoUrl! : panel.videoUrl!,
         durationInFrames: Math.max(Math.round((panel.duration || 3) * 30), cursor),
-        // Lip-sync output already contains audio. Do not overlay it a second time.
-        dialogue: useLipSync ? dialogue.map((line) => ({ ...line, audio: undefined })) : dialogue,
-        // Base model speech is not authoritative for scripted dialogue. Lip-sync
-        // output already carries the exact TTS audio and must remain audible.
-        muteSourceAudio: !useLipSync && dialogue.length > 0,
+        // The generated voice line is authoritative. Some lip-sync providers
+        // return a silent video, while others embed the same audio; always lay
+        // down our stored TTS and mute the source to avoid silence or doubling.
+        dialogue,
+        muteSourceAudio: hasDialogueAudio,
         metadata: { panelId: panel.id, storyboardId: panel.storyboardId, description: panel.description || undefined },
       }
     }),

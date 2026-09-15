@@ -25,6 +25,7 @@ import { mobileCloudMaasAssetClient } from '@/lib/mobile-cloud-maas/asset-client
 import { handleInspirationVideoTask } from './handlers/inspiration-video'
 import { inspectGeneratedVideo } from '@/lib/media/video-metadata'
 import { resolveVideoWorkerConcurrency } from './video-concurrency'
+import { muxVideoWithAudioToStorage } from '@/lib/media/video-audio-mux'
 
 type AnyObj = Record<string, unknown>
 type VideoOptionValue = string | number | boolean
@@ -347,8 +348,9 @@ async function handleLipSyncTask(job: Job<TaskJobData>) {
 
   const signedVideoUrl = toSignedUrlIfCos(panel.videoUrl, 7200)
   const signedAudioUrl = toSignedUrlIfCos(voiceLine.audioUrl, 7200)
+  const panelVideoDurationMs = toDurationMs(panel.duration)
 
-  if (!signedVideoUrl || !signedAudioUrl) {
+  if (!signedVideoUrl || !signedAudioUrl || !panelVideoDurationMs) {
     throw new Error('Lip-sync input media url invalid')
   }
 
@@ -359,15 +361,23 @@ async function handleLipSyncTask(job: Job<TaskJobData>) {
     videoUrl: signedVideoUrl,
     audioUrl: signedAudioUrl,
     audioDurationMs: typeof voiceLine.audioDuration === 'number' ? voiceLine.audioDuration : undefined,
-    videoDurationMs: toDurationMs(panel.duration),
+    videoDurationMs: panelVideoDurationMs,
     modelKey: lipSyncModel,
   })
 
-  await reportTaskProgress(job, 93, { stage: 'persist_lip_sync' })
+  await assertTaskActive(job, 'mux_lip_sync_audio')
+  await reportTaskProgress(job, 95, { stage: 'mux_lip_sync_audio' })
 
-  const cosKey = await uploadVideoSourceToCos(source, 'lip-sync', panel.id)
+  const cosKey = await muxVideoWithAudioToStorage({
+    videoSource: source,
+    audioSource: voiceLine.audioUrl,
+    durationMs: panelVideoDurationMs,
+    keyPrefix: 'lip-sync',
+    targetId: panel.id,
+  })
 
   await assertTaskActive(job, 'persist_lip_sync_video')
+  await reportTaskProgress(job, 98, { stage: 'persist_lip_sync' })
   await prisma.novelPromotionPanel.update({
     where: { id: panel.id },
     data: {

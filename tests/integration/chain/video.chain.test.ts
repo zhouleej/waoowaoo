@@ -30,6 +30,9 @@ const utilsMock = vi.hoisted(() => ({
   toSignedUrlIfCos: vi.fn((url: string | null) => (url ? `https://signed.example/${url}` : null)),
   uploadVideoSourceToCos: vi.fn(async () => 'cos/lip-sync/video.mp4'),
 }))
+const videoAudioMuxMock = vi.hoisted(() => ({
+  muxToStorage: vi.fn(async () => 'cos/lip-sync/video.mp4'),
+}))
 const configServiceMock = vi.hoisted(() => ({
   getUserWorkflowConcurrencyConfig: vi.fn(async () => ({
     analysis: 5,
@@ -86,6 +89,9 @@ vi.mock('@/lib/workers/shared', () => ({
   withTaskLifecycle: workerMock.withTaskLifecycle,
 }))
 vi.mock('@/lib/workers/utils', () => utilsMock)
+vi.mock('@/lib/media/video-audio-mux', () => ({
+  muxVideoWithAudioToStorage: videoAudioMuxMock.muxToStorage,
+}))
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock }))
 vi.mock('@/lib/media/outbound-image', () => ({
   normalizeToBase64ForGeneration: vi.fn(async (input: string) => input),
@@ -114,6 +120,7 @@ describe('chain contract - video queue behavior', () => {
     prismaMock.novelPromotionPanel.findUnique.mockResolvedValue({
       id: 'panel-1',
       videoUrl: 'cos/base-video.mp4',
+      duration: 5,
     })
     prismaMock.novelPromotionVoiceLine.findUnique.mockResolvedValue({
       id: 'line-1',
@@ -192,6 +199,13 @@ describe('chain contract - video queue behavior', () => {
       panelId: 'panel-1',
       voiceLineId: 'line-1',
       lipSyncVideoUrl: 'cos/lip-sync/video.mp4',
+    })
+    expect(videoAudioMuxMock.muxToStorage).toHaveBeenCalledWith({
+      videoSource: 'https://provider.example/lipsync.mp4',
+      audioSource: 'cos/line-1.mp3',
+      durationMs: 5000,
+      keyPrefix: 'lip-sync',
+      targetId: 'panel-1',
     })
     expect(prismaMock.novelPromotionPanel.update).toHaveBeenCalledWith({
       where: { id: 'panel-1' },

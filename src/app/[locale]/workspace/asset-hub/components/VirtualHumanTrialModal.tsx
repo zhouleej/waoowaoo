@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { AppIcon } from '@/components/ui/icons'
+import { MOBILE_CLOUD_ASSET_API_DOCS_URL } from '@/lib/mobile-cloud-maas/asset-types'
 import { requestTaskResponseWithError } from '@/lib/query/mutations/mutation-shared'
 import { resolveTaskResponse } from '@/lib/task/client'
 
@@ -59,7 +60,7 @@ export default function VirtualHumanTrialModal({ onClose }: VirtualHumanTrialMod
           <div className="rounded-xl border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-muted)]/45 p-3 text-xs leading-5 text-[var(--glass-text-secondary)]">
             <div className="flex items-start gap-2">
               <AppIcon name="info" className="mt-0.5 h-4 w-4 shrink-0 text-[var(--glass-tone-info-fg)]" />
-              <span>{t('tip')} <a href="https://ecloud.10086.cn/op-help-center/doc/outline/108290" target="_blank" rel="noreferrer" className="text-[var(--glass-tone-info-fg)] hover:underline">{t('docs')}</a></span>
+              <span>{t('tip')} <a href={MOBILE_CLOUD_ASSET_API_DOCS_URL} target="_blank" rel="noreferrer" className="text-[var(--glass-tone-info-fg)] hover:underline">{t('docs')}</a></span>
             </div>
           </div>
 

@@ -18,7 +18,7 @@ describe('editor assembly', () => {
     expect(project.timeline[0].durationInFrames).toBe(120)
     expect(editorProjectSchema.safeParse(project).success).toBe(true)
   })
-  it('keeps embedded exact audio enabled for a single-line lip-sync clip', () => {
+  it('overlays the authoritative TTS and mutes a single-line lip-sync source', () => {
     const project = assembleEditorProject('ep', [
       { id: 'panel', storyboardId: 's', videoUrl: 'base.mp4', lipSyncVideoUrl: 'lip-sync.mp4' },
     ], [
@@ -26,6 +26,21 @@ describe('editor assembly', () => {
     ])
 
     expect(project.timeline[0].src).toBe('lip-sync.mp4')
+    expect(project.timeline[0].dialogue?.[0].audio).toEqual({
+      src: 'line.wav',
+      volume: 1,
+      voiceLineId: 'line',
+    })
+    expect(project.timeline[0].muteSourceAudio).toBe(true)
+    expect(editorProjectSchema.safeParse(project).success).toBe(true)
+  })
+  it('does not mute a clip when dialogue audio has not been generated', () => {
+    const project = assembleEditorProject('ep', [
+      { id: 'panel', storyboardId: 's', videoUrl: 'base.mp4', lipSyncVideoUrl: 'lip-sync.mp4' },
+    ], [
+      { id: 'line', matchedPanelId: 'panel', content: 'Subtitle only', audioUrl: null },
+    ])
+
     expect(project.timeline[0].dialogue?.[0].audio).toBeUndefined()
     expect(project.timeline[0].muteSourceAudio).toBe(false)
     expect(editorProjectSchema.safeParse(project).success).toBe(true)

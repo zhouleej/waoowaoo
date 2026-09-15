@@ -45,6 +45,7 @@ const prismaMock = vi.hoisted(() => ({
   novelPromotionPanel: {
     findMany: vi.fn(),
     update: vi.fn(),
+    updateMany: vi.fn(),
   },
 }))
 
@@ -84,6 +85,7 @@ describe('api specific - Mobile Cloud asset route', () => {
     })
     prismaMock.novelPromotionPanel.findMany.mockResolvedValue([])
     prismaMock.novelPromotionPanel.update.mockResolvedValue(undefined)
+    prismaMock.novelPromotionPanel.updateMany.mockResolvedValue({ count: 0 })
     outboundImageMock.normalizeToOriginalMediaUrl.mockImplementation(async (url: string) => `https://public.example/${url}`)
   })
 
@@ -140,6 +142,26 @@ describe('api specific - Mobile Cloud asset route', () => {
     }), { params: Promise.resolve({}) })
 
     expect(response.status).toBe(400)
+    expect(assetClientMock.listAssets).not.toHaveBeenCalled()
+  })
+
+  it('enforces the documented 64-character search limits before calling Mobile Cloud', async () => {
+    installAuthMocks()
+    mockAuthenticated('user-a')
+    const mod = await import('@/app/api/asset-hub/mobile-cloud/route')
+
+    const groupResponse = await mod.GET(buildMockRequest({
+      path: `/api/asset-hub/mobile-cloud?resource=groups&groupName=${'g'.repeat(65)}`,
+      method: 'GET',
+    }), { params: Promise.resolve({}) })
+    const assetResponse = await mod.GET(buildMockRequest({
+      path: `/api/asset-hub/mobile-cloud?resource=assets&groupType=AIGC&assetName=${'a'.repeat(65)}`,
+      method: 'GET',
+    }), { params: Promise.resolve({}) })
+
+    expect(groupResponse.status).toBe(400)
+    expect(assetResponse.status).toBe(400)
+    expect(assetClientMock.listGroups).not.toHaveBeenCalled()
     expect(assetClientMock.listAssets).not.toHaveBeenCalled()
   })
 
@@ -427,6 +449,55 @@ describe('api specific - Mobile Cloud asset route', () => {
     }), { params: Promise.resolve({}) })
     expect(response.status).toBe(200)
     expect(assetClientMock.updateAsset).toHaveBeenCalledWith('asset-1', { assetName: 'x'.repeat(64) })
+  })
+
+  it('deletes an asset only after authentication and clears stale storyboard mappings', async () => {
+    installAuthMocks()
+    mockAuthenticated('user-a')
+    assetClientMock.deleteAsset.mockResolvedValueOnce(true)
+    prismaMock.novelPromotionPanel.updateMany.mockResolvedValueOnce({ count: 2 })
+    const mod = await import('@/app/api/asset-hub/mobile-cloud/route')
+
+    const response = await mod.DELETE(buildMockRequest({
+      path: '/api/asset-hub/mobile-cloud',
+      method: 'DELETE',
+      body: { resource: 'asset', id: 'asset-1' },
+    }), { params: Promise.resolve({}) })
+
+    expect(response.status).toBe(200)
+    expect(assetClientMock.deleteAsset).toHaveBeenCalledWith('asset-1')
+    expect(prismaMock.novelPromotionPanel.updateMany).toHaveBeenCalledWith({
+      where: { mobileCloudAssetId: 'asset-1' },
+      data: {
+        mobileCloudAssetId: null,
+        mobileCloudAssetSourceUrl: null,
+        mobileCloudAssetGroupId: null,
+        mobileCloudAssetStatus: null,
+        mobileCloudAssetSyncedAt: null,
+      },
+    })
+    await expect(response.json()).resolves.toEqual({
+      success: true,
+      data: { resource: 'asset', id: 'asset-1', deleted: true },
+    })
+  })
+
+  it('does not clear local mappings when Mobile Cloud rejects asset deletion', async () => {
+    installAuthMocks()
+    mockAuthenticated('user-a')
+    assetClientMock.deleteAsset.mockRejectedValueOnce(
+      new MobileCloudMaasOpenApiError('upstream', 'asset cannot be deleted', 400, [], 'ASSET_DELETE_FAILED'),
+    )
+    const mod = await import('@/app/api/asset-hub/mobile-cloud/route')
+
+    const response = await mod.DELETE(buildMockRequest({
+      path: '/api/asset-hub/mobile-cloud',
+      method: 'DELETE',
+      body: { resource: 'asset', id: 'asset-1' },
+    }), { params: Promise.resolve({}) })
+
+    expect(response.status).toBe(400)
+    expect(prismaMock.novelPromotionPanel.updateMany).not.toHaveBeenCalled()
   })
 
   it('includes diagnostic details when the upstream API rejects the request', async () => {

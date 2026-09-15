@@ -195,7 +195,7 @@ export const GET = apiHandler(async (request: NextRequest) => {
         pageNo,
         pageSize,
         ...(groupType ? { groupType: requireEnum(groupType, GROUP_TYPES) } : {}),
-        ...(params.get('groupName') ? { groupName: text(params.get('groupName'), 100) } : {}),
+        ...(params.get('groupName') ? { groupName: text(params.get('groupName'), 64) } : {}),
         ...(parseIdList(params.get('groupIds')) ? { groupIds: parseIdList(params.get('groupIds')) } : {}),
       })
       return NextResponse.json({ success: true, data })
@@ -211,7 +211,7 @@ export const GET = apiHandler(async (request: NextRequest) => {
         pageSize,
         groupType,
         ...(params.get('groupIds') ? { groupIds: parseIdList(params.get('groupIds')) } : {}),
-        ...(params.get('assetName') ? { assetName: text(params.get('assetName'), 100) } : {}),
+        ...(params.get('assetName') ? { assetName: text(params.get('assetName'), 64) } : {}),
         ...(statuses?.length ? { statuses: statuses.map((item) => requireEnum(item, ASSET_STATUSES)) } : {}),
       })
       return NextResponse.json({ success: true, data })
@@ -421,10 +421,36 @@ export const DELETE = apiHandler(async (request: NextRequest) => {
   const id = text(body.id, 200)
 
   try {
-    if (resource === 'group') await mobileCloudMaasAssetClient.deleteGroup(id)
-    else if (resource === 'asset') await mobileCloudMaasAssetClient.deleteAsset(id)
-    else throw new ApiError('INVALID_PARAMS')
-    return NextResponse.json({ success: true })
+    if (resource === 'group') {
+      await mobileCloudMaasAssetClient.deleteGroup(id)
+    } else if (resource === 'asset') {
+      await mobileCloudMaasAssetClient.deleteAsset(id)
+
+      // Remote deletion is irreversible. Clear any local storyboard mapping
+      // after the upstream confirms deletion so future video jobs fall back to
+      // their original MinIO image instead of reusing a stale asset:// URI.
+      try {
+        await prisma.novelPromotionPanel.updateMany({
+          where: { mobileCloudAssetId: id },
+          data: {
+            mobileCloudAssetId: null,
+            mobileCloudAssetSourceUrl: null,
+            mobileCloudAssetGroupId: null,
+            mobileCloudAssetStatus: null,
+            mobileCloudAssetSyncedAt: null,
+          },
+        })
+      } catch (cleanupError) {
+        logger.warn({
+          message: 'Mobile Cloud asset deleted but local panel mappings could not be cleared',
+          action: 'mobile-cloud-asset.local-mapping-cleanup-failed',
+          details: { assetId: id, error: String(cleanupError) },
+        })
+      }
+    } else {
+      throw new ApiError('INVALID_PARAMS')
+    }
+    return NextResponse.json({ success: true, data: { resource, id, deleted: true } })
   } catch (error) {
     if (error instanceof MobileCloudMaasOpenApiError) return errorResponse(error)
     throw error

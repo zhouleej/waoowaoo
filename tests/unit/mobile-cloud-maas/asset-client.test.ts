@@ -44,7 +44,7 @@ describe('Mobile Cloud asset API client', () => {
   it('rejects missing direct API credentials without making a request', async () => {
     const fetchImpl = vi.fn()
     const client = createMobileCloudMaasAssetClient({ env: {}, fetchImpl })
-    await expect(client.listAssets()).rejects.toMatchObject({
+    await expect(client.listAssets({ groupType: 'AIGC' })).rejects.toMatchObject({
       kind: 'config',
       missing: ['MOBILE_CLOUD_MAAS_ACCESS_KEY', 'MOBILE_CLOUD_MAAS_SECRET_KEY'],
     })
@@ -53,13 +53,45 @@ describe('Mobile Cloud asset API client', () => {
 
   it('turns upstream auth and envelope failures into typed errors', async () => {
     const authClient = createMobileCloudMaasAssetClient({ env, fetchImpl: vi.fn(async () => response({}, 403)) })
-    await expect(authClient.listAssets()).rejects.toMatchObject({ kind: 'auth', status: 403 })
+    await expect(authClient.listAssets({ groupType: 'AIGC' })).rejects.toMatchObject({ kind: 'auth', status: 403 })
 
     const failedClient = createMobileCloudMaasAssetClient({
       env,
       fetchImpl: vi.fn(async () => response({ state: 'FAILED', errorCode: 'BAD_REQUEST', errorMessage: 'bad input' })),
     })
-    await expect(failedClient.listAssets()).rejects.toMatchObject({ kind: 'upstream', upstreamCode: 'BAD_REQUEST' })
+    await expect(failedClient.listAssets({ groupType: 'AIGC' })).rejects.toMatchObject({ kind: 'upstream', upstreamCode: 'BAD_REQUEST' })
+  })
+
+  it('always sends the groupType required by the updated asset-list contract', async () => {
+    const fetchImpl = vi.fn(async () => response({
+      state: 'OK',
+      body: { total: 0, data: [] },
+    }))
+    const client = createMobileCloudMaasAssetClient({ env, fetchImpl, nonce: () => 'nonce-demo' })
+
+    await client.listAssets({ groupType: 'LivenessFace', pageNo: 2, pageSize: 20 })
+
+    const [, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit]
+    expect(JSON.parse(String(init.body))).toEqual({
+      pageNo: 2,
+      pageSize: 20,
+      groupType: 'LivenessFace',
+    })
+  })
+
+  it('accepts only the documented boolean success body for asset deletion', async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(response({ state: 'OK', body: true }))
+      .mockResolvedValueOnce(response({ state: 'OK', body: false }))
+    const client = createMobileCloudMaasAssetClient({ env, fetchImpl, nonce: () => 'nonce-demo' })
+
+    await expect(client.deleteAsset('asset-1')).resolves.toBe(true)
+    expect(fetchImpl.mock.calls[0][1]?.method).toBe('DELETE')
+    expect(String(fetchImpl.mock.calls[0][0])).toContain('/api/openapi-maas/exp/aicc/v2/asset/asset-1')
+    await expect(client.deleteAsset('asset-2')).rejects.toMatchObject({
+      kind: 'invalid-response',
+      message: 'MOBILE_CLOUD_ASSET_DELETE_RESPONSE_INVALID',
+    })
   })
 
   it('preserves a documented business error returned with HTTP 400', async () => {

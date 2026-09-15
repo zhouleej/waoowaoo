@@ -6,9 +6,15 @@ const mediaMock = vi.hoisted(() => ({
   inspect: vi.fn(async () => ({ durationMs: 5000, width: 1280, height: 720, fps: 30 })),
   extractThumbnail: vi.fn(async () => Buffer.from('thumbnail')),
 }))
+const videoAudioMuxMock = vi.hoisted(() => ({
+  muxToStorage: vi.fn(async () => 'cos/lip-sync/video.mp4'),
+}))
 
 vi.mock('@/lib/media/video-metadata', () => ({ inspectGeneratedVideo: mediaMock.inspect }))
 vi.mock('@/lib/media/video-thumbnail', () => ({ extractStoredVideoFirstFrame: mediaMock.extractThumbnail }))
+vi.mock('@/lib/media/video-audio-mux', () => ({
+  muxVideoWithAudioToStorage: videoAudioMuxMock.muxToStorage,
+}))
 
 type WorkerProcessor = (job: Job<TaskJobData>) => Promise<unknown>
 
@@ -454,6 +460,14 @@ describe('worker video processor behavior', () => {
         videoDurationMs: 5000,
       }),
     )
+    expect(videoAudioMuxMock.muxToStorage).toHaveBeenCalledWith({
+      videoSource: 'https://provider.example/lipsync.mp4',
+      audioSource: 'cos/line-1.mp3',
+      durationMs: 5000,
+      keyPrefix: 'lip-sync',
+      targetId: 'panel-1',
+    })
+    expect(utilsMock.uploadVideoSourceToCos).not.toHaveBeenCalled()
 
     expect(prismaMock.novelPromotionPanel.update).toHaveBeenCalledWith({
       where: { id: 'panel-1' },

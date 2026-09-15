@@ -6,7 +6,10 @@ import { apiFetch } from '@/lib/api-fetch'
 import { AppIcon } from '@/components/ui/icons'
 import { MediaImageWithLoading } from '@/components/media/MediaImageWithLoading'
 import ImagePreviewModal from '@/components/ui/ImagePreviewModal'
+import ConfirmDialog from '@/components/ConfirmDialog'
+import { MOBILE_CLOUD_ASSET_API_DOCS_URL } from '@/lib/mobile-cloud-maas/asset-types'
 import { StoryboardPanelAssetUploader } from './StoryboardPanelAssetPicker'
+import MobileCloudAssetCard, { type MobileCloudDisplayAsset } from './MobileCloudAssetCard'
 import MobileCloudAssetCreator, {
   type MobileCloudAssetCreateInput,
   type MobileCloudAssetCreateResult,
@@ -27,16 +30,6 @@ interface Group {
   groupType: GroupType
   groupName: string
   description: string
-}
-
-interface Asset {
-  assetId: string
-  groupId: string
-  assetName: string
-  assetType: AssetType
-  assetUrl: string
-  status: 'PROCESSING' | 'ACTIVE' | 'FAILED'
-  errorMessage?: string
 }
 
 interface MobileCloudAssetPanelProps {
@@ -92,12 +85,12 @@ function getVisualAssetPreview(asset: LocationAssetSummary | PropAssetSummary): 
     || null
 }
 
-export default function MobileCloudAssetPanel({ docsUrl = 'https://ecloud.10086.cn/op-help-center/doc/outline/108290' }: MobileCloudAssetPanelProps) {
+export default function MobileCloudAssetPanel({ docsUrl = MOBILE_CLOUD_ASSET_API_DOCS_URL }: MobileCloudAssetPanelProps) {
   const t = useTranslations('assetHub.mobileCloud')
   const [open, setOpen] = useState(true)
   const [groupType, setGroupType] = useState<GroupType>('AIGC')
   const [groups, setGroups] = useState<Group[]>([])
-  const [assets, setAssets] = useState<Asset[]>([])
+  const [assets, setAssets] = useState<MobileCloudDisplayAsset[]>([])
   const [selectedGroupId, setSelectedGroupId] = useState('')
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -117,6 +110,8 @@ export default function MobileCloudAssetPanel({ docsUrl = 'https://ecloud.10086.
   const [pickerResolving, setPickerResolving] = useState(false)
   const [pickerError, setPickerError] = useState('')
   const [previewImage, setPreviewImage] = useState<string | null>(null)
+  const [pendingDeleteAsset, setPendingDeleteAsset] = useState<MobileCloudDisplayAsset | null>(null)
+  const [deletingAssetId, setDeletingAssetId] = useState<string | null>(null)
 
   const visibleGroups = useMemo(() => groups.filter((group) => group.groupType === groupType), [groups, groupType])
 
@@ -131,7 +126,7 @@ export default function MobileCloudAssetPanel({ docsUrl = 'https://ecloud.10086.
         setAssets([])
         setSelectedGroupId('')
       } else {
-        const assetData = await readData<{ items: Asset[] }>(await apiFetch(`/api/asset-hub/mobile-cloud?resource=assets&groupType=${encodeURIComponent(groupType)}&groupIds=${encodeURIComponent(groupIds.join(','))}&pageSize=100`))
+        const assetData = await readData<{ items: MobileCloudDisplayAsset[] }>(await apiFetch(`/api/asset-hub/mobile-cloud?resource=assets&groupType=${encodeURIComponent(groupType)}&groupIds=${encodeURIComponent(groupIds.join(','))}&pageSize=100`))
         setAssets(assetData.items)
         setSelectedGroupId((current) => groupIds.includes(current) ? current : groupIds[0])
       }
@@ -147,18 +142,6 @@ export default function MobileCloudAssetPanel({ docsUrl = 'https://ecloud.10086.
   }, [open, refresh])
 
   const selectedAssets = assets.filter((asset) => asset.groupId === selectedGroupId)
-
-  const getAssetTypeIcon = (type: AssetType) => {
-    if (type === 'Video') return 'video' as const
-    if (type === 'Audio') return 'audioWave' as const
-    return 'image' as const
-  }
-
-  const getAssetStatusClassName = (status: Asset['status']) => {
-    if (status === 'ACTIVE') return 'bg-[var(--glass-tone-success-bg)] text-[var(--glass-tone-success-fg)]'
-    if (status === 'FAILED') return 'bg-[var(--glass-tone-danger-bg)] text-[var(--glass-tone-danger-fg)]'
-    return 'bg-[var(--glass-tone-warning-bg)] text-[var(--glass-tone-warning-fg)]'
-  }
 
   const createGroup = async () => {
     if (!groupName.trim()) return
@@ -243,6 +226,27 @@ export default function MobileCloudAssetPanel({ docsUrl = 'https://ecloud.10086.
     if (!authSession?.h5Link) return
     window.open(authSession.h5Link, '_blank', 'noopener,noreferrer')
   }
+
+  const confirmDeleteAsset = useCallback(async () => {
+    const asset = pendingDeleteAsset
+    if (!asset || deletingAssetId) return
+
+    setPendingDeleteAsset(null)
+    setDeletingAssetId(asset.assetId)
+    setError('')
+    try {
+      await readData<{ resource: 'asset'; id: string; deleted: true }>(await apiFetch('/api/asset-hub/mobile-cloud', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resource: 'asset', id: asset.assetId }),
+      }))
+      setAssets((current) => current.filter((item) => item.assetId !== asset.assetId))
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : t('deleteAssetFailed'))
+    } finally {
+      setDeletingAssetId(null)
+    }
+  }, [deletingAssetId, pendingDeleteAsset, t])
 
   const openPicker = useCallback(async (kind: PickerKind) => {
     setPickerOpen(true)
@@ -454,52 +458,12 @@ export default function MobileCloudAssetPanel({ docsUrl = 'https://ecloud.10086.
               <div className="app-scrollbar max-h-[420px] min-h-[180px] overflow-y-auto pr-1">
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                   {selectedAssets.map((asset) => (
-                    <a
+                    <MobileCloudAssetCard
                       key={asset.assetId}
-                      href={asset.assetUrl || undefined}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="group overflow-hidden rounded-xl border border-[var(--glass-border-subtle)] bg-[var(--glass-bg-surface)] transition hover:-translate-y-0.5 hover:border-[var(--glass-tone-info-border)] hover:shadow-md"
-                      title={asset.assetName || asset.assetId}
-                    >
-                      <div className="relative aspect-[16/10] overflow-hidden bg-[var(--glass-bg-muted)]">
-                        {asset.assetType === 'Image' && asset.assetUrl ? (
-                          <MediaImageWithLoading
-                            src={asset.assetUrl}
-                            alt={asset.assetName || asset.assetId}
-                            containerClassName="h-full w-full"
-                            className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
-                          />
-                        ) : asset.assetType === 'Video' && asset.assetUrl ? (
-                          <video
-                            src={asset.assetUrl}
-                            muted
-                            playsInline
-                            preload="metadata"
-                            className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
-                          />
-                        ) : (
-                          <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-[var(--glass-text-tertiary)]">
-                            <AppIcon name={getAssetTypeIcon(asset.assetType)} className="h-8 w-8" />
-                            <span className="text-[10px]">{asset.assetType}</span>
-                          </div>
-                        )}
-                        <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-[var(--glass-bg-surface-strong)]/90 px-2 py-1 text-[10px] font-medium text-[var(--glass-text-secondary)] shadow-sm backdrop-blur-sm">
-                          <AppIcon name={getAssetTypeIcon(asset.assetType)} className="h-3 w-3" />
-                          {asset.assetType}
-                        </span>
-                        <span className={`absolute right-2 top-2 rounded-full px-2 py-1 text-[10px] font-medium ${getAssetStatusClassName(asset.status)}`}>
-                          {asset.status}
-                        </span>
-                      </div>
-                      <div className="p-3">
-                        <p className="truncate text-sm font-medium text-[var(--glass-text-primary)]">{asset.assetName || asset.assetId}</p>
-                        <p className="mt-1 truncate text-[10px] text-[var(--glass-text-tertiary)]">{asset.assetId}</p>
-                        {asset.status === 'FAILED' && asset.errorMessage && (
-                          <p className="mt-2 line-clamp-2 text-[10px] leading-4 text-[var(--glass-tone-danger-fg)]">{asset.errorMessage}</p>
-                        )}
-                      </div>
-                    </a>
+                      asset={asset}
+                      deleting={deletingAssetId === asset.assetId}
+                      onDelete={setPendingDeleteAsset}
+                    />
                   ))}
                 </div>
               </div>
@@ -621,6 +585,19 @@ export default function MobileCloudAssetPanel({ docsUrl = 'https://ecloud.10086.
       {previewImage && (
         <ImagePreviewModal imageUrl={previewImage} onClose={() => setPreviewImage(null)} />
       )}
+
+      <ConfirmDialog
+        show={pendingDeleteAsset !== null}
+        title={t('deleteAssetTitle')}
+        message={t('deleteAssetConfirm', {
+          name: pendingDeleteAsset?.assetName || pendingDeleteAsset?.assetId || '',
+        })}
+        confirmText={t('deleteAsset')}
+        cancelText={t('deleteAssetCancel')}
+        onConfirm={() => void confirmDeleteAsset()}
+        onCancel={() => setPendingDeleteAsset(null)}
+        type="danger"
+      />
     </section>
   )
 }
