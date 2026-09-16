@@ -36,6 +36,8 @@ type PanelDialogueLine = {
   speaker: string
   content: string
   lineIndex: number
+  audioUrl: string | null
+  audioDuration: number | null
 }
 
 function isTrustedAssetUri(value: unknown): value is string {
@@ -174,9 +176,7 @@ async function generateVideoForPanel(
   }
 
   const parsedVideoModel = parseModelKeyStrict(model)
-  const modelCapabilities = resolveBuiltinCapabilitiesByModelKey('video', model)
-  const canDisableGeneratedAudio = modelCapabilities?.video?.generateAudioOptions?.includes(false) === true
-  const requestedGenerateAudio = dialogueLines.length > 0 && canDisableGeneratedAudio
+  const requestedGenerateAudio = payload.attachDialogueAudio === true
     ? false
     : typeof generationOptions.generateAudio === 'boolean'
       ? generationOptions.generateAudio
@@ -252,7 +252,33 @@ async function generateVideoForPanel(
     }
   }
 
-  const cosKey = await uploadVideoSourceToCos(videoSource, 'panel-video', panel.id, downloadHeaders)
+  let cosKey: string
+  if (payload.attachDialogueAudio === true) {
+    const dialogueAudioSources = dialogueLines.flatMap((line) => (
+      typeof line.audioUrl === 'string' && line.audioUrl.trim() ? [line.audioUrl] : []
+    ))
+    if (dialogueAudioSources.length === 0 || dialogueAudioSources.length !== dialogueLines.length) {
+      throw new Error('DIALOGUE_AUDIO_NOT_READY')
+    }
+    const requestedDurationMs = typeof generationOptions.duration === 'number'
+      ? toDurationMs(generationOptions.duration)
+      : undefined
+    const outputDurationMs = requestedDurationMs || toDurationMs(panel.duration)
+    if (!outputDurationMs) throw new Error('DIALOGUE_AUDIO_VIDEO_DURATION_INVALID')
+
+    await assertTaskActive(job, 'mux_panel_dialogue_audio')
+    await reportTaskProgress(job, 95, { stage: 'mux_panel_dialogue_audio' })
+    cosKey = await muxVideoWithAudioToStorage({
+      videoSource,
+      videoHeaders: downloadHeaders,
+      audioSource: dialogueAudioSources,
+      durationMs: outputDurationMs,
+      keyPrefix: 'panel-video-audio',
+      targetId: panel.id,
+    })
+  } else {
+    cosKey = await uploadVideoSourceToCos(videoSource, 'panel-video', panel.id, downloadHeaders)
+  }
   return {
     cosKey,
     generationMode,
@@ -488,6 +514,8 @@ async function getPanelDialogueLines(panelId: string): Promise<PanelDialogueLine
       speaker: true,
       content: true,
       lineIndex: true,
+      audioUrl: true,
+      audioDuration: true,
     },
     orderBy: { lineIndex: 'asc' },
   })

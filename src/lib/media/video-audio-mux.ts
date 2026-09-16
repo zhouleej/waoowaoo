@@ -21,7 +21,7 @@ const MUX_TIMEOUT_MS = 10 * 60_000
 
 interface MuxVideoWithAudioOptions {
   videoSource: string | Buffer
-  audioSource: string | Buffer
+  audioSource: string | Buffer | Array<string | Buffer>
   durationMs: number
   keyPrefix: string
   targetId: string
@@ -122,7 +122,7 @@ async function materializeMediaSource(
 
 export function buildVideoAudioMuxArgs(
   videoPath: string,
-  audioPath: string,
+  audioPath: string | string[],
   outputPath: string,
   durationMs: number,
 ): string[] {
@@ -130,31 +130,50 @@ export function buildVideoAudioMuxArgs(
     throw new Error('VIDEO_AUDIO_MUX_DURATION_INVALID')
   }
   const durationSeconds = (durationMs / 1000).toFixed(3)
-  return [
+  const audioPaths = Array.isArray(audioPath) ? audioPath : [audioPath]
+  if (audioPaths.length === 0) throw new Error('VIDEO_AUDIO_MUX_AUDIO_REQUIRED')
+  const args = [
     '-hide_banner',
     '-loglevel', 'error',
     '-nostdin',
     '-y',
     '-i', videoPath,
-    '-i', audioPath,
+  ]
+  for (const path of audioPaths) args.push('-i', path)
+  args.push(
     '-map', '0:v:0',
-    '-map', '1:a:0',
+  )
+  if (audioPaths.length === 1) {
+    args.push('-map', '1:a:0')
+  } else {
+    const inputs = audioPaths.map((_, index) => `[${index + 1}:a:0]`).join('')
+    args.push(
+      '-filter_complex', `${inputs}concat=n=${audioPaths.length}:v=0:a=1,apad[dialogue]`,
+      '-map', '[dialogue]',
+    )
+  }
+  args.push(
     '-c:v', 'copy',
     '-c:a', 'aac',
     '-b:a', '192k',
-    '-af', 'apad',
+  )
+  if (audioPaths.length === 1) {
+    args.push('-af', 'apad')
+  }
+  args.push(
     // apad keeps the video duration intact when speech ends early. The explicit
     // output duration also prevents an infinite padded stream on older ffmpeg.
     '-t', durationSeconds,
     '-movflags', '+faststart',
     '-f', 'mp4',
     outputPath,
-  ]
+  )
+  return args
 }
 
 async function runMux(
   videoPath: string,
-  audioPath: string,
+  audioPath: string | string[],
   outputPath: string,
   durationMs: number,
 ): Promise<void> {
@@ -210,7 +229,9 @@ export async function muxVideoWithAudioToStorage(
 ): Promise<string> {
   const temporaryDirectory = await mkdtemp(path.join(tmpdir(), 'wakuwaku-video-audio-mux-'))
   const videoPath = path.join(temporaryDirectory, 'lip-sync-video.bin')
-  const audioPath = path.join(temporaryDirectory, 'dialogue-audio.bin')
+  const audioSources = Array.isArray(options.audioSource) ? options.audioSource : [options.audioSource]
+  if (audioSources.length === 0) throw new Error('VIDEO_AUDIO_MUX_AUDIO_REQUIRED')
+  const audioPaths = audioSources.map((_, index) => path.join(temporaryDirectory, `dialogue-audio-${index}.bin`))
   const outputPath = path.join(temporaryDirectory, 'lip-sync-with-dialogue.mp4')
   try {
     await Promise.all([
@@ -221,14 +242,14 @@ export async function muxVideoWithAudioToStorage(
         'VIDEO_AUDIO_MUX_VIDEO_TOO_LARGE',
         options.videoHeaders,
       ),
-      materializeMediaSource(
-        options.audioSource,
-        audioPath,
+      ...audioSources.map((source, index) => materializeMediaSource(
+        source,
+        audioPaths[index],
         MAX_AUDIO_BYTES,
         'VIDEO_AUDIO_MUX_AUDIO_TOO_LARGE',
-      ),
+      )),
     ])
-    await runMux(videoPath, audioPath, outputPath, options.durationMs)
+    await runMux(videoPath, audioPaths, outputPath, options.durationMs)
     const outputStats = await stat(outputPath)
     if (outputStats.size <= 0) throw new Error('VIDEO_AUDIO_MUX_OUTPUT_EMPTY')
     if (outputStats.size > MAX_VIDEO_BYTES) throw new Error('VIDEO_AUDIO_MUX_OUTPUT_TOO_LARGE')

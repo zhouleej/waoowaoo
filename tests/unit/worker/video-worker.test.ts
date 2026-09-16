@@ -234,23 +234,25 @@ describe('worker video processor behavior', () => {
 
     await expect(processor!(job)).rejects.toThrow('VIDEO_MODEL_REQUIRED: payload.videoModel is required')
   })
-  it('VIDEO_PANEL: passes exact dialogue as performance context and disables native model speech', async () => {
+  it('VIDEO_PANEL: disables native model speech and muxes generated dialogue when audio is enabled', async () => {
     prismaMock.novelPromotionVoiceLine.findMany.mockResolvedValueOnce([
-      { speaker: '张三', content: '我们现在就出发。', lineIndex: 0 },
-      { speaker: '李四', content: '好，我跟你一起去。', lineIndex: 1 },
+      { speaker: '张三', content: '我们现在就出发。', lineIndex: 0, audioUrl: 'voice/line-1.wav', audioDuration: 1200 },
+      { speaker: '李四', content: '好，我跟你一起去。', lineIndex: 1, audioUrl: 'voice/line-2.wav', audioDuration: 1500 },
     ])
+    videoAudioMuxMock.muxToStorage.mockResolvedValueOnce('cos/panel-with-dialogue.mp4')
 
-    await workerState.processor!(buildJob({
+    const result = await workerState.processor!(buildJob({
       type: TASK_TYPE.VIDEO_PANEL,
       payload: {
         videoModel: 'maas-seedance::doubao-seedance-2.0',
         generationOptions: { generateAudio: true },
+        attachDialogueAudio: true,
       },
     }))
 
     expect(prismaMock.novelPromotionVoiceLine.findMany).toHaveBeenCalledWith({
       where: { matchedPanelId: 'panel-1' },
-      select: { speaker: true, content: true, lineIndex: true },
+      select: { speaker: true, content: true, lineIndex: true, audioUrl: true, audioDuration: true },
       orderBy: { lineIndex: 'asc' },
     })
     expect(utilsMock.resolveVideoSourceFromGeneration).toHaveBeenCalledWith(
@@ -262,6 +264,19 @@ describe('worker video processor behavior', () => {
         }),
       }),
     )
+    expect(videoAudioMuxMock.muxToStorage).toHaveBeenCalledWith({
+      videoSource: 'https://provider.example/video.mp4',
+      videoHeaders: undefined,
+      audioSource: ['voice/line-1.wav', 'voice/line-2.wav'],
+      durationMs: 5000,
+      keyPrefix: 'panel-video-audio',
+      targetId: 'panel-1',
+    })
+    expect(utilsMock.uploadVideoSourceToCos).not.toHaveBeenCalled()
+    expect(result).toEqual({
+      panelId: 'panel-1',
+      videoUrl: 'cos/panel-with-dialogue.mp4',
+    })
   })
 
   it('rejects first-last-frame generation without a selected last image', async () => {

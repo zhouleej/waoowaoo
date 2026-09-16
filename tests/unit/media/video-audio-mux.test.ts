@@ -23,4 +23,22 @@ describe('video audio mux', () => {
     expect(() => buildVideoAudioMuxArgs('video.mp4', 'audio.wav', 'result.mp4', 0))
       .toThrow('VIDEO_AUDIO_MUX_DURATION_INVALID')
   })
+
+  it('concatenates multiple dialogue lines before padding to the video duration', () => {
+    const args = buildVideoAudioMuxArgs(
+      'video.mp4',
+      ['line-1.wav', 'line-2.wav'],
+      'result.mp4',
+      5000,
+    )
+
+    expect(args).toEqual(expect.arrayContaining([
+      '-i', 'line-1.wav',
+      '-i', 'line-2.wav',
+      '-filter_complex', '[1:a:0][2:a:0]concat=n=2:v=0:a=1,apad[dialogue]',
+      '-map', '[dialogue]',
+      '-t', '5.000',
+    ]))
+    expect(args).not.toContain('-af')
+  })
 })

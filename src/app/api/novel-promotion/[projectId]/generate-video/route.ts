@@ -76,17 +76,36 @@ function resolveVideoModelKeyFromPayload(payload: Record<string, unknown>): stri
   return null
 }
 
-function applyDialogueAudioPolicy(payload: Record<string, unknown>, hasDialogue: boolean): Record<string, unknown> {
-  if (!hasDialogue) return payload
+type DialogueAudioState = {
+  dialogueCount: number
+  generatedAudioCount: number
+}
+
+function applyDialogueAudioPolicy(
+  payload: Record<string, unknown>,
+  state: DialogueAudioState,
+): Record<string, unknown> {
+  // This is an internal worker instruction. Never trust a client-supplied value.
+  const normalizedPayload = { ...payload }
+  delete normalizedPayload.attachDialogueAudio
+
+  if (state.dialogueCount === 0) return normalizedPayload
   const modelKey = resolveVideoModelKeyFromPayload(payload)
-  if (!modelKey) return payload
+  if (!modelKey) return normalizedPayload
   const capabilities = resolveBuiltinCapabilitiesByModelKey('video', modelKey)
-  if (capabilities?.video?.generateAudioOptions?.includes(false) !== true) return payload
+  if (capabilities?.video?.generateAudioOptions?.includes(false) !== true) return normalizedPayload
 
   const rawGenerationOptions = payload.generationOptions
   const generationOptions = isRecord(rawGenerationOptions) ? rawGenerationOptions : {}
+  const requestedAudio = generationOptions.generateAudio === true
+  const allDialogueAudioReady = state.generatedAudioCount === state.dialogueCount
+  if (!requestedAudio || !allDialogueAudioReady) return normalizedPayload
+
   return {
-    ...payload,
+    ...normalizedPayload,
+    // Keep provider speech disabled so it cannot contradict the screenplay.
+    // The worker will mux the generated TTS tracks into the resulting MP4.
+    attachDialogueAudio: true,
     generationOptions: {
       ...generationOptions,
       generateAudio: false,
@@ -94,17 +113,26 @@ function applyDialogueAudioPolicy(payload: Record<string, unknown>, hasDialogue:
   }
 }
 
-async function findDialoguePanelIds(panelIds: string[]): Promise<Set<string>> {
-  if (panelIds.length === 0) return new Set()
+async function findDialogueAudioStates(panelIds: string[]): Promise<Map<string, DialogueAudioState>> {
+  const states = new Map<string, DialogueAudioState>()
+  if (panelIds.length === 0) return states
   const lines = await prisma.novelPromotionVoiceLine.findMany({
     where: {
       matchedPanelId: { in: panelIds },
       content: { not: '' },
     },
-    select: { matchedPanelId: true },
-    distinct: ['matchedPanelId'],
+    select: { matchedPanelId: true, audioUrl: true },
   })
-  return new Set(lines.flatMap((line) => line.matchedPanelId ? [line.matchedPanelId] : []))
+  for (const line of lines) {
+    if (!line.matchedPanelId) continue
+    const state = states.get(line.matchedPanelId) || { dialogueCount: 0, generatedAudioCount: 0 }
+    state.dialogueCount += 1
+    if (typeof line.audioUrl === 'string' && line.audioUrl.trim()) {
+      state.generatedAudioCount += 1
+    }
+    states.set(line.matchedPanelId, state)
+  }
+  return states
 }
 
 function requireVideoModelKeyFromPayload(payload: unknown): string {
@@ -288,10 +316,13 @@ export const POST = apiHandler(async (
       return NextResponse.json({ tasks: [], total: 0 })
     }
 
-    const dialoguePanelIds = await findDialoguePanelIds(panels.map((panel) => panel.id))
+    const dialogueAudioStates = await findDialogueAudioStates(panels.map((panel) => panel.id))
     const payloadByPanelId = new Map(panels.map((panel) => [
       panel.id,
-      applyDialogueAudioPolicy(body, dialoguePanelIds.has(panel.id)),
+      applyDialogueAudioPolicy(
+        body,
+        dialogueAudioStates.get(panel.id) || { dialogueCount: 0, generatedAudioCount: 0 },
+      ),
     ]))
     const uniquePayloads = new Map<string, Record<string, unknown>>()
     for (const payload of payloadByPanelId.values()) {
@@ -336,13 +367,19 @@ export const POST = apiHandler(async (
   }
 
   const panel = await requireNovelPromotionPanelByStoryboardIndexInProject(projectId, storyboardId, Number(panelIndex))
-  const dialogueCount = await prisma.novelPromotionVoiceLine.count({
+  const dialogueLines = await prisma.novelPromotionVoiceLine.findMany({
     where: {
       matchedPanelId: panel.id,
       content: { not: '' },
     },
+    select: { audioUrl: true },
   })
-  const panelPayload = applyDialogueAudioPolicy(body, dialogueCount > 0)
+  const panelPayload = applyDialogueAudioPolicy(body, {
+    dialogueCount: dialogueLines.length,
+    generatedAudioCount: dialogueLines.filter((line) => (
+      typeof line.audioUrl === 'string' && line.audioUrl.trim().length > 0
+    )).length,
+  })
   await validateVideoCapabilityCombination({
     payload: panelPayload,
     projectId,

@@ -671,8 +671,10 @@ describe('api contract - direct submit routes (behavior)', () => {
     }))
   })
 
-  it('generate-video disables native generated speech before validation and billing when the panel has dialogue', async () => {
-    prismaMock.novelPromotionVoiceLine.count.mockResolvedValueOnce(1)
+  it('generate-video marks generated dialogue for authoritative audio mux before validation and billing', async () => {
+    prismaMock.novelPromotionVoiceLine.findMany.mockResolvedValueOnce([
+      { audioUrl: 'voice/line-1.wav' },
+    ] as never)
     const routeFile = 'src/app/api/novel-promotion/[projectId]/generate-video/route.ts'
     const body = {
       videoModel: 'maas-seedance:tenant-1::doubao-seedance-2.0',
@@ -692,10 +694,64 @@ describe('api contract - direct submit routes (behavior)', () => {
 
     expect(response.status).toBe(200)
     const expectedPayload = expect.objectContaining({
+      attachDialogueAudio: true,
       generationOptions: expect.objectContaining({ duration: 4, generateAudio: false }),
     })
     expect(buildDefaultTaskBillingInfoMock).toHaveBeenLastCalledWith(TASK_TYPE.VIDEO_PANEL, expectedPayload)
     expect(submitTaskMock).toHaveBeenLastCalledWith(expect.objectContaining({ payload: expectedPayload }))
+  })
+
+  it('generate-video keeps native audio enabled when dialogue TTS has not been generated', async () => {
+    prismaMock.novelPromotionVoiceLine.findMany.mockResolvedValueOnce([
+      { audioUrl: null },
+    ] as never)
+    const { POST } = await import('@/app/api/novel-promotion/[projectId]/generate-video/route')
+    const response = await POST(buildMockRequest({
+      path: '/api/novel-promotion/project-1/generate-video',
+      method: 'POST',
+      body: {
+        videoModel: 'maas-seedance:tenant-1::doubao-seedance-2.0',
+        storyboardId: 'storyboard-1',
+        panelIndex: 0,
+        generationOptions: { duration: 4, generateAudio: true },
+        attachDialogueAudio: true,
+      },
+    }), { params: Promise.resolve({ projectId: 'project-1' }) })
+
+    expect(response.status).toBe(200)
+    expect(submitTaskMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      payload: expect.objectContaining({
+        generationOptions: expect.objectContaining({ generateAudio: true }),
+      }),
+    }))
+    const submitted = submitTaskMock.mock.calls.at(-1)?.[0] as { payload?: Record<string, unknown> }
+    expect(submitted.payload).not.toHaveProperty('attachDialogueAudio')
+  })
+
+  it('generate-video preserves an explicit audio-off selection even when dialogue TTS exists', async () => {
+    prismaMock.novelPromotionVoiceLine.findMany.mockResolvedValueOnce([
+      { audioUrl: 'voice/line-1.wav' },
+    ] as never)
+    const { POST } = await import('@/app/api/novel-promotion/[projectId]/generate-video/route')
+    const response = await POST(buildMockRequest({
+      path: '/api/novel-promotion/project-1/generate-video',
+      method: 'POST',
+      body: {
+        videoModel: 'maas-seedance:tenant-1::doubao-seedance-2.0',
+        storyboardId: 'storyboard-1',
+        panelIndex: 0,
+        generationOptions: { duration: 4, generateAudio: false },
+      },
+    }), { params: Promise.resolve({ projectId: 'project-1' }) })
+
+    expect(response.status).toBe(200)
+    expect(submitTaskMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      payload: expect.objectContaining({
+        generationOptions: expect.objectContaining({ generateAudio: false }),
+      }),
+    }))
+    const submitted = submitTaskMock.mock.calls.at(-1)?.[0] as { payload?: Record<string, unknown> }
+    expect(submitted.payload).not.toHaveProperty('attachDialogueAudio')
   })
 
   it('keeps expected coverage size', () => {
