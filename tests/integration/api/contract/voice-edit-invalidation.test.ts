@@ -33,9 +33,10 @@ describe('voice edits invalidate generated output', () => {
     expect(body.voiceLine.audioUrl).toBeNull()
     expect(body.voiceLine.audioMediaId).toBeNull()
     expect(db.novelPromotionPanel.updateMany).toHaveBeenCalledWith({
-      where: { matchedVoiceLines: { some: { id: 'line' } } },
+      where: { OR: [{ matchedVoiceLines: { some: { id: 'line' } } }, { id: 'panel' }] },
       data: { lipSyncVideoUrl: null, lipSyncVideoMediaId: null, lipSyncTaskId: null },
     })
+    expect(db.novelPromotionVoiceLine.update.mock.invocationCallOrder[0]).toBeLessThan(db.novelPromotionPanel.updateMany.mock.invocationCallOrder[0])
   })
   it('preserves audio for a no-op content save', async () => {
     const { PATCH } = await import('@/app/api/novel-promotion/[projectId]/voice-lines/route')

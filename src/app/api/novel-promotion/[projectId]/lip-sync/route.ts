@@ -29,7 +29,7 @@ export const POST = apiHandler(async (
   const voiceLineId = body?.voiceLineId
   const requestedLipSyncModel = typeof body?.lipSyncModel === 'string' ? body.lipSyncModel.trim() : ''
 
-  if (!storyboardId || panelIndex === undefined || !voiceLineId) {
+  if (typeof storyboardId !== 'string' || !Number.isInteger(panelIndex) || panelIndex < 0 || typeof voiceLineId !== 'string' || !voiceLineId) {
     throw new ApiError('INVALID_PARAMS')
   }
   if (requestedLipSyncModel && !parseModelKeyStrict(requestedLipSyncModel)) {
@@ -53,13 +53,20 @@ export const POST = apiHandler(async (
   }
 
   const panel = await prisma.novelPromotionPanel.findFirst({
-    where: { storyboardId, panelIndex: Number(panelIndex) },
-    select: { id: true },
+    where: { storyboardId, panelIndex, storyboard: { episode: { novelPromotionProject: { projectId } } } },
+    select: { id: true, videoUrl: true, storyboard: { select: { episodeId: true } } },
   })
 
   if (!panel) {
     throw new ApiError('NOT_FOUND')
   }
+  if (!panel.videoUrl) throw new ApiError('INVALID_PARAMS', { message: '请先生成镜头视频' })
+  const voice = await prisma.novelPromotionVoiceLine.findFirst({
+    where: { id: voiceLineId, episodeId: panel.storyboard.episodeId },
+    select: { id: true, audioUrl: true },
+  })
+  if (!voice) throw new ApiError('NOT_FOUND')
+  if (!voice.audioUrl) throw new ApiError('INVALID_PARAMS', { message: '请先生成配音' })
 
   const payload = {
     ...body,
@@ -71,6 +78,7 @@ export const POST = apiHandler(async (
     locale,
     requestId: getRequestId(request),
     projectId,
+    episodeId: panel.storyboard.episodeId,
     type: TASK_TYPE.LIP_SYNC,
     targetType: 'NovelPromotionPanel',
     targetId: panel.id,

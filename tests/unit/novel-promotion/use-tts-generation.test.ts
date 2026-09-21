@@ -7,6 +7,7 @@ const {
   updateVoiceSettingsMutateAsyncMock,
   saveDesignedVoiceMutateAsyncMock,
   setVoiceDesignCharacterMock,
+  setVoicePromptSuggestionsMock,
 } = vi.hoisted(() => ({
   useStateMock: vi.fn(),
   logErrorMock: vi.fn(),
@@ -14,6 +15,7 @@ const {
   updateVoiceSettingsMutateAsyncMock: vi.fn(),
   saveDesignedVoiceMutateAsyncMock: vi.fn(),
   setVoiceDesignCharacterMock: vi.fn(),
+  setVoicePromptSuggestionsMock: vi.fn(),
 }))
 
 vi.mock('react', async () => {
@@ -74,19 +76,23 @@ describe('useTTSGeneration', () => {
     updateVoiceSettingsMutateAsyncMock.mockReset()
     saveDesignedVoiceMutateAsyncMock.mockReset()
     setVoiceDesignCharacterMock.mockReset()
+    setVoicePromptSuggestionsMock.mockReset()
     saveDesignedVoiceMutateAsyncMock.mockResolvedValue({
       success: true,
       audioUrl: 'https://signed.example.com/audio.wav',
     })
     globalThis.alert = vi.fn()
-    useStateMock.mockReturnValue([
-      {
+    useStateMock.mockImplementation((initialValue: unknown) => {
+      if (initialValue === null) {
+        return [{
         id: 'character-1',
         name: 'Hero',
         hasExistingVoice: false,
-      },
-      setVoiceDesignCharacterMock,
-    ])
+        suggestedVoicePrompt: '',
+        }, setVoiceDesignCharacterMock]
+      }
+      return [{}, setVoicePromptSuggestionsMock]
+    })
   })
 
   afterEach(() => {
@@ -118,5 +124,30 @@ describe('useTTSGeneration', () => {
 
     expect(globalThis.alert).toHaveBeenCalledWith('save failed:save failed')
     expect(setVoiceDesignCharacterMock).not.toHaveBeenCalled()
+  })
+
+  it('caches analyzed prompts and updates the open character without saving a voice', () => {
+    const hook = useTTSGeneration({ projectId: 'project-1' })
+
+    hook.handleVoicePromptAnalyzed('character-1', '  calm and precise  ')
+
+    const updateSuggestions = setVoicePromptSuggestionsMock.mock.calls[0]?.[0] as (
+      current: Record<string, string>,
+    ) => Record<string, string>
+    expect(updateSuggestions({ other: 'existing' })).toEqual({
+      other: 'existing',
+      'character-1': 'calm and precise',
+    })
+
+    const updateOpenCharacter = setVoiceDesignCharacterMock.mock.calls[0]?.[0] as (
+      current: Record<string, unknown>,
+    ) => Record<string, unknown>
+    expect(updateOpenCharacter({ id: 'character-1', name: 'Hero' })).toEqual({
+      id: 'character-1',
+      name: 'Hero',
+      suggestedVoicePrompt: 'calm and precise',
+    })
+    expect(saveDesignedVoiceMutateAsyncMock).not.toHaveBeenCalled()
+    expect(updateVoiceSettingsMutateAsyncMock).not.toHaveBeenCalled()
   })
 })

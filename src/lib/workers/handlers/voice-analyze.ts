@@ -14,11 +14,16 @@ import {
 } from './voice-analyze-helpers'
 import { buildPrompt, PROMPT_IDS } from '@/lib/prompt-i18n'
 import { resolveAnalysisModel } from './resolve-analysis-model'
+import { handleCharacterVoicePromptTask } from './character-voice-prompt'
 
 const MAX_VOICE_ANALYZE_ATTEMPTS = 2
 
 export async function handleVoiceAnalyzeTask(job: Job<TaskJobData>) {
   const payload = (job.data.payload || {}) as Record<string, unknown>
+  if (payload.analysisKind === 'character_voice_prompt') {
+    return await handleCharacterVoicePromptTask(job)
+  }
+
   const projectId = job.data.projectId
   const episodeIdRaw =
     typeof payload.episodeId === 'string'

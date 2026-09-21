@@ -88,7 +88,7 @@ const prismaMock = vi.hoisted(() => ({
     update: vi.fn(async () => ({})),
   },
   novelPromotionPanel: {
-    findFirst: vi.fn(async () => ({ id: 'panel-1', imageUrl: 'image.png' })),
+    findFirst: vi.fn(async () => ({ id: 'panel-1', imageUrl: 'image.png', videoUrl: 'video.mp4', storyboard: { episodeId: 'episode-1' } })),
     findMany: vi.fn(async () => []),
     findUnique: vi.fn(async ({ where }: { where?: { id?: string } }) => {
       const id = where?.id || 'panel-1'
@@ -181,6 +181,7 @@ const prismaMock = vi.hoisted(() => ({
     ]),
     findFirst: vi.fn(async () => ({
       id: 'line-1',
+      audioUrl: 'audio.wav',
       speaker: 'Narrator',
       content: 'hello world voice line',
     })),

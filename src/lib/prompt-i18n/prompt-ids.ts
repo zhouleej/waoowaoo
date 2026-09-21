@@ -14,6 +14,7 @@ export const PROMPT_IDS = {
   NP_AI_STORY_EXPAND: 'np_ai_story_expand',
   NP_CHARACTER_CREATE: 'np_character_create',
   NP_CHARACTER_DESCRIPTION_UPDATE: 'np_character_description_update',
+  NP_CHARACTER_VOICE_PROMPT: 'np_character_voice_prompt',
   NP_CHARACTER_MODIFY: 'np_character_modify',
   NP_CHARACTER_REGENERATE: 'np_character_regenerate',
   NP_EPISODE_SPLIT: 'np_episode_split',

@@ -21,6 +21,7 @@ interface VoiceDesignCharacter {
     id: string
     name: string
     hasExistingVoice: boolean
+    suggestedVoicePrompt: string
 }
 
 interface UseTTSGenerationProps {
@@ -50,6 +51,7 @@ export function useTTSGeneration({
     const saveDesignedVoiceMutation = useSaveProjectDesignedVoice(projectId)
 
     const [voiceDesignCharacter, setVoiceDesignCharacter] = useState<VoiceDesignCharacter | null>(null)
+    const [voicePromptSuggestions, setVoicePromptSuggestions] = useState<Record<string, string>>({})
 
     // 音色变更回调 - 🔥 保存到服务器而不是本地更新
     const handleVoiceChange = async (characterId: string, voiceType: string, voiceId: string, customVoiceUrl?: string) => {
@@ -74,8 +76,23 @@ export function useTTSGeneration({
         setVoiceDesignCharacter({
             id: characterId,
             name: characterName,
-            hasExistingVoice: !!character?.customVoiceUrl
+            hasExistingVoice: !!character?.customVoiceUrl,
+            suggestedVoicePrompt: voicePromptSuggestions[characterId] || '',
         })
+    }
+
+    // 缓存当前页面已经分析过的建议，重复打开同一角色时不再次消耗分析请求。
+    const handleVoicePromptAnalyzed = (characterId: string, voicePrompt: string) => {
+        const normalizedPrompt = voicePrompt.trim()
+        if (!normalizedPrompt) return
+
+        setVoicePromptSuggestions((current) => ({
+            ...current,
+            [characterId]: normalizedPrompt,
+        }))
+        setVoiceDesignCharacter((current) => current?.id === characterId
+            ? { ...current, suggestedVoicePrompt: normalizedPrompt }
+            : current)
     }
 
     // 保存 AI 设计的声音
@@ -107,6 +124,7 @@ export function useTTSGeneration({
         voiceDesignCharacter,
         handleVoiceChange,
         handleOpenVoiceDesign,
+        handleVoicePromptAnalyzed,
         handleVoiceDesignSave,
         handleCloseVoiceDesign
     }

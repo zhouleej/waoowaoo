@@ -49,8 +49,10 @@ interface CharacterImageEditModalState {
 }
 
 interface VoiceDesignCharacterState {
+  id: string
   name: string
   hasExistingVoice: boolean
+  suggestedVoicePrompt: string
 }
 
 interface EditingProfileState {
@@ -69,6 +71,7 @@ interface AssetsStageModalsProps {
   handleLocationImageEdit: (modifyPrompt: string, extraImageUrls?: string[]) => Promise<void>
   handleCharacterImageEdit: (modifyPrompt: string, extraImageUrls?: string[]) => Promise<void>
   handleCloseVoiceDesign: () => void
+  handleVoicePromptAnalyzed: (characterId: string, voicePrompt: string) => void
   handleVoiceDesignSave: (voiceId: string, audioBase64: string) => Promise<void>
   handleCloseCopyPicker: () => void
   handleConfirmCopyFromGlobal: (globalAssetId: string) => Promise<void>
@@ -109,6 +112,7 @@ export default function AssetsStageModals({
   handleLocationImageEdit,
   handleCharacterImageEdit,
   handleCloseVoiceDesign,
+  handleVoicePromptAnalyzed,
   handleVoiceDesignSave,
   handleCloseCopyPicker,
   handleConfirmCopyFromGlobal,
@@ -229,10 +233,15 @@ export default function AssetsStageModals({
         <VoiceDesignDialog
           isOpen={!!voiceDesignCharacter}
           speaker={voiceDesignCharacter.name}
+          characterId={voiceDesignCharacter.id}
           hasExistingVoice={voiceDesignCharacter.hasExistingVoice}
+          initialVoicePrompt={voiceDesignCharacter.suggestedVoicePrompt}
           projectId={projectId}
           onClose={handleCloseVoiceDesign}
           onSave={handleVoiceDesignSave}
+          onVoicePromptAnalyzed={(voicePrompt) => {
+            handleVoicePromptAnalyzed(voiceDesignCharacter.id, voicePrompt)
+          }}
         />
       )}
 

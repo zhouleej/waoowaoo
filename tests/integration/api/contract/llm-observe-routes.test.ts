@@ -256,6 +256,14 @@ const ROUTE_CASES: ReadonlyArray<LLMRouteCase> = [
     expectedProjectId: 'project-1',
   },
   {
+    routeFile: 'src/app/api/novel-promotion/[projectId]/analyze-character-voice/route.ts',
+    body: { characterId: 'character-1' },
+    params: { projectId: 'project-1' },
+    expectedTaskType: TASK_TYPE.VOICE_ANALYZE,
+    expectedTargetType: 'NovelPromotionCharacter',
+    expectedProjectId: 'project-1',
+  },
+  {
     routeFile: 'src/app/api/novel-promotion/[projectId]/analyze-global/route.ts',
     body: {},
     params: { projectId: 'project-1' },
@@ -382,7 +390,7 @@ describe('api contract - llm observe routes (behavior)', () => {
   })
 
   it('keeps expected coverage size', () => {
-    expect(ROUTE_CASES.length).toBe(25)
+    expect(ROUTE_CASES.length).toBe(26)
   })
 
   for (const routeCase of ROUTE_CASES) {

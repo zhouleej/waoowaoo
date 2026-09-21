@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslations } from 'next-intl'
 import { resolveTaskPresentationState } from '@/lib/task/presentation'
@@ -23,6 +23,9 @@ interface VoiceDesignDialogBaseProps {
   onClose: () => void
   onSave: (voiceId: string, audioBase64: string) => void | Promise<void>
   onDesignVoice: (payload: VoiceDesignMutationPayload) => Promise<VoiceDesignMutationResult>
+  initialVoicePrompt?: string
+  onAnalyzeVoicePrompt?: () => Promise<string>
+  onVoicePromptAnalyzed?: (voicePrompt: string) => void
 }
 
 export default function VoiceDesignDialogBase({
@@ -32,11 +35,14 @@ export default function VoiceDesignDialogBase({
   onClose,
   onSave,
   onDesignVoice,
+  initialVoicePrompt = '',
+  onAnalyzeVoicePrompt,
+  onVoicePromptAnalyzed,
 }: VoiceDesignDialogBaseProps) {
   const t = useTranslations('common')
   const tv = useTranslations('voice.voiceDesign')
 
-  const [voicePrompt, setVoicePrompt] = useState('')
+  const [voicePrompt, setVoicePrompt] = useState(initialVoicePrompt.trim())
   const [previewText, setPreviewText] = useState(tv('defaultPreviewText'))
   const [schemeCount, setSchemeCount] = useState(String(DEFAULT_VOICE_SCHEME_COUNT))
   const [isDesignSubmitting, setIsDesignSubmitting] = useState(false)
@@ -46,7 +52,12 @@ export default function VoiceDesignDialogBase({
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
   const [playingIndex, setPlayingIndex] = useState<number | null>(null)
+  const [isAnalyzingPrompt, setIsAnalyzingPrompt] = useState(false)
+  const [promptAnalysisError, setPromptAnalysisError] = useState<string | null>(null)
+  const [hasAnalyzedPrompt, setHasAnalyzedPrompt] = useState(Boolean(initialVoicePrompt.trim()))
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  const promptEditVersionRef = useRef(0)
+  const autoAnalyzeStartedRef = useRef(false)
   const designSubmittingState = isDesignSubmitting
     ? resolveTaskPresentationState({
         phase: 'processing',
@@ -55,6 +66,56 @@ export default function VoiceDesignDialogBase({
         hasOutput: false,
       })
     : null
+
+  const handleVoicePromptChange = useCallback((value: string) => {
+    promptEditVersionRef.current += 1
+    setVoicePrompt(value)
+    setPromptAnalysisError(null)
+  }, [])
+
+  const handleAnalyzeVoicePrompt = useCallback(async () => {
+    if (!onAnalyzeVoicePrompt || isAnalyzingPrompt) return
+
+    const editVersionAtStart = promptEditVersionRef.current
+    setIsAnalyzingPrompt(true)
+    setPromptAnalysisError(null)
+    try {
+      const suggestion = (await onAnalyzeVoicePrompt()).trim()
+      if (!suggestion) throw new Error('VOICE_PROMPT_EMPTY_RESULT')
+
+      onVoicePromptAnalyzed?.(suggestion)
+      // 分析期间用户可能已经输入或选择预设，不能用迟到的结果覆盖用户内容。
+      if (promptEditVersionRef.current === editVersionAtStart) {
+        setVoicePrompt(suggestion)
+        setHasAnalyzedPrompt(true)
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : ''
+      setPromptAnalysisError(
+        message.includes('VOICE_PROMPT_CONTEXT_INSUFFICIENT')
+          ? tv('promptContextInsufficient')
+          : tv('promptAnalysisFailed'),
+      )
+    } finally {
+      setIsAnalyzingPrompt(false)
+    }
+  }, [isAnalyzingPrompt, onAnalyzeVoicePrompt, onVoicePromptAnalyzed, tv])
+
+  useEffect(() => {
+    if (
+      !isOpen
+      || !onAnalyzeVoicePrompt
+      || autoAnalyzeStartedRef.current
+      || voicePrompt.trim()
+    ) return
+
+    autoAnalyzeStartedRef.current = true
+    void handleAnalyzeVoicePrompt()
+  }, [handleAnalyzeVoicePrompt, isOpen, onAnalyzeVoicePrompt, voicePrompt])
+
+  useEffect(() => {
+    if (!isOpen) autoAnalyzeStartedRef.current = false
+  }, [isOpen])
 
   const handleGenerate = async () => {
     if (!voicePrompt.trim()) {
@@ -139,7 +200,7 @@ export default function VoiceDesignDialogBase({
   }
 
   const resetAndClose = () => {
-    setVoicePrompt('')
+    setVoicePrompt(initialVoicePrompt.trim())
     setPreviewText(tv('defaultPreviewText'))
     setSchemeCount(String(DEFAULT_VOICE_SCHEME_COUNT))
     setError(null)
@@ -148,6 +209,10 @@ export default function VoiceDesignDialogBase({
     setShowConfirmDialog(false)
     setPlayingIndex(null)
     setIsSaving(false)
+    setIsAnalyzingPrompt(false)
+    setPromptAnalysisError(null)
+    setHasAnalyzedPrompt(Boolean(initialVoicePrompt.trim()))
+    promptEditVersionRef.current = 0
     if (audioRef.current) {
       audioRef.current.pause()
     }
@@ -189,7 +254,13 @@ export default function VoiceDesignDialogBase({
         <div className="p-5 space-y-4">
           <VoiceDesignGeneratorSection
             voicePrompt={voicePrompt}
-            onVoicePromptChange={setVoicePrompt}
+            onVoicePromptChange={handleVoicePromptChange}
+            isAnalyzingPrompt={isAnalyzingPrompt}
+            onAnalyzePrompt={onAnalyzeVoicePrompt ? () => {
+              void handleAnalyzeVoicePrompt()
+            } : undefined}
+            promptAnalysisError={promptAnalysisError}
+            hasAnalyzedPrompt={hasAnalyzedPrompt}
             previewText={previewText}
             onPreviewTextChange={setPreviewText}
             schemeCount={schemeCount}

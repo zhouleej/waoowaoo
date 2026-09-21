@@ -145,6 +145,7 @@ export {
     useBatchGenerateCharacterImages,
     useBatchGenerateLocationImages,
     useDesignProjectVoice,
+    useAnalyzeProjectCharacterVoicePrompt,
     useAnalyzeProjectShotVariants,
     useUpdateProjectPhotographyPlan,
     useUpdateProjectPanelActingNotes,

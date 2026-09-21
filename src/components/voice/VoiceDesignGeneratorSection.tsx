@@ -26,6 +26,10 @@ type VoicePresetKey = (typeof VOICE_PRESET_KEYS)[number]
 interface VoiceDesignGeneratorSectionProps {
   voicePrompt: string
   onVoicePromptChange: (value: string) => void
+  isAnalyzingPrompt?: boolean
+  onAnalyzePrompt?: () => void
+  promptAnalysisError?: string | null
+  hasAnalyzedPrompt?: boolean
   previewText: string
   onPreviewTextChange: (value: string) => void
   schemeCount: string
@@ -45,6 +49,10 @@ interface VoiceDesignGeneratorSectionProps {
 export default function VoiceDesignGeneratorSection({
   voicePrompt,
   onVoicePromptChange,
+  isAnalyzingPrompt = false,
+  onAnalyzePrompt,
+  promptAnalysisError = null,
+  hasAnalyzedPrompt = false,
   previewText,
   onPreviewTextChange,
   schemeCount,
@@ -88,7 +96,25 @@ export default function VoiceDesignGeneratorSection({
       </div>
 
       <div>
-        <div className="text-sm text-[var(--glass-text-secondary)] mb-1">{tv('orCustomDescription')}</div>
+        <div className="mb-1 flex items-center justify-between gap-3">
+          <div className="text-sm text-[var(--glass-text-secondary)]">{tv('orCustomDescription')}</div>
+          {onAnalyzePrompt && (
+            <button
+              type="button"
+              onClick={onAnalyzePrompt}
+              disabled={isAnalyzingPrompt}
+              className="glass-btn-base glass-btn-soft inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-[var(--glass-tone-info-fg)] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <AppIcon
+                name={isAnalyzingPrompt ? 'refresh' : 'sparkles'}
+                className={`h-3.5 w-3.5 ${isAnalyzingPrompt ? 'animate-spin' : ''}`}
+              />
+              {isAnalyzingPrompt
+                ? tv('analyzingPrompt')
+                : tv(hasAnalyzedPrompt ? 'reanalyzePrompt' : 'analyzePrompt')}
+            </button>
+          )}
+        </div>
         <textarea
           value={voicePrompt}
           onChange={(event) => onVoicePromptChange(event.target.value)}
@@ -96,6 +122,11 @@ export default function VoiceDesignGeneratorSection({
           className="glass-textarea-base w-full px-3 py-2 text-sm resize-none"
           rows={2}
         />
+        {promptAnalysisError ? (
+          <div className="mt-1.5 text-xs text-[var(--glass-tone-danger-fg)]">{promptAnalysisError}</div>
+        ) : hasAnalyzedPrompt ? (
+          <div className="mt-1.5 text-xs text-[var(--glass-text-tertiary)]">{tv('promptFilledHint')}</div>
+        ) : null}
       </div>
 
       <details className="text-sm">

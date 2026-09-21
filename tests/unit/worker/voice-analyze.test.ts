@@ -29,6 +29,13 @@ const workerMock = vi.hoisted(() => ({
   assertTaskActive: vi.fn(async () => undefined),
 }))
 
+const characterVoicePromptMock = vi.hoisted(() => ({
+  handle: vi.fn(async () => ({
+    characterId: 'character-1',
+    voicePrompt: 'calm voice prompt',
+  })),
+}))
+
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock }))
 vi.mock('@/lib/llm-client', () => llmMock)
 vi.mock('@/lib/llm-observe/internal-stream-context', () => ({
@@ -52,6 +59,9 @@ vi.mock('@/lib/workers/handlers/llm-stream', () => ({
 vi.mock('@/lib/workers/handlers/voice-analyze-helpers', () => ({
   buildStoryboardJson: helperMock.buildStoryboardJson,
   parseVoiceLinesJson: helperMock.parseVoiceLinesJson,
+}))
+vi.mock('@/lib/workers/handlers/character-voice-prompt', () => ({
+  handleCharacterVoicePromptTask: characterVoicePromptMock.handle,
 }))
 vi.mock('@/lib/prompt-i18n', () => ({
   PROMPT_IDS: { NP_VOICE_ANALYSIS: 'np_voice_analysis' },
@@ -158,6 +168,20 @@ describe('worker voice-analyze behavior', () => {
   it('missing episodeId -> explicit error', async () => {
     const job = buildJob({}, null)
     await expect(handleVoiceAnalyzeTask(job)).rejects.toThrow('episodeId is required')
+  })
+
+  it('character voice prompt analysis -> dispatches before requiring an episode', async () => {
+    const job = buildJob({
+      analysisKind: 'character_voice_prompt',
+      characterId: 'character-1',
+    }, null)
+
+    await expect(handleVoiceAnalyzeTask(job)).resolves.toEqual({
+      characterId: 'character-1',
+      voicePrompt: 'calm voice prompt',
+    })
+    expect(characterVoicePromptMock.handle).toHaveBeenCalledWith(job)
+    expect(prismaMock.project.findUnique).not.toHaveBeenCalled()
   })
 
   it('success path -> persists mapped panelId and speaker stats', async () => {

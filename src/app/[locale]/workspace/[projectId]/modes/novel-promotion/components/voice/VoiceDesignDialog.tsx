@@ -4,7 +4,10 @@ import VoiceDesignDialogBase, {
   type VoiceDesignMutationPayload,
   type VoiceDesignMutationResult,
 } from '@/components/voice/VoiceDesignDialogBase'
-import { useDesignProjectVoice } from '@/lib/query/hooks'
+import {
+  useAnalyzeProjectCharacterVoicePrompt,
+  useDesignProjectVoice,
+} from '@/lib/query/hooks'
 
 interface VoiceDesignDialogProps {
   isOpen: boolean
@@ -13,6 +16,9 @@ interface VoiceDesignDialogProps {
   onClose: () => void
   onSave: (voiceId: string, audioBase64: string) => void | Promise<void>
   projectId: string
+  characterId: string
+  initialVoicePrompt?: string
+  onVoicePromptAnalyzed?: (voicePrompt: string) => void
 }
 
 export default function VoiceDesignDialog({
@@ -22,13 +28,22 @@ export default function VoiceDesignDialog({
   onClose,
   onSave,
   projectId,
+  characterId,
+  initialVoicePrompt = '',
+  onVoicePromptAnalyzed,
 }: VoiceDesignDialogProps) {
   const designVoiceMutation = useDesignProjectVoice(projectId)
+  const analyzeVoicePromptMutation = useAnalyzeProjectCharacterVoicePrompt(projectId)
 
   const handleDesignVoice = async (
     payload: VoiceDesignMutationPayload,
   ): Promise<VoiceDesignMutationResult> => {
     return await designVoiceMutation.mutateAsync(payload)
+  }
+
+  const handleAnalyzeVoicePrompt = async (): Promise<string> => {
+    const result = await analyzeVoicePromptMutation.mutateAsync({ characterId })
+    return result.voicePrompt
   }
 
   return (
@@ -39,6 +54,9 @@ export default function VoiceDesignDialog({
       onClose={onClose}
       onSave={onSave}
       onDesignVoice={handleDesignVoice}
+      initialVoicePrompt={initialVoicePrompt}
+      onAnalyzeVoicePrompt={handleAnalyzeVoicePrompt}
+      onVoicePromptAnalyzed={onVoicePromptAnalyzed}
     />
   )
 }

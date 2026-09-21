@@ -304,6 +304,7 @@ export default function AssetsStage({
     voiceDesignCharacter,
     handleVoiceChange,
     handleOpenVoiceDesign,
+    handleVoicePromptAnalyzed,
     handleVoiceDesignSave,
     handleCloseVoiceDesign
   } = useTTSGeneration({
@@ -527,6 +528,7 @@ export default function AssetsStage({
         handleLocationImageEdit={handleLocationImageEdit}
         handleCharacterImageEdit={handleCharacterImageEdit}
         handleCloseVoiceDesign={handleCloseVoiceDesign}
+        handleVoicePromptAnalyzed={handleVoicePromptAnalyzed}
         handleVoiceDesignSave={handleVoiceDesignSave}
         handleCloseCopyPicker={handleCloseCopyPicker}
         handleConfirmCopyFromGlobal={handleConfirmCopyFromGlobal}

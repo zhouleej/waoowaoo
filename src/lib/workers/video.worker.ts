@@ -23,6 +23,7 @@ import { getProviderConfig } from '@/lib/api-config'
 import { getSignedUrl } from '@/lib/storage'
 import { mobileCloudMaasAssetClient } from '@/lib/mobile-cloud-maas/asset-client'
 import { handleInspirationVideoTask } from './handlers/inspiration-video'
+import { persistLipSync } from '@/lib/voice/persist-lip-sync'
 import { inspectGeneratedVideo } from '@/lib/media/video-metadata'
 import { resolveVideoWorkerConcurrency } from './video-concurrency'
 import { muxVideoWithAudioToStorage } from '@/lib/media/video-audio-mux'
@@ -65,11 +66,12 @@ function extractGenerationOptions(payload: AnyObj): VideoOptionMap {
   return next
 }
 
-async function fetchPanelByStoryboardIndex(storyboardId: string, panelIndex: number) {
+async function fetchPanelByStoryboardIndex(storyboardId: string, panelIndex: number, projectId: string) {
   return await prisma.novelPromotionPanel.findFirst({
     where: {
       storyboardId,
       panelIndex,
+      storyboard: { episode: { novelPromotionProject: { projectId } } },
     },
   })
 }
@@ -114,7 +116,9 @@ async function getPanelForVideoTask(job: Job<TaskJobData>) {
 
   // 优先使用 targetType=NovelPromotionPanel 直接定位
   if (job.data.targetType === 'NovelPromotionPanel') {
-    const panel = await prisma.novelPromotionPanel.findUnique({ where: { id: job.data.targetId } })
+    const panel = await prisma.novelPromotionPanel.findUnique({ where: {
+      id: job.data.targetId, storyboard: { episode: { novelPromotionProject: { projectId: job.data.projectId } } },
+    } })
     if (!panel) throw new Error('Panel not found')
     return panel
   }
@@ -126,7 +130,7 @@ async function getPanelForVideoTask(job: Job<TaskJobData>) {
     throw new Error('Missing storyboardId/panelIndex for video task')
   }
 
-  const panel = await fetchPanelByStoryboardIndex(storyboardId, Number(panelIndex))
+  const panel = await fetchPanelByStoryboardIndex(storyboardId, Number(panelIndex), job.data.projectId)
   if (!panel) throw new Error('Panel not found by storyboardId/panelIndex')
   return panel
 }
@@ -138,7 +142,7 @@ async function generateVideoForPanel(
   modelId: string,
   projectVideoRatio: string | null | undefined,
   generationOptions: VideoOptionMap,
-): Promise<{ cosKey: string; generationMode: VideoGenerationMode; actualVideoTokens?: number }> {
+): Promise<{ cosKey: string; generationMode: VideoGenerationMode; actualVideoTokens?: number; lastFrame?: { id: string; imageUrl: string } }> {
   if (!panel.imageUrl) {
     throw new Error(`Panel ${panel.id} has no imageUrl`)
   }
@@ -191,6 +195,7 @@ async function generateVideoForPanel(
     : await normalizeToBase64ForGeneration(sourceImageUrl))
 
   let lastFrameImageForGeneration: string | undefined
+  let lastFrame: { id: string; imageUrl: string } | undefined
   if (firstLastFramePayload && (typeof firstLastFramePayload.lastFrameStoryboardId !== 'string'
     || !Number.isInteger(firstLastFramePayload.lastFramePanelIndex))) {
     throw new Error('VIDEO_LAST_FRAME_REQUIRED')
@@ -204,8 +209,10 @@ async function generateVideoForPanel(
     const lastPanel = await fetchPanelByStoryboardIndex(
       firstLastFramePayload.lastFrameStoryboardId,
       Number(firstLastFramePayload.lastFramePanelIndex),
+      job.data.projectId,
     )
     if (lastPanel?.imageUrl) {
+      lastFrame = { id: lastPanel.id, imageUrl: lastPanel.imageUrl }
       const lastFrameAssetUri = usePublicMediaUrl
         ? await resolveActiveMobileCloudPanelAssetUri(lastPanel)
         : null
@@ -282,6 +289,7 @@ async function generateVideoForPanel(
   return {
     cosKey,
     generationMode,
+    lastFrame,
     ...(typeof generatedVideo.actualVideoTokens === 'number'
       ? { actualVideoTokens: generatedVideo.actualVideoTokens }
       : {}),
@@ -310,7 +318,7 @@ async function handleVideoPanelTask(job: Job<TaskJobData>) {
     panelId: panel.id,
   })
 
-  const { cosKey, generationMode, actualVideoTokens } = await generateVideoForPanel(
+  const { cosKey, generationMode, actualVideoTokens, lastFrame } = await generateVideoForPanel(
     job,
     panel,
     payload,
@@ -321,8 +329,11 @@ async function handleVideoPanelTask(job: Job<TaskJobData>) {
 
   const metadata = await inspectGeneratedVideo(cosKey)
   await assertTaskActive(job, 'persist_panel_video')
-  await prisma.novelPromotionPanel.update({
-    where: { id: panel.id },
+  const persist = (db: Pick<typeof prisma, 'novelPromotionPanel'>) => db.novelPromotionPanel.updateMany({
+    where: {
+      id: panel.id, imageUrl: panel.imageUrl, videoPrompt: panel.videoPrompt,
+      description: panel.description, firstLastFramePrompt: panel.firstLastFramePrompt, videoUrl: panel.videoUrl,
+    },
     data: {
       videoUrl: cosKey,
       videoGenerationMode: generationMode,
@@ -333,6 +344,18 @@ async function handleVideoPanelTask(job: Job<TaskJobData>) {
       lipSyncTaskId: null,
     },
   })
+  const saved = lastFrame ? await prisma.$transaction(async (tx) => {
+    // Consistent ordering also handles two simultaneous first/last-frame renders.
+    for (const id of [...new Set([panel.id, lastFrame.id])].sort()) {
+      await tx.$queryRaw`SELECT id FROM novel_promotion_panels WHERE id = ${id} FOR UPDATE`
+    }
+    const tail = await tx.novelPromotionPanel.findUnique({ where: { id: lastFrame.id }, select: { imageUrl: true } })
+    if (!tail || tail.imageUrl !== lastFrame.imageUrl) {
+      throw Object.assign(new Error('VIDEO_SOURCE_CHANGED: 尾帧图片已修改，请重新生成视频'), { code: 'CONFLICT', retryable: false })
+    }
+    return persist(tx)
+  }) : await persist(prisma)
+  if (saved.count !== 1) throw Object.assign(new Error('VIDEO_SOURCE_CHANGED: 镜头内容已修改，请重新生成视频'), { code: 'CONFLICT', retryable: false })
 
   return {
     panelId: panel.id,
@@ -347,10 +370,12 @@ async function handleLipSyncTask(job: Job<TaskJobData>) {
     ? payload.lipSyncModel.trim()
     : undefined
 
-  let panel: PanelRecord | null = null
-  if (job.data.targetType === 'NovelPromotionPanel') {
-    panel = await prisma.novelPromotionPanel.findUnique({ where: { id: job.data.targetId } })
-  }
+  const projectScope = { episode: { novelPromotionProject: { projectId: job.data.projectId } } }
+  let panel = job.data.targetType === 'NovelPromotionPanel'
+    ? await prisma.novelPromotionPanel.findUnique({
+      where: { id: job.data.targetId, storyboard: projectScope },
+      include: { storyboard: { select: { episodeId: true } } },
+    }) : null
 
   if (
     !panel &&
@@ -358,7 +383,10 @@ async function handleLipSyncTask(job: Job<TaskJobData>) {
     payload.storyboardId &&
     payload.panelIndex !== undefined
   ) {
-    panel = await fetchPanelByStoryboardIndex(payload.storyboardId, Number(payload.panelIndex))
+    panel = await prisma.novelPromotionPanel.findFirst({
+      where: { storyboardId: payload.storyboardId, panelIndex: Number(payload.panelIndex), storyboard: projectScope },
+      include: { storyboard: { select: { episodeId: true } } },
+    })
   }
 
   if (!panel) throw new Error('Lip-sync panel not found')
@@ -368,6 +396,7 @@ async function handleLipSyncTask(job: Job<TaskJobData>) {
   if (!voiceLineId) throw new Error('Lip-sync task missing voiceLineId')
 
   const voiceLine = await prisma.novelPromotionVoiceLine.findUnique({ where: { id: voiceLineId } })
+  if (voiceLine && voiceLine.episodeId !== panel.storyboard.episodeId) throw new Error('LIP_SYNC_VOICE_EPISODE_MISMATCH')
   if (!voiceLine || !voiceLine.audioUrl) {
     throw new Error('Voice line or audioUrl not found')
   }
@@ -404,13 +433,10 @@ async function handleLipSyncTask(job: Job<TaskJobData>) {
 
   await assertTaskActive(job, 'persist_lip_sync_video')
   await reportTaskProgress(job, 98, { stage: 'persist_lip_sync' })
-  await prisma.novelPromotionPanel.update({
-    where: { id: panel.id },
-    data: {
-      lipSyncVideoUrl: cosKey,
-      lipSyncVideoMediaId: null,
-      lipSyncTaskId: null,
-    },
+  await persistLipSync({
+    panelId: panel.id, panelUpdatedAt: panel.updatedAt, videoUrl: panel.videoUrl,
+    lineId: voiceLine.id, lineUpdatedAt: voiceLine.updatedAt, audioUrl: voiceLine.audioUrl,
+    outputUrl: cosKey,
   })
 
   return {

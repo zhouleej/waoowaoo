@@ -61,6 +61,36 @@ export function useDesignProjectVoice(projectId: string) {
     })
 }
 
+export type CharacterVoicePromptSuggestion = {
+    characterId: string
+    voicePrompt: string
+    evidence?: {
+        representativeLineCount?: number
+        scriptExcerptCount?: number
+    }
+}
+
+/**
+ * 根据项目中的人物档案、剧本和台词生成声音特点建议。
+ * 返回值仅用于填充可编辑提示词，不会生成音频或修改角色音色。
+ */
+export function useAnalyzeProjectCharacterVoicePrompt(projectId: string) {
+    return useMutation({
+        mutationFn: async ({ characterId }: { characterId: string }) => {
+            const response = await requestTaskResponseWithError(
+                `/api/novel-promotion/${projectId}/analyze-character-voice`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ characterId }),
+                },
+                'Failed to analyze character voice prompt',
+            )
+            return await resolveTaskResponse<CharacterVoicePromptSuggestion>(response)
+        },
+    })
+}
+
 /**
  * 分析镜头变体（项目）
  */

@@ -18,6 +18,10 @@ export const PROMPT_CATALOG: Record<PromptId, PromptCatalogEntry> = {
     pathStem: 'novel-promotion/agent_character_profile',
     variableKeys: ['input', 'characters_lib_info'],
   },
+  [PROMPT_IDS.NP_CHARACTER_VOICE_PROMPT]: {
+    pathStem: 'novel-promotion/character_voice_prompt',
+    variableKeys: ['character_name', 'character_profile', 'character_introduction', 'representative_lines', 'script_context'],
+  },
   [PROMPT_IDS.NP_AGENT_CHARACTER_VISUAL]: {
     pathStem: 'novel-promotion/agent_character_visual',
     variableKeys: ['character_profiles'],
