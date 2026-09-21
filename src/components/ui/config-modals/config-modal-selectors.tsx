@@ -10,13 +10,13 @@ import { AppIcon } from '@/components/ui/icons'
 interface RatioSelectorProps {
   value: string
   onChange: (value: string) => void
-  options: Array<{ value: string; label: string }>
+  options: readonly { value: string; label: string }[]
 }
 
 interface StyleSelectorProps {
   value: string
   onChange: (value: string) => void
-  options: Array<{ value: string; label: string }>
+  options: readonly { value: string; label: string }[]
 }
 
 /** 线框比例预览块 */
@@ -132,7 +132,7 @@ export function StyleSelector({ value, onChange, options }: StyleSelectorProps) 
       </button>
 
       {isOpen && (
-        <div className="glass-surface-modal absolute z-50 mt-1 left-0 p-3" style={{ minWidth: '320px' }}>
+        <div className="glass-surface-modal absolute z-50 mt-1 left-0 max-h-72 overflow-y-auto p-3 app-scrollbar" style={{ minWidth: '320px' }}>
           <div className="grid grid-cols-2 gap-2">
             {options.map((option) => {
               const isSelected = value === option.value

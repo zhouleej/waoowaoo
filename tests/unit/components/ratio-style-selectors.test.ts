@@ -103,5 +103,7 @@ describe('RatioStyleSelectors', () => {
     expect(html).toContain('16:9')
     expect(html).toContain('恐怖悬疑')
     expect(html).toContain('压迫氛围')
+    expect(html.match(/overflow-y-auto/g)).toHaveLength(2)
+    expect(html.match(/app-scrollbar/g)).toHaveLength(2)
   })
 })

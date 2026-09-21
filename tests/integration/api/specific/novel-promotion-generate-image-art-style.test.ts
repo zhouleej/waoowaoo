@@ -72,7 +72,7 @@ describe('api specific - novel promotion generate image art style', () => {
         type: 'character',
         id: 'character-1',
         appearanceId: 'appearance-1',
-        artStyle: 'realistic',
+        artStyle: 'xianxia-anime',
       },
     })
 
@@ -80,7 +80,7 @@ describe('api specific - novel promotion generate image art style', () => {
     expect(res.status).toBe(200)
 
     const submitArg = submitTaskMock.mock.calls[0]?.[0] as { payload?: Record<string, unknown> } | undefined
-    expect(submitArg?.payload?.artStyle).toBe('realistic')
+    expect(submitArg?.payload?.artStyle).toBe('xianxia-anime')
   })
 
   it('rejects invalid artStyle with invalid params', async () => {
