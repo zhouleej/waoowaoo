@@ -11,7 +11,8 @@ import { normalizeImageGenerationCount } from '@/lib/image-generation/count'
 import { ensureGlobalLocationImageSlots, ensureProjectLocationImageSlots } from '@/lib/image-generation/location-slots'
 import { hasCharacterAppearanceOutput, hasGlobalCharacterAppearanceOutput, hasGlobalCharacterOutput, hasGlobalLocationImageOutput, hasGlobalLocationOutput, hasLocationImageOutput } from '@/lib/task/has-output'
 import { sanitizeImageInputsForTaskPayload } from '@/lib/media/outbound-image'
-import { PRIMARY_APPEARANCE_INDEX, isArtStyleValue, removeLocationPromptSuffix, removePropPromptSuffix, type ArtStyleValue } from '@/lib/constants'
+import { PRIMARY_APPEARANCE_INDEX, removeLocationPromptSuffix, removePropPromptSuffix } from '@/lib/constants'
+import { validateUserArtStyle } from '@/lib/art-styles/custom'
 import { decodeImageUrlsFromDb, encodeImageUrls } from '@/lib/contracts/image-urls-contract'
 import { deleteObject } from '@/lib/storage'
 import { resolveStorageKeyFromMediaValue } from '@/lib/media/service'
@@ -115,18 +116,12 @@ function toNumber(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null
 }
 
-function resolveOptionalArtStyle(body: Record<string, unknown>): ArtStyleValue | undefined {
+async function resolveOptionalArtStyle(body: Record<string, unknown>, userId: string): Promise<string | undefined> {
   if (!Object.prototype.hasOwnProperty.call(body, 'artStyle')) {
     return undefined
   }
   const artStyle = normalizeString(body.artStyle)
-  if (!isArtStyleValue(artStyle)) {
-    throw new ApiError('INVALID_PARAMS', {
-      code: 'INVALID_ART_STYLE',
-      message: 'artStyle must be a supported value',
-    })
-  }
-  return artStyle
+  return validateUserArtStyle(artStyle, userId)
 }
 
 function normalizeLocationBackedKind(kind: AssetKind): 'character' | 'location' {
@@ -153,7 +148,7 @@ async function submitGlobalAssetGenerateTask(input: AssetGenerateInput) {
   const count = normalizedKind === 'character'
     ? normalizeImageGenerationCount('character', input.body.count)
     : normalizeImageGenerationCount('location', input.body.count)
-  const requestedArtStyle = resolveOptionalArtStyle(input.body)
+  const requestedArtStyle = await resolveOptionalArtStyle(input.body, input.access.userId)
   const artStyle = requestedArtStyle || await resolveStoredGlobalArtStyle({
     userId: input.access.userId,
     kind: input.kind,
@@ -242,7 +237,7 @@ async function submitProjectAssetGenerateTask(input: AssetGenerateInput) {
   const count = normalizedKind === 'character'
     ? normalizeImageGenerationCount('character', input.body.count)
     : normalizeImageGenerationCount('location', input.body.count)
-  const artStyle = resolveOptionalArtStyle(input.body)
+  const artStyle = await resolveOptionalArtStyle(input.body, input.access.userId)
   const appearanceId = normalizeString(input.body.appearanceId)
   const imageIndex = toNumber(input.body.imageIndex)
 
@@ -347,10 +342,7 @@ async function resolveStoredGlobalArtStyle(input: {
       throw new ApiError('NOT_FOUND')
     }
     const artStyle = normalizeString(appearance.artStyle)
-    if (!isArtStyleValue(artStyle)) {
-      throw new ApiError('INVALID_PARAMS', { code: 'MISSING_ART_STYLE', message: 'Character appearance artStyle is not configured' })
-    }
-    return artStyle
+    return validateUserArtStyle(artStyle, input.userId)
   }
   const location = await prisma.globalLocation.findFirst({
     where: { id: input.assetId, userId: input.userId },
@@ -360,10 +352,7 @@ async function resolveStoredGlobalArtStyle(input: {
     throw new ApiError('NOT_FOUND')
   }
   const artStyle = normalizeString(location.artStyle)
-  if (!isArtStyleValue(artStyle)) {
-    throw new ApiError('INVALID_PARAMS', { code: 'MISSING_ART_STYLE', message: 'Location artStyle is not configured' })
-  }
-  return artStyle
+  return validateUserArtStyle(artStyle, input.userId)
 }
 
 export async function submitAssetModifyTask(input: AssetModifyInput) {
@@ -1071,10 +1060,7 @@ async function updateGlobalAssetVariant(input: AssetVariantUpdateInput) {
     if (input.body.changeReason !== undefined) updateData.changeReason = normalizeString(input.body.changeReason)
     if (input.body.artStyle !== undefined) {
       const artStyle = normalizeString(input.body.artStyle)
-      if (!isArtStyleValue(artStyle)) {
-        throw new ApiError('INVALID_PARAMS', { code: 'INVALID_ART_STYLE', message: 'artStyle must be a supported value' })
-      }
-      updateData.artStyle = artStyle
+      updateData.artStyle = await validateUserArtStyle(artStyle, input.access.userId)
     }
     await prisma.globalCharacterAppearance.update({
       where: { id: input.variantId },
@@ -1159,7 +1145,7 @@ export async function createAsset(input: AssetCreateInput) {
       name,
       summary,
       initialDescription: description,
-      artStyle: normalizeString(input.body.artStyle) || null,
+      artStyle: input.body.artStyle === undefined ? null : await validateUserArtStyle(input.body.artStyle, input.access.userId),
       kind,
       initialImageUrl: normalizeString(input.body.initialImageUrl) || null,
     })

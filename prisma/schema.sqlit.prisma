@@ -464,6 +464,7 @@ model User {
   globalCharacters   GlobalCharacter[]
   globalLocations    GlobalLocation[]
   globalVoices       GlobalVoice[]
+  customArtStyles    CustomArtStyle[]
   tasks              Task[]
   taskEvents         TaskEvent[]
 
@@ -699,6 +700,20 @@ model GlobalAssetFolder {
 
   @@index([userId])
   @@map("global_asset_folders")
+}
+
+model CustomArtStyle {
+  id        String   @id @default(uuid())
+  userId    String
+  name      String
+  prompt    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("custom_art_styles")
 }
 
 // 全局角色（结构与 NovelPromotionCharacter 一致）

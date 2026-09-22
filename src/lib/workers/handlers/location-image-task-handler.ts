@@ -1,6 +1,7 @@
 import { type Job } from 'bullmq'
 import { prisma } from '@/lib/prisma'
-import { LOCATION_IMAGE_RATIO, PROP_IMAGE_RATIO, addLocationPromptSuffix, addPropPromptSuffix, getArtStylePrompt, isArtStyleValue, type ArtStyleValue } from '@/lib/constants'
+import { LOCATION_IMAGE_RATIO, PROP_IMAGE_RATIO, addLocationPromptSuffix, addPropPromptSuffix, isArtStyleValue } from '@/lib/constants'
+import { customArtStyleId, resolveArtStylePrompt } from '@/lib/art-styles/custom'
 import { normalizeImageGenerationCount } from '@/lib/image-generation/count'
 import { type TaskJobData } from '@/lib/task/types'
 import { reportTaskProgress } from '../shared'
@@ -16,10 +17,10 @@ import {
 import { buildLocationImagePromptCore } from '@/lib/location-image-prompt'
 import { buildPropImagePromptCore } from '@/lib/prop-image-prompt'
 
-function resolvePayloadArtStyle(payload: AnyObj): ArtStyleValue | undefined {
+function resolvePayloadArtStyle(payload: AnyObj): string | undefined {
   if (!Object.prototype.hasOwnProperty.call(payload, 'artStyle')) return undefined
   const parsedArtStyle = typeof payload.artStyle === 'string' ? payload.artStyle.trim() : ''
-  if (!isArtStyleValue(parsedArtStyle)) {
+  if (!isArtStyleValue(parsedArtStyle) && !customArtStyleId(parsedArtStyle)) {
     throw new Error('Invalid artStyle in IMAGE_LOCATION payload')
   }
   return parsedArtStyle
@@ -67,7 +68,7 @@ export async function handleLocationImageTask(job: Job<TaskJobData>) {
   const requestedCount = resolveRequestedLocationCount(payload)
 
   const payloadArtStyle = resolvePayloadArtStyle(payload)
-  const artStyle = getArtStylePrompt(payloadArtStyle ?? models.artStyle, job.data.locale)
+  const artStyle = await resolveArtStylePrompt({ value: payloadArtStyle ?? models.artStyle, userId, locale: job.data.locale, snapshot: payload.artStylePromptSnapshot })
   const assetType = payload.type === 'prop' ? 'prop' : 'location'
 
   // targetId may be locationId (group) or locationImageId (single)

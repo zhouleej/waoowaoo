@@ -1,6 +1,7 @@
 import { type Job } from 'bullmq'
 import { prisma } from '@/lib/prisma'
-import { CHARACTER_ASSET_IMAGE_RATIO, LOCATION_IMAGE_RATIO, PROP_IMAGE_RATIO, addCharacterPromptSuffix, addLocationPromptSuffix, addPropPromptSuffix, getArtStylePrompt } from '@/lib/constants'
+import { CHARACTER_ASSET_IMAGE_RATIO, LOCATION_IMAGE_RATIO, PROP_IMAGE_RATIO, addCharacterPromptSuffix, addLocationPromptSuffix, addPropPromptSuffix } from '@/lib/constants'
+import { resolveArtStylePrompt } from '@/lib/art-styles/custom'
 import { type TaskJobData } from '@/lib/task/types'
 import { encodeImageUrls } from '@/lib/contracts/image-urls-contract'
 import { normalizeImageGenerationCount } from '@/lib/image-generation/count'
@@ -63,10 +64,10 @@ export async function handleAssetHubImageTask(job: Job<TaskJobData>) {
   const payload = (job.data.payload || {}) as AnyObj
   const userId = job.data.userId
   const userModels = await getUserModels(userId)
-  const artStyle = getArtStylePrompt(
-    typeof payload.artStyle === 'string' ? payload.artStyle : undefined,
-    job.data.locale,
-  )
+  const artStyle = await resolveArtStylePrompt({
+    value: typeof payload.artStyle === 'string' ? payload.artStyle : undefined,
+    userId, locale: job.data.locale, snapshot: payload.artStylePromptSnapshot,
+  })
 
   if (payload.type === 'character') {
     const characterId = typeof payload.id === 'string' ? payload.id : null

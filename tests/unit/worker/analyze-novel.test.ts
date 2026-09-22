@@ -36,11 +36,13 @@ vi.mock('@/lib/constants', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/constants')>()
   return {
     ...actual,
-    getArtStylePrompt: vi.fn(() => 'cinematic style'),
     removeLocationPromptSuffix: vi.fn((text: string) => text.replace(' [SUFFIX]', '')),
     removePropPromptSuffix: vi.fn((text: string) => text),
   }
 })
+vi.mock('@/lib/art-styles/custom', () => ({
+  resolveArtStylePrompt: vi.fn(async () => 'cinematic style'),
+}))
 vi.mock('@/lib/workers/shared', () => ({ reportTaskProgress: workerMock.reportTaskProgress }))
 vi.mock('@/lib/workers/utils', () => ({ assertTaskActive: workerMock.assertTaskActive }))
 vi.mock('@/lib/workers/handlers/llm-stream', () => ({

@@ -4,7 +4,8 @@ import { prisma } from '@/lib/prisma'
 import { requireProjectAuth, requireProjectAuthLight, isErrorResponse } from '@/lib/api-auth'
 import { encodeImageUrls } from '@/lib/contracts/image-urls-contract'
 import { apiHandler, ApiError } from '@/lib/api-errors'
-import { PRIMARY_APPEARANCE_INDEX, isArtStyleValue, type ArtStyleValue } from '@/lib/constants'
+import { PRIMARY_APPEARANCE_INDEX } from '@/lib/constants'
+import { validateUserArtStyle } from '@/lib/art-styles/custom'
 import { resolveTaskLocale } from '@/lib/task/resolve-locale'
 import { normalizeImageGenerationCount } from '@/lib/image-generation/count'
 import {
@@ -143,18 +144,12 @@ export const POST = apiHandler(async (
   const count = generateFromReference
     ? normalizeImageGenerationCount('reference-to-character', body.count)
     : normalizeImageGenerationCount('character', body.count)
-  let artStyle: ArtStyleValue | undefined
+  let artStyle: string | undefined
   if (Object.prototype.hasOwnProperty.call(body, 'artStyle')) {
     const parsedArtStyle = normalizeString(body.artStyle)
-    if (!isArtStyleValue(parsedArtStyle)) {
-      throw new ApiError('INVALID_PARAMS', {
-        code: 'INVALID_ART_STYLE',
-        message: 'artStyle must be a supported value',
-      })
-    }
-    artStyle = parsedArtStyle
+    artStyle = await validateUserArtStyle(parsedArtStyle, authResult.session.user.id)
   }
-  const resolvedArtStyle: ArtStyleValue = artStyle ?? 'american-comic'
+  const resolvedArtStyle = artStyle ?? 'american-comic'
   const referenceImageUrls = Array.isArray(body.referenceImageUrls)
     ? body.referenceImageUrls.map((item) => normalizeString(item)).filter(Boolean)
     : []

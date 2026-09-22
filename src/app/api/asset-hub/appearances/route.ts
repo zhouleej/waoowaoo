@@ -3,7 +3,8 @@ import { prisma } from '@/lib/prisma'
 import { requireUserAuth, isErrorResponse } from '@/lib/api-auth'
 import { encodeImageUrls } from '@/lib/contracts/image-urls-contract'
 import { ApiError, apiHandler } from '@/lib/api-errors'
-import { PRIMARY_APPEARANCE_INDEX, isArtStyleValue } from '@/lib/constants'
+import { PRIMARY_APPEARANCE_INDEX } from '@/lib/constants'
+import { validateUserArtStyle } from '@/lib/art-styles/custom'
 import { buildCharacterDescriptionFields } from '@/lib/assets/description-fields'
 
 interface AppearanceBody {
@@ -74,12 +75,7 @@ export const POST = apiHandler(async (request: NextRequest) => {
         const stored = typeof primaryAppearance?.artStyle === 'string' ? primaryAppearance.artStyle.trim() : ''
         return stored
     })()
-    if (!isArtStyleValue(inheritedArtStyle)) {
-        throw new ApiError('INVALID_PARAMS', {
-            code: 'INVALID_ART_STYLE',
-            message: 'artStyle is required and must be a supported value',
-        })
-    }
+    await validateUserArtStyle(inheritedArtStyle, session.user.id)
 
     const appearance = await db.globalCharacterAppearance.create({
         data: {
@@ -151,12 +147,7 @@ export const PATCH = apiHandler(async (request: NextRequest) => {
             })
         }
         const normalizedArtStyle = artStyle.trim()
-        if (!isArtStyleValue(normalizedArtStyle)) {
-            throw new ApiError('INVALID_PARAMS', {
-                code: 'INVALID_ART_STYLE',
-                message: 'artStyle must be a supported value',
-            })
-        }
+        await validateUserArtStyle(normalizedArtStyle, session.user.id)
         updateData.artStyle = normalizedArtStyle
     }
 

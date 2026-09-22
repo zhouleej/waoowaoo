@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUserAuth, isErrorResponse } from '@/lib/api-auth'
 import { ApiError, apiHandler } from '@/lib/api-errors'
-import { isArtStyleValue } from '@/lib/constants'
+import { validateUserArtStyle } from '@/lib/art-styles/custom'
 
-function validateArtStyleField(value: unknown): string {
+async function validateArtStyleField(value: unknown, userId: string): Promise<string> {
   if (typeof value !== 'string') {
     throw new ApiError('INVALID_PARAMS', {
       code: 'INVALID_ART_STYLE',
@@ -13,14 +13,7 @@ function validateArtStyleField(value: unknown): string {
     })
   }
   const artStyle = value.trim()
-  if (!isArtStyleValue(artStyle)) {
-    throw new ApiError('INVALID_PARAMS', {
-      code: 'INVALID_ART_STYLE',
-      field: 'artStyle',
-      message: 'artStyle must be a supported value',
-    })
-  }
-  return artStyle
+  return validateUserArtStyle(artStyle, userId)
 }
 
 // GET - 获取用户偏好配置
@@ -68,7 +61,7 @@ export const PATCH = apiHandler(async (request: NextRequest) => {
   for (const field of allowedFields) {
     if (body[field] !== undefined) {
       if (field === 'artStyle') {
-        updateData[field] = validateArtStyleField(body[field])
+        updateData[field] = await validateArtStyleField(body[field], session.user.id)
         continue
       }
       updateData[field] = body[field]

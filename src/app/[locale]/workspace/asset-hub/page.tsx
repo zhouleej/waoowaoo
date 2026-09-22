@@ -18,6 +18,7 @@ import VoiceCreationModal from './components/VoiceCreationModal'
 import VoicePickerDialog from './components/VoicePickerDialog'
 import VirtualHumanTrialModal from './components/VirtualHumanTrialModal'
 import MobileCloudAssetPanel from './components/MobileCloudAssetPanel'
+import CustomArtStylePanel from './components/CustomArtStylePanel'
 import {
     useAssets,
     useAssetActions,
@@ -466,6 +467,8 @@ export default function AssetHubPage() {
                 </div>
 
                 <MobileCloudAssetPanel />
+
+                <CustomArtStylePanel />
 
                 <div className="flex gap-6">
                     {/* 左侧文件夹树 */}

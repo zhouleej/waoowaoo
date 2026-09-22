@@ -9,6 +9,9 @@ const authMock = vi.hoisted(() => ({
 }))
 
 const prismaMock = vi.hoisted(() => ({
+  customArtStyle: {
+    findFirst: vi.fn(),
+  },
   userPreference: {
     upsert: vi.fn(async () => ({
       userId: 'user-1',
@@ -25,6 +28,24 @@ describe('api specific - user preference art style validation', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    prismaMock.customArtStyle.findFirst.mockResolvedValue(null)
+  })
+
+  it('accepts an owned custom style identifier', async () => {
+    prismaMock.customArtStyle.findFirst.mockResolvedValue({
+      id: '11111111-1111-4111-8111-111111111111',
+      userId: 'user-1',
+      prompt: 'warm watercolor',
+    })
+    const mod = await import('@/app/api/user-preference/route')
+    const artStyle = 'custom:11111111-1111-4111-8111-111111111111'
+    const req = buildMockRequest({ path: '/api/user-preference', method: 'PATCH', body: { artStyle } })
+
+    const res = await mod.PATCH(req, routeContext)
+    expect(res.status).toBe(200)
+    expect(prismaMock.userPreference.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      update: expect.objectContaining({ artStyle }),
+    }))
   })
 
   it('accepts valid artStyle and persists normalized value', async () => {

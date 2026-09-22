@@ -9,6 +9,8 @@
 import { createPortal } from 'react-dom'
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, type CSSProperties } from 'react'
 import { AppIcon } from '@/components/ui/icons'
+import { useCustomArtStyles } from '@/lib/art-styles/use-custom-art-styles'
+import { CustomArtStyleCreator } from './CustomArtStyleCreator'
 
 const TRIGGER_CLASSNAME = 'glass-input-base flex h-10 w-full items-center justify-between gap-2 px-2.5 transition-colors'
 const TRIGGER_TEXT_CLASSNAME = 'text-[13px] font-medium text-[var(--glass-text-primary)]'
@@ -263,9 +265,10 @@ export function StyleSelector({
 }: {
   value: string
   onChange: (value: string) => void
-  options: { value: string; label: string; recommended?: boolean }[]
+  options: readonly { value: string; label: string; recommended?: boolean }[]
 }) {
   const [isOpen, setIsOpen] = useState(false)
+  const customStyles = useCustomArtStyles()
   const { triggerRef, panelRef, panelStyle } = useFloatingDropdown(isOpen, 320)
 
   useEffect(() => {
@@ -281,7 +284,12 @@ export function StyleSelector({
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [isOpen, panelRef, triggerRef])
 
-  const selectedOption = options.find((o) => o.value === value) || options[0]
+  const allOptions = [
+    ...options,
+    ...(customStyles.data || []).map((style) => ({ value: style.value, label: style.name })),
+  ]
+  const selectedOption = allOptions.find((o) => o.value === value)
+    || (value.startsWith('custom:') ? { value, label: '自定义风格已删除，请重新选择' } : options[0])
 
   return (
     <>
@@ -293,7 +301,7 @@ export function StyleSelector({
       >
         <div className="flex min-w-0 items-center gap-2">
           <AppIcon name="sparklesAlt" className="h-4 w-4 text-[var(--glass-accent-from)]" />
-          <span className={`${TRIGGER_TEXT_CLASSNAME} truncate`}>{selectedOption.label}</span>
+          <span className={`${TRIGGER_TEXT_CLASSNAME} truncate`}>{selectedOption?.label || '选择风格'}</span>
         </div>
         <AppIcon name="chevronDown" className={`w-4 h-4 text-[var(--glass-text-tertiary)] transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </button>
@@ -305,7 +313,7 @@ export function StyleSelector({
           style={panelStyle}
         >
           <div className="grid grid-cols-2 gap-2">
-            {options.map((option) => {
+            {allOptions.map((option) => {
               const isSelected = value === option.value
               return (
                 <button
@@ -328,6 +336,7 @@ export function StyleSelector({
               )
             })}
           </div>
+          <CustomArtStyleCreator onCreated={(createdValue) => { onChange(createdValue); setIsOpen(false) }} />
         </div>,
         document.body,
       )}

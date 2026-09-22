@@ -16,6 +16,10 @@ vi.mock('@/lib/query/hooks', () => ({
   useGenerateProjectLocationImage: vi.fn(() => ({ mutateAsync: vi.fn() })),
 }))
 
+vi.mock('@/lib/art-styles/use-custom-art-styles', () => ({
+  useCustomArtStyles: () => ({ data: [] }),
+}))
+
 const messages = {
   assetModal: {
     location: {

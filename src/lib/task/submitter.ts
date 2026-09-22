@@ -24,6 +24,14 @@ import { getTaskFlowMeta } from '@/lib/llm-observe/stage-pipeline'
 import type { Locale } from '@/i18n/routing'
 import { attachTaskToRun, createRun, findReusableActiveRun } from '@/lib/run-runtime/service'
 import { isAiTaskType, workflowTypeFromTaskType } from '@/lib/run-runtime/workflow'
+import { prisma } from '@/lib/prisma'
+import { snapshotCustomArtStyle } from '@/lib/art-styles/custom'
+
+const STYLE_TASK_TYPES = new Set<TaskType>([
+  TASK_TYPE.IMAGE_CHARACTER, TASK_TYPE.IMAGE_LOCATION, TASK_TYPE.IMAGE_PANEL,
+  TASK_TYPE.PANEL_VARIANT, TASK_TYPE.ASSET_HUB_IMAGE, TASK_TYPE.ANALYZE_NOVEL,
+  TASK_TYPE.REFERENCE_TO_CHARACTER, TASK_TYPE.ASSET_HUB_REFERENCE_TO_CHARACTER,
+])
 
 const RUN_CENTRIC_TASK_TYPES = new Set<TaskType>([
   TASK_TYPE.STORY_TO_SCRIPT_RUN,
@@ -132,12 +140,26 @@ export async function submitTask(params: {
 
   const normalizedPayloadBase = normalizeTaskPayload(params.type, params.payload || null)
   const normalizedPayloadMeta = toObject(normalizedPayloadBase.meta)
-  const normalizedPayload = {
+  const normalizedPayload: Record<string, unknown> = {
     ...normalizedPayloadBase,
     meta: {
       ...normalizedPayloadMeta,
       locale: params.locale,
     },
+  }
+  if (STYLE_TASK_TYPES.has(params.type)) {
+    const explicitStyle = typeof normalizedPayload.artStyle === 'string' ? normalizedPayload.artStyle : ''
+    const projectStyle = !explicitStyle && !params.type.startsWith('asset_hub_')
+      ? (await prisma.novelPromotionProject?.findUnique({
+          where: { projectId: params.projectId }, select: { artStyle: true },
+        }))?.artStyle
+      : null
+    const selectedStyle = explicitStyle || projectStyle || ''
+    const snapshot = await snapshotCustomArtStyle(selectedStyle, params.userId)
+    if (snapshot !== null) {
+      normalizedPayload.artStyle = selectedStyle
+      normalizedPayload.artStylePromptSnapshot = snapshot
+    }
   }
   const computedBillingInfo = isBillableTaskType(params.type)
     ? buildDefaultTaskBillingInfo(params.type, normalizedPayload)

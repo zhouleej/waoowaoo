@@ -9,6 +9,7 @@ import type { NovelPromotionShot } from '@/types/project'
 import type { PromptsStageShellProps } from './promptStageRuntime.types'
 import { usePromptEditorRuntime } from './hooks/usePromptEditorRuntime'
 import { usePromptAppendFlow } from './hooks/usePromptAppendFlow'
+import { useCustomArtStyles } from '@/lib/art-styles/use-custom-art-styles'
 
 export type {
   PromptsStageShellProps,
@@ -37,12 +38,15 @@ export function usePromptStageActions({
 }: PromptsStageShellProps) {
   const t = useTranslations('storyboard')
   const aiModifyShotPrompt = useAiModifyProjectShotPrompt(projectId)
+  const customStyles = useCustomArtStyles()
 
   const isShotTaskRunning = useCallback((shot: NovelPromotionShot) => {
     return Boolean((shot as NovelPromotionShot & { imageTaskRunning?: boolean }).imageTaskRunning)
   }, [])
 
-  const styleLabel = ART_STYLES.find((style) => style.value === artStyle)?.label || t('prompts.customStyle')
+  const styleLabel = ART_STYLES.find((style) => style.value === artStyle)?.label
+    || customStyles.data?.find((style) => style.value === artStyle)?.name
+    || t('prompts.customStyle')
   const runningCount = shots.filter((shot) => isShotTaskRunning(shot)).length
   const [previewImage, setPreviewImage] = useState<string | null>(null)
 

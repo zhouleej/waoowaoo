@@ -21,6 +21,7 @@ import ImageGenerationInlineCountButton from '@/components/image-generation/Imag
 import { getImageGenerationCountOptions } from '@/lib/image-generation/count'
 import type { LocationAvailableSlot } from '@/lib/location-available-slots'
 import LocalImageUpload from './LocalImageUpload'
+import { useCustomArtStyles } from '@/lib/art-styles/use-custom-art-styles'
 
 export interface LocationCreationModalProps {
     mode: 'asset-hub' | 'project'
@@ -49,6 +50,8 @@ export function LocationCreationModal({
     onSuccess
 }: LocationCreationModalProps) {
     const t = useTranslations('assetModal')
+    const customStyles = useCustomArtStyles()
+    const artStyleOptions = [...ART_STYLES, ...(customStyles.data || []).map((style) => ({ value: style.value, label: style.name, preview: '自', promptZh: style.prompt, promptEn: style.prompt }))]
     const aiDesignAssetHubLocation = useAiDesignLocation()
     const createAssetHubLocation = useCreateAssetHubLocation()
     const generateAssetHubLocation = useGenerateLocationImage()
@@ -307,7 +310,7 @@ export function LocationCreationModal({
                                     {t('artStyle.title')}
                                 </label>
                                 <div className="grid grid-cols-2 gap-2">
-                                    {ART_STYLES.map((style) => (
+                                    {artStyleOptions.map((style) => (
                                         <button
                                             key={style.value}
                                             type="button"

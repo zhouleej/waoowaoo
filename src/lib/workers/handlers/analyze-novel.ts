@@ -3,7 +3,8 @@ import { safeParseJsonObject } from '@/lib/json-repair'
 import { prisma } from '@/lib/prisma'
 import { executeAiTextStep } from '@/lib/ai-runtime'
 import { withInternalLLMStreamCallbacks } from '@/lib/llm-observe/internal-stream-context'
-import { getArtStylePrompt, removeLocationPromptSuffix } from '@/lib/constants'
+import { removeLocationPromptSuffix } from '@/lib/constants'
+import { resolveArtStylePrompt } from '@/lib/art-styles/custom'
 import { reportTaskProgress } from '@/lib/workers/shared'
 import { assertTaskActive } from '@/lib/workers/utils'
 import { createWorkerLLMStreamCallbacks, createWorkerLLMStreamContext } from './llm-stream'
@@ -370,7 +371,7 @@ export async function handleAnalyzeNovelTask(job: Job<TaskJobData>) {
   await prisma.novelPromotionProject.update({
     where: { id: novelData.id },
     data: {
-      artStylePrompt: getArtStylePrompt(novelData.artStyle, job.data.locale) || '',
+      artStylePrompt: await resolveArtStylePrompt({ value: novelData.artStyle, userId: job.data.userId, locale: job.data.locale, snapshot: payload.artStylePromptSnapshot }),
     },
   })
 

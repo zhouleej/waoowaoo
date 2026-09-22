@@ -51,6 +51,8 @@ const ROUTE_FILES = [
   'src/app/api/asset-hub/picker/route.ts',
   'src/app/api/asset-hub/reference-to-character/route.ts',
   'src/app/api/asset-hub/select-image/route.ts',
+  'src/app/api/asset-hub/styles/[styleId]/route.ts',
+  'src/app/api/asset-hub/styles/route.ts',
   'src/app/api/asset-hub/undo-image/route.ts',
   'src/app/api/asset-hub/update-asset-label/route.ts',
   'src/app/api/asset-hub/upload-image/route.ts',

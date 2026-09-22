@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { requireUserAuth, isErrorResponse } from '@/lib/api-auth'
 import { ApiError, apiHandler } from '@/lib/api-errors'
 import { attachMediaFieldsToGlobalLocation } from '@/lib/media/attach'
-import { isArtStyleValue } from '@/lib/constants'
+import { validateUserArtStyle } from '@/lib/art-styles/custom'
 import { normalizeImageGenerationCount } from '@/lib/image-generation/count'
 import {
     normalizeLocationAvailableSlots,
@@ -59,12 +59,7 @@ export const POST = apiHandler(async (request: NextRequest) => {
         throw new ApiError('INVALID_PARAMS')
     }
     const normalizedArtStyle = typeof artStyle === 'string' ? artStyle.trim() : ''
-    if (!isArtStyleValue(normalizedArtStyle)) {
-        throw new ApiError('INVALID_PARAMS', {
-            code: 'INVALID_ART_STYLE',
-            message: 'artStyle is required and must be a supported value',
-        })
-    }
+    await validateUserArtStyle(normalizedArtStyle, session.user.id)
 
     if (folderId) {
         const folder = await prisma.globalAssetFolder.findUnique({

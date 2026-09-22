@@ -10,6 +10,7 @@ import TaskStatusInline from '@/components/task/TaskStatusInline'
 import { resolveTaskPresentationState } from '@/lib/task/presentation'
 import { AppIcon } from '@/components/ui/icons'
 import type { LocationAvailableSlot } from '@/lib/location-available-slots'
+import { useCustomArtStyles } from '@/lib/art-styles/use-custom-art-styles'
 
 interface AddLocationModalProps {
     folderId: string | null
@@ -28,6 +29,8 @@ const SparklesIcon = ({ className }: { className?: string }) => (
 
 export function AddLocationModal({ folderId, onClose, onSuccess }: AddLocationModalProps) {
     const t = useTranslations('assetHub')
+    const customStyles = useCustomArtStyles()
+    const artStyleOptions = [...ART_STYLES, ...(customStyles.data || []).map((style) => ({ value: style.value, label: style.name, preview: '自', promptZh: style.prompt, promptEn: style.prompt }))]
 
     // 表单字段
     const [name, setName] = useState('')
@@ -170,7 +173,7 @@ export function AddLocationModal({ folderId, onClose, onSuccess }: AddLocationMo
                                 画面风格
                             </label>
                             <div className="grid grid-cols-2 gap-2">
-                                {ART_STYLES.map((style) => (
+                                {artStyleOptions.map((style) => (
                                     <button
                                         key={style.value}
                                         type="button"

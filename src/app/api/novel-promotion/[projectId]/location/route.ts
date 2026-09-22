@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { removeLocationPromptSuffix, isArtStyleValue } from '@/lib/constants'
+import { removeLocationPromptSuffix } from '@/lib/constants'
+import { validateUserArtStyle } from '@/lib/art-styles/custom'
 import {
   normalizeLocationAvailableSlots,
   stringifyLocationAvailableSlots,
@@ -70,12 +71,7 @@ export const POST = apiHandler(async (
     : 1
   if (Object.prototype.hasOwnProperty.call(body, 'artStyle')) {
     const parsedArtStyle = normalizeString(body.artStyle)
-    if (!isArtStyleValue(parsedArtStyle)) {
-      throw new ApiError('INVALID_PARAMS', {
-        code: 'INVALID_ART_STYLE',
-        message: 'artStyle must be a supported value',
-      })
-    }
+    await validateUserArtStyle(parsedArtStyle, authResult.session.user.id)
   }
 
   if (!name || !description) {

@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { requireUserAuth, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
 import { toMoneyNumber } from '@/lib/billing/money'
-import { isArtStyleValue } from '@/lib/constants'
+import { validateUserArtStyle } from '@/lib/art-styles/custom'
 import {
   invalidOrganizationIdResponse,
   readRequestedOrganizationId,
@@ -274,7 +274,7 @@ export const POST = apiHandler(async (request: NextRequest) => {
         videoModel: userPreference.videoModel,
         audioModel: userPreference.audioModel,
         videoRatio: userPreference.videoRatio,
-        artStyle: isArtStyleValue(userPreference.artStyle) ? userPreference.artStyle : 'american-comic',
+        artStyle: await validateUserArtStyle(userPreference.artStyle, session.user.id).catch(() => 'american-comic'),
         ttsRate: userPreference.ttsRate
       })
     }

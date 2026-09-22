@@ -7,6 +7,7 @@ import CharacterCreationPreview from './CharacterCreationPreview'
 import { AppIcon } from '@/components/ui/icons'
 import { SegmentedControl } from '@/components/ui/SegmentedControl'
 import LocalImageUpload from '../LocalImageUpload'
+import { useCustomArtStyles } from '@/lib/art-styles/use-custom-art-styles'
 
 type Mode = 'asset-hub' | 'project'
 
@@ -93,6 +94,8 @@ export default function CharacterCreationForm({
   isExtracting,
 }: CharacterCreationFormProps) {
   const t = useTranslations('assetModal')
+  const customStyles = useCustomArtStyles()
+  const artStyleOptions = [...ART_STYLES, ...(customStyles.data || []).map((style) => ({ value: style.value, label: style.name, preview: '自', promptZh: style.prompt, promptEn: style.prompt }))]
 
   return (
     <div className="space-y-5">
@@ -180,7 +183,7 @@ export default function CharacterCreationForm({
             {t('artStyle.title')}
           </label>
           <div className="grid grid-cols-2 gap-2">
-            {ART_STYLES.map((style) => (
+            {artStyleOptions.map((style) => (
               <button
                 key={style.value}
                 type="button"

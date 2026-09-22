@@ -11,6 +11,10 @@ vi.mock('@/lib/query/hooks', () => ({
   useProjectAssets: vi.fn(() => ({ data: { characters: [] } })),
 }))
 
+vi.mock('@/lib/art-styles/use-custom-art-styles', () => ({
+  useCustomArtStyles: () => ({ data: [] }),
+}))
+
 vi.mock('@/components/shared/assets/character-creation/hooks/useCharacterCreationSubmit', () => ({
   useCharacterCreationSubmit: vi.fn(() => ({
     isSubmitting: false,

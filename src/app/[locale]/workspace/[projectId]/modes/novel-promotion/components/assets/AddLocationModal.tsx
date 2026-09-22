@@ -11,6 +11,7 @@ import TaskStatusInline from '@/components/task/TaskStatusInline'
 import { resolveTaskPresentationState } from '@/lib/task/presentation'
 import { AppIcon } from '@/components/ui/icons'
 import type { LocationAvailableSlot } from '@/lib/location-available-slots'
+import { useCustomArtStyles } from '@/lib/art-styles/use-custom-art-styles'
 
 interface AddLocationModalProps {
   projectId: string
@@ -51,6 +52,8 @@ export default function AddLocationModal({
 }: AddLocationModalProps) {
   const t = useTranslations('assets')
   const tc = useTranslations('common')
+  const customStyles = useCustomArtStyles()
+  const artStyleOptions = [...ART_STYLES, ...(customStyles.data || []).map((style) => ({ value: style.value, label: style.name, preview: '自', promptZh: style.prompt, promptEn: style.prompt }))]
   const aiCreateLocationMutation = useAiCreateProjectLocation(projectId)
   const createLocationMutation = useCreateProjectLocation(projectId)
   const { count: locationGenerationCount } = useImageGenerationCount('location')
@@ -169,7 +172,7 @@ export default function AddLocationModal({
                 {t('modal.artStyle')}
               </label>
               <div className="grid grid-cols-2 gap-2">
-                {ART_STYLES.map((style) => (
+                {artStyleOptions.map((style) => (
                   <button
                     key={style.value}
                     type="button"

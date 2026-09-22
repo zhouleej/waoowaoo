@@ -13,7 +13,8 @@ import type {
     ModelCapabilities,
 } from '@/lib/model-config-contract'
 import { filterNormalVideoModelOptions } from '@/lib/model-capabilities/video-model-options'
-import { RatioSelector, StyleSelector } from './config-modal-selectors'
+import { RatioSelector, StyleSelector as ConfigStyleSelector } from './config-modal-selectors'
+import { StyleSelector as ArtStyleSelector } from '@/components/selectors/RatioStyleSelectors'
 import { ModelCapabilityDropdown } from './ModelCapabilityDropdown'
 import { AppIcon } from '@/components/ui/icons'
 
@@ -375,7 +376,7 @@ export function SettingsModal({
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                             <div className="space-y-2">
                                 <label className="text-sm font-medium text-[var(--glass-text-secondary)]">{t('visualStyle')}</label>
-                                <StyleSelector
+                                <ArtStyleSelector
                                     value={artStyle}
                                     onChange={(value) => handleChange(onArtStyleChange)(value)}
                                     options={ART_STYLES}
@@ -391,7 +392,7 @@ export function SettingsModal({
                             </div>
                             <div className="space-y-2">
                                 <label className="text-sm font-medium text-[var(--glass-text-secondary)]">{t('videoResolution')}</label>
-                                <StyleSelector
+                                <ConfigStyleSelector
                                     value={videoResolution}
                                     onChange={(value) => { handleChange(onVideoResolutionChange)(value) }}
                                     options={VIDEO_RESOLUTIONS}

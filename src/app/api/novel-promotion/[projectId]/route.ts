@@ -3,7 +3,8 @@ import { prisma } from '@/lib/prisma'
 import { logProjectAction } from '@/lib/logging/semantic'
 import { requireProjectAuthLight, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
-import { isArtStyleValue, VIDEO_RESOLUTIONS } from '@/lib/constants'
+import { VIDEO_RESOLUTIONS } from '@/lib/constants'
+import { validateUserArtStyle } from '@/lib/art-styles/custom'
 import { attachMediaFieldsToProject } from '@/lib/media/attach'
 import {
   parseModelKeyStrict,
@@ -113,7 +114,7 @@ function validateModelKeyField(field: typeof MODEL_FIELDS[number], value: unknow
   }
 }
 
-function validateArtStyleField(value: unknown): string {
+async function validateArtStyleField(value: unknown, userId: string): Promise<string> {
   if (typeof value !== 'string') {
     throw new ApiError('INVALID_PARAMS', {
       code: 'INVALID_ART_STYLE',
@@ -122,14 +123,7 @@ function validateArtStyleField(value: unknown): string {
     })
   }
   const artStyle = value.trim()
-  if (!isArtStyleValue(artStyle)) {
-    throw new ApiError('INVALID_PARAMS', {
-      code: 'INVALID_ART_STYLE',
-      field: 'artStyle',
-      message: 'artStyle must be a supported value',
-    })
-  }
-  return artStyle
+  return validateUserArtStyle(artStyle, userId)
 }
 
 function validateVideoResolutionField(value: unknown): string {
@@ -325,7 +319,7 @@ export const PATCH = apiHandler(async (
     }
 
     if (field === 'artStyle') {
-      updateData[field] = validateArtStyleField(body[field])
+      updateData[field] = await validateArtStyleField(body[field], session.user.id)
       continue
     }
 

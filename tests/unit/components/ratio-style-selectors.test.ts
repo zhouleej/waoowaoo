@@ -46,6 +46,11 @@ vi.mock('@/components/ui/icons', () => ({
     createElement('span', { 'data-icon': name, className }),
 }))
 
+vi.mock('@/lib/art-styles/use-custom-art-styles', () => ({
+  useCustomArtStyles: () => ({ data: [] }),
+  useCreateCustomArtStyle: () => ({ isPending: false, mutateAsync: vi.fn() }),
+}))
+
 describe('RatioStyleSelectors', () => {
   afterEach(() => {
     vi.clearAllMocks()
