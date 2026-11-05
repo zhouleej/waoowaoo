@@ -19,6 +19,8 @@
 
 ## ✨ Features
 
+- **Team workspaces** — Shared projects and assets, account invitations, team credentials and member budgets. See [setup and upgrade notes](docs/TEAMS.md).
+
 - 🎬 **AI Script Analysis** — Parse novels, extract characters, scenes & plot automatically
 - 🎨 **Character & Scene Generation** — Consistent AI-generated character and scene images
 - 📽️ **Storyboard Video** — Auto-generate shots and compose into complete videos
