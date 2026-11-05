@@ -1,3 +1,5 @@
+import { requireAssetDeletion } from '@/lib/workspace/asset-access'
+import { assetScopeWhere } from '@/lib/workspace/runtime'
 import { prisma } from '@/lib/prisma'
 import { NextRequest } from 'next/server'
 import { ApiError, getRequestId } from '@/lib/api-errors'
@@ -158,7 +160,7 @@ async function submitGlobalAssetGenerateTask(input: AssetGenerateInput) {
 
   if (normalizedKind === 'location' && toNumber(input.body.imageIndex) === null) {
     const location = await prisma.globalLocation.findFirst({
-      where: { id: input.assetId, userId: input.access.userId },
+      where: { id: input.assetId, ...assetScopeWhere(input.access.userId) },
       select: {
         name: true,
         summary: true,
@@ -334,7 +336,7 @@ async function resolveStoredGlobalArtStyle(input: {
       where: {
         characterId: input.assetId,
         appearanceIndex: input.appearanceIndex,
-        character: { userId: input.userId },
+        character: { ...assetScopeWhere(input.userId) },
       },
       select: { artStyle: true },
     })
@@ -345,7 +347,7 @@ async function resolveStoredGlobalArtStyle(input: {
     return validateUserArtStyle(artStyle, input.userId)
   }
   const location = await prisma.globalLocation.findFirst({
-    where: { id: input.assetId, userId: input.userId },
+    where: { id: input.assetId, ...assetScopeWhere(input.userId) },
     select: { artStyle: true },
   })
   if (!location) {
@@ -518,7 +520,7 @@ async function selectGlobalAssetRender(input: AssetSelectInput) {
       where: {
         characterId: input.assetId,
         appearanceIndex,
-        character: { userId: input.access.userId },
+        character: { ...assetScopeWhere(input.access.userId) },
       },
     })
     if (!appearance) throw new ApiError('NOT_FOUND')
@@ -561,7 +563,7 @@ async function selectGlobalAssetRender(input: AssetSelectInput) {
   const imageIndex = toNumber(input.body.imageIndex)
   const confirm = input.body.confirm === true
   const location = await prisma.globalLocation.findFirst({
-    where: { id: input.assetId, userId: input.access.userId },
+    where: { id: input.assetId, ...assetScopeWhere(input.access.userId) },
     include: { images: { orderBy: { imageIndex: 'asc' } } },
   })
   if (!location) throw new ApiError('NOT_FOUND')
@@ -680,7 +682,7 @@ async function revertGlobalAssetRender(input: AssetRevertInput) {
       where: {
         characterId: input.assetId,
         appearanceIndex,
-        character: { userId: input.access.userId },
+        character: { ...assetScopeWhere(input.access.userId) },
       },
     })
     if (!appearance) throw new ApiError('NOT_FOUND')
@@ -704,7 +706,7 @@ async function revertGlobalAssetRender(input: AssetRevertInput) {
     return { success: true }
   }
   const location = await prisma.globalLocation.findFirst({
-    where: { id: input.assetId, userId: input.access.userId },
+    where: { id: input.assetId, ...assetScopeWhere(input.access.userId) },
     include: { images: true },
   })
   if (!location) throw new ApiError('NOT_FOUND')
@@ -800,7 +802,7 @@ export async function copyAssetFromGlobal(input: AssetCopyInput) {
 
 async function copyCharacterFromGlobal(input: AssetCopyInput) {
   const globalCharacter = await prisma.globalCharacter.findFirst({
-    where: { id: input.globalAssetId, userId: input.access.userId },
+    where: { id: input.globalAssetId, ...assetScopeWhere(input.access.userId) },
     include: { appearances: true },
   })
   if (!globalCharacter) throw new ApiError('NOT_FOUND')
@@ -854,7 +856,7 @@ async function copyCharacterFromGlobal(input: AssetCopyInput) {
 
 async function copyLocationFromGlobal(input: AssetCopyInput) {
   const globalLocation = await prisma.globalLocation.findFirst({
-    where: { id: input.globalAssetId, userId: input.access.userId },
+    where: { id: input.globalAssetId, ...assetScopeWhere(input.access.userId) },
     include: { images: true },
   })
   if (!globalLocation) throw new ApiError('NOT_FOUND')
@@ -904,7 +906,7 @@ async function copyLocationFromGlobal(input: AssetCopyInput) {
 
 async function copyVoiceFromGlobal(input: AssetCopyInput) {
   const globalVoice = await prisma.globalVoice.findFirst({
-    where: { id: input.globalAssetId, userId: input.access.userId },
+    where: { id: input.globalAssetId, ...assetScopeWhere(input.access.userId) },
   })
   if (!globalVoice) throw new ApiError('NOT_FOUND')
   const character = await prisma.novelPromotionCharacter.update({
@@ -1173,6 +1175,7 @@ export async function createAsset(input: AssetCreateInput) {
 export async function removeAsset(input: AssetRemoveInput) {
   requireLocationBackedKind(input.kind)
   if (input.access.scope === 'global') {
+    await requireAssetDeletion('location', input.assetId)
     await deleteGlobalLocationBackedAsset(input.assetId)
     return { success: true }
   }

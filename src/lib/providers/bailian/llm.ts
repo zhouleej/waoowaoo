@@ -1,3 +1,4 @@
+import { workspaceRuntime } from '@/lib/workspace/runtime'
 import OpenAI from 'openai'
 import {
   assertOfficialModelRegistered,
@@ -38,6 +39,7 @@ export async function completeBailianLlm(
   const completion = await client.chat.completions.create({
     model: _params.modelId,
     messages: _params.messages as OpenAI.Chat.Completions.ChatCompletionMessageParam[],
+    ...(workspaceRuntime().organizationId ? { max_tokens: 32768 } : {}),
     temperature: _params.temperature ?? 0.7,
   })
   return completion as OpenAI.Chat.Completions.ChatCompletion

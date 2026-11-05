@@ -28,6 +28,7 @@ type TestProviderPayload = {
   baseUrl?: string
   apiKey: string
   llmModel?: string
+  readOnly?: boolean
 }
 
 function classifyProbeFailure(status: number): { status: TestStepStatus; message: string } {
@@ -888,6 +889,16 @@ export async function testProviderConnection(payload: TestProviderPayload): Prom
       success: false,
       steps: [{ name: 'models', status: 'fail', message: 'Missing baseUrl' }],
     }
+  }
+
+  if (payload.readOnly && ['ark', 'google', 'minimax'].includes(apiType)) {
+    const url = apiType === 'ark' ? 'https://ark.cn-beijing.volces.com/api/v3/models'
+      : apiType === 'google' ? 'https://generativelanguage.googleapis.com/v1beta/models'
+        : 'https://api.minimaxi.com/v1/models'
+    try {
+      const response = await fetch(url, { method: 'GET', headers: apiType === 'google' ? { 'x-goog-api-key': apiKey } : { Authorization: `Bearer ${apiKey}` }, signal: AbortSignal.timeout(15000) })
+      return { success: response.ok, steps: [{ name: 'models', status: response.ok ? 'pass' : 'fail', message: response.ok ? 'Connection verified' : `Provider probe returned HTTP ${response.status}` }] }
+    } catch { return { success: false, steps: [{ name: 'models', status: 'fail', message: 'Connection failed' }] } }
   }
 
   switch (apiType) {

@@ -111,7 +111,9 @@
     "backup:archive-legacy-media": "tsx scripts/media-archive-legacy-refs.ts",
     "backup:unreferenced-media-index": "tsx scripts/media-build-unreferenced-index.ts",
     "lint": "eslint",
-    "clean": "rimraf .next"
+    "clean": "rimraf .next",
+    "test:teams:local": "node --env-file=.env --import tsx scripts/verify-team-workspaces.mjs",
+    "media:backfill-workspaces": "tsx --env-file=.env scripts/backfill-workspace-media.ts"
   },
   "dependencies": {
     "@ai-sdk/google": "^3.0.22",

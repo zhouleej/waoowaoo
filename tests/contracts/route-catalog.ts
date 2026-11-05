@@ -29,6 +29,16 @@ export type RouteCatalogEntry = {
 }
 
 const ROUTE_FILES = [
+  'src/app/api/asset-hub/copy-to-team/route.ts',
+  'src/app/api/organizations/[id]/accounts/route.ts',
+  'src/app/api/organizations/[id]/leave/route.ts',
+  'src/app/api/organizations/[id]/model-config/route.ts',
+  'src/app/api/organizations/[id]/model-config/test/route.ts',
+  'src/app/api/organizations/[id]/transfer-owner/route.ts',
+  'src/app/api/organizations/[id]/usage-statistics/route.ts',
+  'src/app/api/user/team-invitations/route.ts',
+  'src/app/api/user/team-invitations/[invitationId]/route.ts',
+
   'src/app/api/novel-promotion/[projectId]/snapshots/route.ts',
   'src/app/api/novel-promotion/[projectId]/editor/render/route.ts',
   'src/app/api/admin/download-logs/route.ts',

@@ -3,6 +3,8 @@ import { generateVideoViaOpenAICompatTemplate } from '@/lib/model-gateway/openai
 import { MaasSeedanceVideoGenerator } from '@/lib/generators/video/maas-seedance'
 import { pollAsyncTask } from '@/lib/async-poll'
 import { startScenarioServer } from '../../helpers/fakes/scenario-server'
+import { runOpenAICompatChatCompletion } from '@/lib/model-gateway/openai-compat/chat'
+import { withWorkspaceRuntime } from '@/lib/workspace/runtime'
 
 const getProviderConfigMock = vi.hoisted(() => vi.fn())
 const getUserModelsMock = vi.hoisted(() => vi.fn())
@@ -32,6 +34,37 @@ describe('provider contract - openai compatible media template', () => {
   afterEach(async () => {
     await server?.close()
     server = null
+  })
+
+  it('bounds team text output while using the configured provider credentials', async () => {
+    server!.defineScenario({
+      method: 'POST', path: '/compat/v1/chat/completions', mode: 'success',
+      submitResponse: { status: 200, body: {
+        id: 'chat-team', object: 'chat.completion', created: 1, model: 'team-model',
+        choices: [{ index: 0, message: { role: 'assistant', content: 'Team result' }, finish_reason: 'stop' }],
+        usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+      } },
+    })
+    const result = await withWorkspaceRuntime({ actorId: 'member-local', organizationId: 'team-local', billingSource: 'team_api_key' }, async () =>
+      await runOpenAICompatChatCompletion({ userId: 'member-local', providerId: 'openai-compatible:provider-local', modelId: 'team-model', messages: [{ role: 'user', content: 'hello' }], temperature: 0 }),
+    )
+    expect(result.choices[0]?.message.content).toBe('Team result')
+    expect(result.usage?.total_tokens).toBe(15)
+    const requests = server!.getRequests('POST', '/compat/v1/chat/completions')
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.headers.authorization).toBe('Bearer sk-local')
+    expect(JSON.parse(requests[0]?.bodyText || '{}')).toMatchObject({ model: 'team-model', max_tokens: 32768 })
+  })
+
+  it('does not silently retry a potentially chargeable team request inside the SDK', async () => {
+    server!.defineScenario({
+      method: 'POST', path: '/compat/v1/chat/completions', mode: 'success',
+      submitResponse: { status: 503, body: { error: { message: 'Provider temporarily unavailable' } } },
+    })
+    await expect(withWorkspaceRuntime({ actorId: 'member-local', organizationId: 'team-local', billingSource: 'team_api_key' }, async () =>
+      await runOpenAICompatChatCompletion({ userId: 'member-local', providerId: 'openai-compatible:provider-local', modelId: 'team-model', messages: [{ role: 'user', content: 'hello' }], temperature: 0 }),
+    )).rejects.toMatchObject({ status: 503 })
+    expect(server!.getRequests('POST', '/compat/v1/chat/completions')).toHaveLength(1)
   })
 
   it('renders create request against provider baseUrl and returns OCOMPAT externalId', async () => {

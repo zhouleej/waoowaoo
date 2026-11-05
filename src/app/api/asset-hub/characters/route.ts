@@ -1,3 +1,4 @@
+import { assetScopeData, canAccessScopedAsset, assetScopeWhere } from '@/lib/workspace/runtime'
 import { logError as _ulogError } from '@/lib/logging/core'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
@@ -26,7 +27,7 @@ export const GET = apiHandler(async (request: NextRequest) => {
     const { searchParams } = new URL(request.url)
     const folderId = searchParams.get('folderId')
 
-    const where: Record<string, unknown> = { userId: session.user.id }
+    const where: Record<string, unknown> = { ...assetScopeWhere(session.user.id) }
     if (folderId === 'null') {
         where.folderId = null
     } else if (folderId) {
@@ -87,14 +88,14 @@ export const POST = apiHandler(async (request: NextRequest) => {
         const folder = await prisma.globalAssetFolder.findUnique({
             where: { id: folderId }
         })
-        if (!folder || folder.userId !== session.user.id) {
+        if (!folder || !canAccessScopedAsset(folder, session.user.id)) {
             throw new ApiError('INVALID_PARAMS')
         }
     }
 
     const character = await prisma.globalCharacter.create({
         data: {
-            userId: session.user.id,
+            ...assetScopeData(session.user.id),
             folderId: folderId || null,
             name: name.trim(),
             aliases: null

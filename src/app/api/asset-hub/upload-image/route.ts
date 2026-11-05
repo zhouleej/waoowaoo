@@ -1,3 +1,4 @@
+import { assetScopeWhere } from '@/lib/workspace/runtime'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { uploadObject, generateUniqueKey } from '@/lib/storage'
@@ -83,7 +84,7 @@ export const POST = apiHandler(async (request: NextRequest) => {
             where: {
                 characterId: id,
                 appearanceIndex: parseInt(appearanceIndex),
-                character: { userId: session.user.id }
+                character: { ...assetScopeWhere(session.user.id) }
             }
         })
 
@@ -132,7 +133,7 @@ export const POST = apiHandler(async (request: NextRequest) => {
 
     } else if (type === 'location') {
         const location = await db.globalLocation.findFirst({
-            where: { id, userId: session.user.id },
+            where: { id, ...assetScopeWhere(session.user.id) },
             include: { images: { orderBy: { imageIndex: 'asc' } } }
         })
 

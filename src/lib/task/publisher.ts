@@ -1,3 +1,4 @@
+import { workspaceRuntime, workspaceScopeKey } from '@/lib/workspace/runtime'
 import { prisma } from '@/lib/prisma'
 import { redis } from '@/lib/redis'
 import {
@@ -30,6 +31,7 @@ type TaskEventRow = {
 }
 
 type TaskMeta = {
+  organizationId?: string | null
   id: string
   type: string
   targetType: string
@@ -222,7 +224,14 @@ export async function listTaskLifecycleEvents(taskId: string, limit = 500) {
 }
 
 export function getProjectChannel(projectId: string) {
-  return `${CHANNEL_PREFIX}${projectId}`
+  return `${CHANNEL_PREFIX}${projectId}${['global-asset-hub', 'home-ai-write'].includes(projectId) ? ':' + workspaceScopeKey(workspaceRuntime().actorId ?? '') : ''}`
+}
+
+async function eventChannel(params: { projectId: string; taskId: string; userId: string }) {
+  if (!['global-asset-hub', 'home-ai-write'].includes(params.projectId) || workspaceRuntime().actorId) return getProjectChannel(params.projectId)
+  const [task] = await taskModel.findMany({ where: { id: params.taskId }, select: { organizationId: true }, take: 1 })
+  const scope = task?.organizationId ? `team:${task.organizationId}` : `personal:${params.userId}`
+  return `${CHANNEL_PREFIX}${params.projectId}:${scope}`
 }
 
 async function mirrorTaskEventToRun(message: SSEEvent) {
@@ -278,7 +287,7 @@ export async function publishTaskLifecycleEvent(params: {
     payload: params.payload || null,
   })
 
-  await redis.publish(getProjectChannel(params.projectId), JSON.stringify(message))
+  await redis.publish(await eventChannel(params), JSON.stringify(message))
   await mirrorTaskEventToRun(message)
   return message
 }
@@ -351,7 +360,7 @@ export async function publishTaskStreamEvent(params: {
     payload: normalizedPayload,
   })
 
-  await redis.publish(getProjectChannel(params.projectId), JSON.stringify(message))
+  await redis.publish(await eventChannel(params), JSON.stringify(message))
   await mirrorTaskEventToRun(message)
   return message
 }
@@ -367,6 +376,7 @@ export async function listEventsAfter(projectId: string, afterId: number, limit 
     const rows = await taskEventModel.findMany({
       where: {
         projectId,
+        ...(['global-asset-hub', 'home-ai-write'].includes(projectId) ? workspaceRuntime().organizationId ? { task: { organizationId: workspaceRuntime().organizationId } } : { userId: workspaceRuntime().actorId, task: { organizationId: null } } : {}),
         id: { gt: cursor },
       },
       orderBy: { id: 'asc' },

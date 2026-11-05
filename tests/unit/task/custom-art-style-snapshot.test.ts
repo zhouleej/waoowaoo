@@ -33,7 +33,7 @@ describe('custom art styles', () => {
     const value = `custom:${id}`
     expect(await validateUserArtStyle(value, 'user-1')).toBe(value)
     expect(await snapshotCustomArtStyle(value, 'user-1')).toBe('soft watercolor')
-    expect(prismaMock.customArtStyle.findFirst).toHaveBeenCalledWith({ where: { id, userId: 'user-1' } })
+    expect(prismaMock.customArtStyle.findFirst).toHaveBeenCalledWith({ where: { id, userId: 'user-1', organizationId: null } })
   })
 
   it('prefers a queued snapshot even after the saved style changes', async () => {

@@ -1,3 +1,6 @@
+import { teamPreference, requireWorkspaceManager } from '@/lib/workspace/access'
+import { workspaceRuntime } from '@/lib/workspace/runtime'
+import { getTeamModelConfig, saveTeamModelConfig } from '@/lib/workspace/model-config'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUserAuth, isErrorResponse } from '@/lib/api-auth'
@@ -22,6 +25,12 @@ export const GET = apiHandler(async () => {
   const authResult = await requireUserAuth()
   if (isErrorResponse(authResult)) return authResult
   const { session } = authResult
+
+  const team = await teamPreference()
+  if (team) {
+    const { customProviders: _providers, customModels: _models, ...preference } = team
+    return NextResponse.json({ preference })
+  }
 
   // 获取或创建用户偏好
   const preference = await prisma.userPreference.upsert({
@@ -70,6 +79,15 @@ export const PATCH = apiHandler(async (request: NextRequest) => {
 
   if (Object.keys(updateData).length === 0) {
     throw new ApiError('INVALID_PARAMS')
+  }
+
+  const workspace = workspaceRuntime()
+  if (workspace.organizationId && workspace.billingSource === 'team_api_key') {
+    await requireWorkspaceManager()
+    const config = await getTeamModelConfig(workspace.organizationId, session.user.id)
+    const defaults = { ...config.defaults as Record<string, unknown>, ...updateData }
+    await saveTeamModelConfig(workspace.organizationId, session.user.id, { ...config, defaults })
+    return NextResponse.json({ preference: defaults })
   }
 
   // 更新或创建用户偏好

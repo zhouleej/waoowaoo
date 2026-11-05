@@ -1,3 +1,4 @@
+import { canAccessScopedAsset } from '@/lib/workspace/runtime'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUserAuth, isErrorResponse } from '@/lib/api-auth'
@@ -22,7 +23,7 @@ export const PATCH = apiHandler(async (
         where: { id: characterId }
     })
 
-    if (!character || character.userId !== session.user.id) {
+    if (!character || !canAccessScopedAsset(character, session.user.id)) {
         throw new ApiError('FORBIDDEN')
     }
 
@@ -97,7 +98,7 @@ export const POST = apiHandler(async (
         include: { appearances: true }
     })
 
-    if (!character || character.userId !== session.user.id) {
+    if (!character || !canAccessScopedAsset(character, session.user.id)) {
         throw new ApiError('FORBIDDEN')
     }
 
@@ -152,7 +153,7 @@ export const DELETE = apiHandler(async (
         include: { appearances: true }
     })
 
-    if (!character || character.userId !== session.user.id) {
+    if (!character || !canAccessScopedAsset(character, session.user.id)) {
         throw new ApiError('FORBIDDEN')
     }
 

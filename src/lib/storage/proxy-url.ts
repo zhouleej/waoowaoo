@@ -1,3 +1,4 @@
+import { workspaceRuntime } from '@/lib/workspace/runtime'
 import { createHmac, timingSafeEqual } from 'node:crypto'
 
 const DEFAULT_PROXY_TTL_SECONDS = 3_600
@@ -43,8 +44,8 @@ export function getStorageProxyUrl(
 ): string {
   if (!isValidStorageKey(key)) throw new Error('STORAGE_PROXY_KEY_INVALID')
   const ttl = Number.isFinite(expiresInSeconds)
-    ? Math.min(MAX_PROXY_TTL_SECONDS, Math.max(1, Math.floor(expiresInSeconds)))
-    : DEFAULT_PROXY_TTL_SECONDS
+    ? Math.min(workspaceRuntime().organizationId ? 900 : MAX_PROXY_TTL_SECONDS, Math.max(1, Math.floor(expiresInSeconds)))
+    : workspaceRuntime().organizationId ? 900 : DEFAULT_PROXY_TTL_SECONDS
   const expiresAt = Math.floor(Date.now() / 1_000) + ttl
   const signature = signStorageProxyValue(key, expiresAt)
   return `/api/storage/proxy?key=${encodeURIComponent(key)}&expires=${expiresAt}&signature=${signature}`
@@ -58,8 +59,8 @@ export function getStorageDownloadUrl(
   if (!isValidStorageKey(key)) throw new Error('STORAGE_PROXY_KEY_INVALID')
   if (!isValidDownloadFilename(filename)) throw new Error('STORAGE_PROXY_FILENAME_INVALID')
   const ttl = Number.isFinite(expiresInSeconds)
-    ? Math.min(MAX_PROXY_TTL_SECONDS, Math.max(1, Math.floor(expiresInSeconds)))
-    : DEFAULT_PROXY_TTL_SECONDS
+    ? Math.min(workspaceRuntime().organizationId ? 900 : MAX_PROXY_TTL_SECONDS, Math.max(1, Math.floor(expiresInSeconds)))
+    : workspaceRuntime().organizationId ? 900 : DEFAULT_PROXY_TTL_SECONDS
   const expiresAt = Math.floor(Date.now() / 1_000) + ttl
   const signature = signStorageProxyValue(key, expiresAt, 'attachment', filename)
   return `/api/storage/proxy?key=${encodeURIComponent(key)}&expires=${expiresAt}&disposition=attachment&filename=${encodeURIComponent(filename)}&signature=${signature}`

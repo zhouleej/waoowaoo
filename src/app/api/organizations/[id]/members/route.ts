@@ -24,6 +24,7 @@ export const POST = apiHandler(async (req, ctx) => {
   if (permResult.error) return permResult.error
 
   const { membership: currentUser } = permResult
+  if (currentUser?.organization?.billingSource === 'team_api_key') return badRequest('请通过邀请加入团队 / Use a team invitation')
 
   const body = await req.json()
   const { role = 'member' } = body
@@ -150,5 +151,5 @@ export const GET = apiHandler(async (_req, ctx) => {
     })
   )
 
-  return NextResponse.json(members)
+  return NextResponse.json(members.map(member => ({ ...member, quota: ['owner', 'admin'].includes(permResult.membership?.role ?? '') || member.userId === session.user.id ? member.quota : null })))
 })

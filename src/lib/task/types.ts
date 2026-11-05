@@ -151,6 +151,8 @@ export type SSEEvent = {
 }
 
 export type CreateTaskInput = {
+  modelConfigVersionId?: string | null
+  targetRevision?: number | null
   userId: string
   projectId: string
   organizationId?: string | null

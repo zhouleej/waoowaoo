@@ -1,3 +1,5 @@
+import { revisionRequestHeaders, rememberResponseRevisions } from '@/lib/workspace/client-revisions'
+import { getClientWorkspaceScope } from '@/lib/workspace/client-scope'
 const LOCALE_PATH_PATTERN = /^\/(zh|en)(\/|$)/
 
 function resolveLocaleFromPath(pathname: string): string {
@@ -38,6 +40,7 @@ function shouldInjectLocaleHeader(input: RequestInfo | URL): boolean {
 
 export function mergeLocaleHeader(init?: RequestInit): RequestInit {
   const headers = new Headers(init?.headers)
+  if (!headers.has('X-Workspace-Scope') && typeof window !== 'undefined') headers.set('X-Workspace-Scope', getClientWorkspaceScope())
   if (!headers.has('Accept-Language')) {
     headers.set('Accept-Language', getPageLocale())
   }
@@ -48,7 +51,9 @@ export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Pr
   if (!shouldInjectLocaleHeader(input)) {
     return fetch(input, init)
   }
-  return fetch(input, mergeLocaleHeader(init))
+  const response = await fetch(input, mergeLocaleHeader({ ...init, headers: revisionRequestHeaders(input, init) }))
+  rememberResponseRevisions(response)
+  return response
 }
 
 export class ApiRequestTimeoutError extends Error {

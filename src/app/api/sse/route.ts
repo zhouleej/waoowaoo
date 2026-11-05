@@ -1,3 +1,5 @@
+import { workspaceRuntime } from '@/lib/workspace/runtime'
+import { teamMember } from '@/lib/workspace/teams'
 import { createScopedLogger } from '@/lib/logging/core'
 import { NextRequest, NextResponse } from 'next/server'
 import { apiHandler, ApiError, getRequestId } from '@/lib/api-errors'
@@ -43,7 +45,7 @@ async function listActiveLifecycleSnapshot(params: {
   const rows = await prisma.task.findMany({
     where: {
       projectId: params.projectId,
-      userId: params.userId,
+      ...(workspaceRuntime().organizationId ? { organizationId: workspaceRuntime().organizationId } : { userId: params.userId, organizationId: null }),
       status: {
         in: ['queued', 'processing']},
       ...(params.episodeId ? { episodeId: params.episodeId } : {})},
@@ -102,6 +104,7 @@ export const GET = apiHandler(async (request: NextRequest) => {
   if (isErrorResponse(authResult)) return authResult
   const { session } = authResult
 
+  const organizationId = workspaceRuntime().organizationId
   const channel = getProjectChannel(projectId)
   const sharedSubscriber = getSharedSubscriber()
   const requestId = getRequestId(request)
@@ -183,15 +186,25 @@ export const GET = apiHandler(async (request: NextRequest) => {
       }
 
       unsubscribe = await sharedSubscriber.addChannelListener(channel, (message) => {
+        void (async () => {
+        if (organizationId) { try { await teamMember(organizationId, session.user.id) } catch { await close(); return } }
         try {
           const event = JSON.parse(message) as SSEEvent
           safeEnqueue(formatSSE(event))
         } catch {
           safeEnqueue(`data: ${message}\n\n`)
         }
+        })()
       })
 
-      timer = setInterval(() => safeEnqueue(formatHeartbeat()), 15_000)
+      timer = setInterval(() => {
+        void (async () => {
+          if (organizationId) {
+            try { await teamMember(organizationId, session.user.id) } catch { await close(); return }
+          }
+          safeEnqueue(formatHeartbeat())
+        })()
+      }, 5_000)
     },
     cancel() {
       void closeStream?.()

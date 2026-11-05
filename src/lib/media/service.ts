@@ -1,3 +1,4 @@
+import { registerMediaScope } from '@/lib/workspace/media-access'
 import path from 'node:path'
 import { prisma } from '@/lib/prisma'
 import { extractStorageKey } from '@/lib/storage'
@@ -93,6 +94,7 @@ export async function ensureMediaObjectFromStorageKey(
 
   const existing = (await mediaModel.findUnique({ where: { storageKey } })) as MediaObjectRow | null
   if (existing != null) {
+    await registerMediaScope(existing.id)
     return mapMediaObjectToRef(existing)
   }
 
@@ -119,6 +121,7 @@ export async function ensureMediaObjectFromStorageKey(
       },
     })) as MediaObjectRow
 
+    await registerMediaScope(created.id)
     return mapMediaObjectToRef(created)
   } catch (error: unknown) {
     // P2002 = unique constraint violation. Another concurrent request already

@@ -1,3 +1,4 @@
+import { withTeamUsage } from '@/lib/workspace/budget'
 import { logError as _ulogError, logInfo as _ulogInfo } from '@/lib/logging/core'
 import { getProviderKey, resolveModelSelectionOrSingle } from '@/lib/api-config'
 import { preprocessLipSyncParams, type LipSyncProviderKey } from '@/lib/lipsync/preprocess'
@@ -26,7 +27,7 @@ function resolveProviderKey(value: string): LipSyncProviderKey {
   throw new Error(`LIPSYNC_PROVIDER_UNSUPPORTED: ${value}`)
 }
 
-export async function generateLipSync(
+async function generateLipSyncCore(
   params: LipSyncParams,
   userId: string,
   modelKey?: string,
@@ -81,3 +82,8 @@ export async function generateLipSync(
 }
 
 export type { LipSyncParams, LipSyncResult } from '@/lib/lipsync/types'
+
+export async function generateLipSync(...args: Parameters<typeof generateLipSyncCore>) {
+  const selection = await resolveModelSelectionOrSingle(args[1], args[2], 'lipsync')
+  return withTeamUsage({ model: selection.modelKey, kind: 'lipsync', quantity: (args[0].videoDurationMs ?? args[0].audioDurationMs ?? 5000) / 1000, unit: 'second' }, () => generateLipSyncCore(...args))
+}

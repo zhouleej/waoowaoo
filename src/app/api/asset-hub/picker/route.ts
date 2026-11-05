@@ -1,3 +1,4 @@
+import { assetScopeWhere } from '@/lib/workspace/runtime'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUserAuth, isErrorResponse } from '@/lib/api-auth'
@@ -24,7 +25,7 @@ export const GET = apiHandler(async (request: NextRequest) => {
 
     if (type === 'character') {
         const characters = await prisma.globalCharacter.findMany({
-            where: { userId: session.user.id },
+            where: { ...assetScopeWhere(session.user.id) },
             include: {
                 appearances: {
                     orderBy: { appearanceIndex: 'asc' }
@@ -62,7 +63,7 @@ export const GET = apiHandler(async (request: NextRequest) => {
 
     if (type === 'location') {
         const locations = await prisma.globalLocation.findMany({
-            where: { userId: session.user.id },
+            where: { ...assetScopeWhere(session.user.id) },
             include: {
                 images: {
                     orderBy: { imageIndex: 'asc' }
@@ -96,7 +97,7 @@ export const GET = apiHandler(async (request: NextRequest) => {
 
     if (type === 'voice') {
         const voices = await prisma.globalVoice.findMany({
-            where: { userId: session.user.id },
+            where: { ...assetScopeWhere(session.user.id) },
             include: {
                 folder: true
             },

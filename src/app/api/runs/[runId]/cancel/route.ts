@@ -1,3 +1,4 @@
+import { workspaceRuntime } from '@/lib/workspace/runtime'
 import { NextRequest, NextResponse } from 'next/server'
 import { apiHandler, ApiError } from '@/lib/api-errors'
 import { isErrorResponse, requireUserAuth } from '@/lib/api-auth'
@@ -22,6 +23,7 @@ export const POST = apiHandler(async (
   }
   const access = await requireProjectScopedResourceAccess(session, run)
   if (isErrorResponse(access)) return access
+  if (run.userId !== session.user.id && !['owner', 'admin'].includes(workspaceRuntime().role ?? '')) throw new ApiError('FORBIDDEN')
 
   const cancelledRun = await requestRunCancel({
     runId,

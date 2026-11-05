@@ -1,5 +1,6 @@
 'use client'
 
+import { WorkspaceProvider } from '@/contexts/WorkspaceContext'
 import { SessionProvider } from "next-auth/react"
 import { ToastProvider } from "@/contexts/ToastContext"
 import { QueryProvider } from "@/components/providers/QueryProvider"
@@ -11,9 +12,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
       refetchInterval={0}
     >
       <QueryProvider>
-        <ToastProvider>
-          {children}
-        </ToastProvider>
+        <WorkspaceProvider>
+          <ToastProvider>{children}</ToastProvider>
+        </WorkspaceProvider>
       </QueryProvider>
     </SessionProvider>
   )

@@ -1,4 +1,5 @@
 'use client'
+import CopyAssetsToTeam from '@/components/teams/CopyAssetsToTeam'
 import { logError as _ulogError } from '@/lib/logging/core'
 import { apiFetch } from '@/lib/api-fetch'
 import JSZip from 'jszip'
@@ -445,6 +446,7 @@ export default function AssetHubPage() {
     return (
         <div className="glass-page min-h-screen">
             <Navbar />
+            <div className="max-w-7xl mx-auto px-4 pt-4"><CopyAssetsToTeam assets={assets} /></div>
             <div className="max-w-7xl mx-auto px-4 py-6">
                 {/* 页面标题 */}
                 <div className="mb-6">

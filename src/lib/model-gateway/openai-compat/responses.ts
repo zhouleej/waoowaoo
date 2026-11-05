@@ -1,3 +1,4 @@
+import { workspaceRuntime } from '@/lib/workspace/runtime'
 import { buildOpenAIChatCompletion } from '@/lib/llm/providers/openai-compat'
 import { buildReasoningAwareContent } from '@/lib/llm/utils'
 import type { OpenAICompatChatRequest } from '../types'
@@ -105,6 +106,7 @@ export async function runOpenAICompatResponsesCompletion(input: OpenAICompatChat
     },
     body: JSON.stringify({
       model: input.modelId,
+      ...(workspaceRuntime().organizationId ? { max_output_tokens: 32768 } : {}),
       input: input.messages.map((message) => ({
         role: message.role,
         content: [{ type: 'input_text', text: message.content }],

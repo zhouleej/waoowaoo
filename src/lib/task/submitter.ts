@@ -1,3 +1,7 @@
+import { captureTargetRevisions } from '@/lib/workspace/revisions'
+import { workspaceRuntime } from '@/lib/workspace/runtime'
+import { readTeamConfig } from '@/lib/workspace/access'
+import { reserveTeamBudget, releaseTeamReservation } from '@/lib/workspace/budget'
 import { createScopedLogger } from '@/lib/logging/core'
 import { addTaskJob } from './queues'
 import { publishTaskEvent } from './publisher'
@@ -25,6 +29,7 @@ import type { Locale } from '@/i18n/routing'
 import { attachTaskToRun, createRun, findReusableActiveRun } from '@/lib/run-runtime/service'
 import { isAiTaskType, workflowTypeFromTaskType } from '@/lib/run-runtime/workflow'
 import { prisma } from '@/lib/prisma'
+import { assertTeamCallsEnabled } from '@/lib/workspace/availability'
 import { snapshotCustomArtStyle } from '@/lib/art-styles/custom'
 
 const STYLE_TASK_TYPES = new Set<TaskType>([
@@ -138,6 +143,9 @@ export async function submitTask(params: {
     userId: params.userId,
   })
 
+  const workspace = workspaceRuntime()
+  assertTeamCallsEnabled()
+  if (workspace.organizationId && workspace.billingSource === 'team_api_key') await readTeamConfig()
   const normalizedPayloadBase = normalizeTaskPayload(params.type, params.payload || null)
   const normalizedPayloadMeta = toObject(normalizedPayloadBase.meta)
   const normalizedPayload: Record<string, unknown> = {
@@ -160,6 +168,14 @@ export async function submitTask(params: {
       normalizedPayload.artStyle = selectedStyle
       normalizedPayload.artStylePromptSnapshot = snapshot
     }
+  }
+  delete normalizedPayload.__targetRevisions
+  if (workspace.organizationId) {
+    const revisions = await captureTargetRevisions(prisma, params.targetType, params.targetId, params.projectId)
+    for (const [id, expected] of Object.entries(workspace.expectedRevisions ?? {})) {
+      if (revisions[id] !== undefined && revisions[id] !== expected) throw new ApiError('CONFLICT', { message: 'Content changed; reload before generating' })
+    }
+    normalizedPayload.__targetRevisions = revisions
   }
   const computedBillingInfo = isBillableTaskType(params.type)
     ? buildDefaultTaskBillingInfo(params.type, normalizedPayload)
@@ -192,6 +208,7 @@ export async function submitTask(params: {
   }
 
   const { task, deduped } = await createTask({
+    ...(workspace.organizationId ? { organizationId: workspace.organizationId, modelConfigVersionId: workspace.configVersionId } : {}),
     userId: params.userId,
     projectId: params.projectId,
     episodeId: params.episodeId || null,
@@ -199,7 +216,7 @@ export async function submitTask(params: {
     targetType: params.targetType,
     targetId: params.targetId,
     payload: normalizedPayload,
-    dedupeKey: runCentricTask ? null : (params.dedupeKey || null),
+    dedupeKey: workspace.organizationId ? `team:${workspace.organizationId}:${params.type}:${params.targetType}:${params.targetId}` : runCentricTask ? null : (params.dedupeKey || null),
     priority: params.priority,
     maxAttempts: params.maxAttempts,
     billingInfo: resolvedBillingInfo || null,
@@ -247,7 +264,7 @@ export async function submitTask(params: {
   let preparedBillingInfo = (task.billingInfo || resolvedBillingInfo || null) as TaskBillingInfo | null
   if (!deduped && isBillableTaskType(params.type) && preparedBillingInfo?.billable !== true) {
     const billingMode = await getBillingMode()
-    if (billingMode === 'ENFORCE') {
+    if (billingMode === 'ENFORCE' && workspace.billingSource !== 'team_api_key') {
       await markTaskFailed(task.id, 'INVALID_PARAMS', `missing server-generated billingInfo for billable task type: ${params.type}`)
       throw new ApiError('INVALID_PARAMS', {
         message: `missing server-generated billingInfo for billable task type: ${params.type}`,
@@ -264,6 +281,20 @@ export async function submitTask(params: {
     })
   }
 
+  if (!deduped && workspace.organizationId && workspace.billingSource === 'team_api_key') {
+    try {
+      const config = await readTeamConfig()
+      const models = JSON.parse(config!.models) as Array<{ provider: string; modelId: string; type: string; budgetPrice: number }>
+      const info = preparedBillingInfo?.billable ? preparedBillingInfo : null
+      const model = info ? models.find(item => `${item.provider}::${item.modelId}` === info.model) : null
+      const divisor = model?.type === 'llm' ? 1_000_000 : model?.type === 'audio' ? 1000 : 1
+      const amount = model && info ? model.budgetPrice * Math.max(info.quantity, model.type === 'llm' ? 32768 : 1) / divisor : 0
+      await reserveTeamBudget({ organizationId: workspace.organizationId, userId: params.userId, taskId: task.id, amount })
+    } catch (error) {
+      await markTaskFailed(task.id, 'QUOTA_EXCEEDED', error instanceof Error ? error.message : 'Team budget exceeded')
+      throw error
+    }
+  }
   if (!deduped && preparedBillingInfo) {
     try {
       preparedBillingInfo = (await prepareTaskBilling({
@@ -367,6 +398,7 @@ export async function submitTask(params: {
       })
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error)
+      await releaseTeamReservation(task.id)
       await markTaskEnqueueFailed(task.id, message || 'queue.add failed')
       const rollbackResult = await rollbackTaskBillingForTask({
         taskId: task.id,

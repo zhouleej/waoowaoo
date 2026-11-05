@@ -1,3 +1,4 @@
+import { workspaceRuntime } from '@/lib/workspace/runtime'
 /**
  * 火山引擎 Ark LLM (Responses API) 封装
  */
@@ -121,6 +122,7 @@ export async function arkResponsesCompletion(options: ArkResponsesOptions): Prom
         body: JSON.stringify({
             model: options.model,
             input: options.input,
+            ...(workspaceRuntime().organizationId ? { max_output_tokens: 32768 } : {}),
             ...(thinking && { thinking })
         })
     })
@@ -241,6 +243,7 @@ export function arkResponsesStream(options: ArkResponsesOptions & { temperature?
     const body: Record<string, unknown> = {
         model: options.model,
         input: options.input,
+            ...(workspaceRuntime().organizationId ? { max_output_tokens: 32768 } : {}),
         stream: true,
         ...(thinking && { thinking }),
         ...(options.temperature !== undefined && { temperature: options.temperature }),

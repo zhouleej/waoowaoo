@@ -1,3 +1,5 @@
+import { workspaceRuntime } from '@/lib/workspace/runtime'
+import { withTeamUsage } from '@/lib/workspace/budget'
 import OpenAI from 'openai'
 import { generateText, streamText, type ModelMessage } from 'ai'
 import { createOpenAI } from '@ai-sdk/openai'
@@ -61,7 +63,7 @@ type OpenAIStreamWithFinal = AsyncIterable<unknown> & {
 
 
 
-export async function chatCompletionStream(
+async function chatCompletionStreamCore(
   userId: string,
   model: string | null | undefined,
   messages: { role: 'user' | 'assistant' | 'system'; content: string }[],
@@ -204,6 +206,7 @@ export async function chatCompletionStream(
         model: resolvedModelId,
         contents,
         config: {
+            ...(workspaceRuntime().organizationId ? { maxOutputTokens: 32768 } : {}),
           temperature: options.temperature ?? 0.7,
           ...(systemInstruction ? { systemInstruction } : {}),
           ...(thinkingConfig ? { thinkingConfig } : {}),
@@ -465,11 +468,12 @@ export async function chatCompletionStream(
         const useReasoning = options.reasoning ?? true
         const aiStreamResult = streamText({
           model: aiOpenAI.chat(resolvedModelId),
+          ...(workspaceRuntime().organizationId ? { maxOutputTokens: 32768 } : {}),
           system: getSystemPrompt(messages),
           messages: getConversationMessages(messages),
           // 推理模型不支持 temperature，仅在非推理模式下传递
           ...(useReasoning ? {} : { temperature: options.temperature ?? 0.7 }),
-          maxRetries: options.maxRetries ?? 2,
+          maxRetries: workspaceRuntime().organizationId ? 0 : options.maxRetries ?? 2,
           ...(aiSdkProviderOptions ? { providerOptions: aiSdkProviderOptions } : {}),
         })
 
@@ -616,10 +620,11 @@ export async function chatCompletionStream(
           try {
             const fallbackResult = await generateText({
               model: aiOpenAI.chat(resolvedModelId),
+          ...(workspaceRuntime().organizationId ? { maxOutputTokens: 32768 } : {}),
               system: getSystemPrompt(messages),
               messages: getConversationMessages(messages) as ModelMessage[],
               temperature: options.temperature ?? 0.7,
-              maxRetries: options.maxRetries ?? 2,
+              maxRetries: workspaceRuntime().organizationId ? 0 : options.maxRetries ?? 2,
             })
             const fallbackReasoning = fallbackResult.reasoningText || ''
             const fallbackText = fallbackResult.text || ''
@@ -743,6 +748,7 @@ export async function chatCompletionStream(
       }
 
       const client = new OpenAI({
+        ...(workspaceRuntime().organizationId ? { maxRetries: 0 } : {}),
         baseURL: providerConfig.baseUrl,
         apiKey: providerConfig.apiKey,
       })
@@ -871,4 +877,8 @@ export async function chatCompletionStream(
     callbacks?.onError?.(error, streamStep)
     throw error
   }
+}
+
+export async function chatCompletionStream(...args: Parameters<typeof chatCompletionStreamCore>) {
+  return withTeamUsage({ model: args[1] ?? '', kind: 'text', quantity: args[2].reduce((sum, message) => sum + Buffer.byteLength(message.content, 'utf8'), 0) + 32768, unit: 'token' }, () => chatCompletionStreamCore(...args))
 }

@@ -1,3 +1,5 @@
+import { teamPreference } from '@/lib/workspace/access'
+import type { UserPreference } from '@prisma/client'
 /**
  * 统一配置服务
  *
@@ -19,6 +21,11 @@ import {
   type WorkflowConcurrencyConfig,
   normalizeWorkflowConcurrencyConfig,
 } from '@/lib/workflow-concurrency'
+
+async function readScopedPreference(userId: string): Promise<UserPreference | null> {
+  const team = await teamPreference()
+  return team ? team as unknown as UserPreference : prisma.userPreference.findUnique({ where: { userId } })
+}
 
 export type ParsedModelKey = { provider: string, modelId: string }
 
@@ -151,16 +158,16 @@ export async function getProjectModelConfig(
 ): Promise<ProjectModelConfig> {
   const [projectData, userPref] = await Promise.all([
     prisma.novelPromotionProject.findUnique({ where: { projectId } }),
-    prisma.userPreference.findUnique({ where: { userId } }),
+    readScopedPreference(userId),
   ])
 
   return {
     analysisModel: extractModelKey(projectData?.analysisModel) || extractModelKey(userPref?.analysisModel) || null,
-    characterModel: extractModelKey(projectData?.characterModel) || null,
-    locationModel: extractModelKey(projectData?.locationModel) || null,
-    storyboardModel: extractModelKey(projectData?.storyboardModel) || null,
-    editModel: extractModelKey(projectData?.editModel) || null,
-    videoModel: extractModelKey(projectData?.videoModel) || null,
+    characterModel: extractModelKey(projectData?.characterModel) || extractModelKey(userPref?.characterModel) || null,
+    locationModel: extractModelKey(projectData?.locationModel) || extractModelKey(userPref?.locationModel) || null,
+    storyboardModel: extractModelKey(projectData?.storyboardModel) || extractModelKey(userPref?.storyboardModel) || null,
+    editModel: extractModelKey(projectData?.editModel) || extractModelKey(userPref?.editModel) || null,
+    videoModel: extractModelKey(projectData?.videoModel) || extractModelKey(userPref?.videoModel) || null,
     audioModel: extractModelKey(projectData?.audioModel) || extractModelKey(userPref?.audioModel) || null,
     videoRatio: projectData?.videoRatio || '16:9',
     videoResolution: projectData?.videoResolution || '720p',
@@ -174,9 +181,7 @@ export async function getProjectModelConfig(
  * 获取用户级模型配置（无项目时使用）
  */
 export async function getUserModelConfig(userId: string): Promise<UserModelConfig> {
-  const userPref = await prisma.userPreference.findUnique({
-    where: { userId },
-  })
+  const userPref = await readScopedPreference(userId)
 
   return {
     analysisModel: extractModelKey(userPref?.analysisModel) || null,

@@ -1,3 +1,4 @@
+import { workspaceRuntime } from '@/lib/workspace/runtime'
 import { createHash, randomUUID } from 'node:crypto'
 import { NextResponse } from 'next/server'
 import { logError as _ulogError } from '@/lib/logging/core'
@@ -444,7 +445,7 @@ async function withSyncBillingCore<T>(
   const pricingVersion = BUILTIN_PRICING_VERSION
   const pricingSelections = params.metadata || {}
   const mode = await getBillingMode()
-  if (mode === 'OFF') {
+  if (mode === 'OFF' || workspaceRuntime().billingSource === 'team_api_key') {
     return await execute()
   }
 
@@ -864,12 +865,12 @@ export async function prepareTaskBilling(task: {
   const mode = await getBillingMode()
   const next: TaskBillingInfo = {
     ...info,
-    modeSnapshot: mode,
+    modeSnapshot: workspaceRuntime().billingSource === 'team_api_key' ? 'OFF' as const : mode,
     billingKey: info.billingKey || task.id,
     pricingVersion: info.pricingVersion || BUILTIN_PRICING_VERSION,
   }
 
-  if (mode === 'OFF') {
+  if (mode === 'OFF' || workspaceRuntime().billingSource === 'team_api_key') {
     next.status = 'skipped'
     return next
   }
@@ -1005,10 +1006,10 @@ export async function settleTaskBilling(task: {
 
   const mode = info.modeSnapshot || await getBillingMode()
   const noChargeStatus = info.status === 'skipped' ? 'skipped' : 'settled'
-  if (mode === 'OFF') {
+  if (mode === 'OFF' || workspaceRuntime().billingSource === 'team_api_key') {
     return {
       ...info,
-      modeSnapshot: mode,
+      modeSnapshot: workspaceRuntime().billingSource === 'team_api_key' ? 'OFF' as const : mode,
       status: noChargeStatus,
       chargedCost: 0,
     } satisfies TaskBillingInfo
@@ -1030,7 +1031,7 @@ export async function settleTaskBilling(task: {
     if (mode === 'SHADOW' && error instanceof BillingOperationError && error.code === 'BILLING_UNKNOWN_MODEL') {
       return {
         ...info,
-        modeSnapshot: mode,
+        modeSnapshot: workspaceRuntime().billingSource === 'team_api_key' ? 'OFF' as const : mode,
         status: noChargeStatus,
         chargedCost: 0,
       } satisfies TaskBillingInfo
@@ -1041,7 +1042,7 @@ export async function settleTaskBilling(task: {
   if (mode === 'SHADOW' && quotedCost <= 0) {
     return {
       ...info,
-      modeSnapshot: mode,
+      modeSnapshot: workspaceRuntime().billingSource === 'team_api_key' ? 'OFF' as const : mode,
       status: noChargeStatus,
       chargedCost: 0,
     } satisfies TaskBillingInfo
@@ -1054,7 +1055,7 @@ export async function settleTaskBilling(task: {
     if (mode === 'SHADOW' && error instanceof BillingOperationError && error.code === 'BILLING_UNKNOWN_MODEL') {
       return {
         ...info,
-        modeSnapshot: mode,
+        modeSnapshot: workspaceRuntime().billingSource === 'team_api_key' ? 'OFF' as const : mode,
         status: noChargeStatus,
         chargedCost: 0,
       } satisfies TaskBillingInfo
@@ -1089,7 +1090,7 @@ export async function settleTaskBilling(task: {
     })
     return {
       ...info,
-      modeSnapshot: mode,
+      modeSnapshot: workspaceRuntime().billingSource === 'team_api_key' ? 'OFF' as const : mode,
       status: info.status === 'skipped' ? 'skipped' : 'settled',
       chargedCost: 0,
     } satisfies TaskBillingInfo
@@ -1098,7 +1099,7 @@ export async function settleTaskBilling(task: {
   if (mode !== 'ENFORCE') {
     return {
       ...info,
-      modeSnapshot: mode,
+      modeSnapshot: workspaceRuntime().billingSource === 'team_api_key' ? 'OFF' as const : mode,
       status: info.status === 'skipped' ? 'skipped' : 'settled',
       chargedCost: 0,
     } satisfies TaskBillingInfo

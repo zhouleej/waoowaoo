@@ -1,3 +1,4 @@
+import { workspaceRuntime } from '@/lib/workspace/runtime'
 import { randomUUID } from 'crypto'
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
@@ -20,6 +21,7 @@ type ProjectLocationBackedAssetRow = {
 }
 
 type GlobalLocationBackedAssetRow = {
+  organizationId: string | null
   id: string
   userId: string
   folderId: string | null
@@ -170,13 +172,14 @@ export async function listGlobalLocationBackedAssets(input: {
     SELECT
       id,
       userId,
+      organizationId,
       folderId,
       name,
       summary,
       artStyle,
       assetKind
     FROM global_locations
-    WHERE userId = ${input.userId}
+    WHERE ${workspaceRuntime().organizationId ? Prisma.sql`organizationId = ${workspaceRuntime().organizationId}` : Prisma.sql`userId = ${input.userId} AND organizationId IS NULL`}
       AND assetKind = ${input.kind}
       ${folderFilter}
     ORDER BY createdAt ASC
@@ -251,6 +254,7 @@ export async function createGlobalLocationBackedAsset(input: {
     INSERT INTO global_locations (
       id,
       userId,
+      organizationId,
       folderId,
       name,
       summary,
@@ -261,6 +265,7 @@ export async function createGlobalLocationBackedAsset(input: {
     ) VALUES (
       ${id},
       ${input.userId},
+      ${workspaceRuntime().organizationId ?? null},
       ${input.folderId ?? null},
       ${input.name},
       ${input.summary},

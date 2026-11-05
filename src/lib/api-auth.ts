@@ -1,3 +1,5 @@
+import { bindRequestWorkspace, bindTeamWorkspace } from '@/lib/workspace/access'
+import { workspaceRuntime, setWorkspaceRuntime } from '@/lib/workspace/runtime'
 /**
  * 🔐 API 权限验证工具
  * 集中管理 Session 验证、项目权限检查等通用逻辑
@@ -47,6 +49,15 @@ async function getInternalTaskSession(): Promise<AuthSession | null> {
         return null
     }
 
+    const taskId = incomingHeaders.get('x-internal-task-id')
+    if (taskId) {
+        const task = await prisma.task.findUnique({ where: { id: taskId }, include: { organization: true } })
+        if (!task || task.userId !== userId) return null
+        setWorkspaceRuntime({ actorId: userId, organizationId: task.organizationId, taskId: task.id, projectId: task.projectId,
+            billingSource: task.organization?.billingSource, configVersionId: task.modelConfigVersionId,
+            expectedRevisions: (task.payload as Record<string, unknown> | null)?.__targetRevisions as Record<string, number> | undefined ?? {},
+        })
+    }
     return {
         user: {
             id: userId,
@@ -325,6 +336,7 @@ type ProjectAccessRow = {
 
 async function checkProjectAccess(project: ProjectAccessRow, session: AuthSession): Promise<NextResponse | null> {
     if (!project.organizationId) {
+        setWorkspaceRuntime({ actorId: session.user.id, organizationId: null, billingSource: undefined, configVersionId: null })
         return project.userId === session.user.id ? null : forbidden()
     }
 
@@ -343,6 +355,7 @@ async function checkProjectAccess(project: ProjectAccessRow, session: AuthSessio
     if (!membership) return forbidden('无权访问该企业项目')
     if (membership.organization.status !== 'active') return forbidden('企业已被禁用')
     if (membership.status !== 'active') return forbidden('成员已被禁用')
+    await bindTeamWorkspace(project.organizationId!, session.user.id, workspaceRuntime().taskId ? workspaceRuntime().configVersionId : undefined)
     return null
 }
 
@@ -373,6 +386,7 @@ export async function requireUserAuth(): Promise<{ session: AuthSession } | Next
     }
 
     bindAuthLogContext(session)
+    await bindRequestWorkspace(session.user.id)
     return { session }
 }
 

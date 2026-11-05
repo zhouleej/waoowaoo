@@ -13,6 +13,8 @@ const renderedLinks = vi.hoisted(() => [] as Array<{
   onClick?: unknown
 }>)
 
+vi.mock('@/components/teams/WorkspaceSwitcher', () => ({ default: () => createElement('span', null, 'WorkspaceSwitcher') }))
+
 vi.mock('next-auth/react', () => ({
   useSession: () => useSessionMock(),
 }))
@@ -62,6 +64,7 @@ const messages = {
     signin: '登录',
     signup: '注册',
   },
+  teams: { workspace: '当前空间', personalWorkspace: '个人创作空间', workspaceNavigation: '创作空间导航' },
   common: {
     appName: 'waoowaoo',
     betaVersion: 'Beta v{version}',
@@ -106,7 +109,7 @@ describe('Navbar download logs entry', () => {
     expect(html).toContain('href="/home"')
     expect(html).toContain('href="/api/admin/download-logs"')
     expect(html).toContain('download=""')
-    expect(renderedLinks.find((link) => link.href === '/workspace')?.onClick).toBeTypeOf('function')
+    expect(html).toContain('WorkspaceSwitcher')
   })
 
   it('does not render the download logs entry for signed-out users', () => {

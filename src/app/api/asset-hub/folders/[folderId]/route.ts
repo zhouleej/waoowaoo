@@ -1,3 +1,5 @@
+import { requireAssetDeletion } from '@/lib/workspace/asset-access'
+import { canAccessScopedAsset } from '@/lib/workspace/runtime'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUserAuth, isErrorResponse } from '@/lib/api-auth'
@@ -27,7 +29,7 @@ export const PATCH = apiHandler(async (
         where: { id: folderId }
     })
 
-    if (!folder || folder.userId !== session.user.id) {
+    if (!folder || !canAccessScopedAsset(folder, session.user.id)) {
         throw new ApiError('FORBIDDEN')
     }
 
@@ -50,13 +52,14 @@ export const DELETE = apiHandler(async (
     const authResult = await requireUserAuth()
     if (isErrorResponse(authResult)) return authResult
     const { session } = authResult
+    await requireAssetDeletion('folder', folderId)
 
     // 验证所有权
     const folder = await prisma.globalAssetFolder.findUnique({
         where: { id: folderId }
     })
 
-    if (!folder || folder.userId !== session.user.id) {
+    if (!folder || !canAccessScopedAsset(folder, session.user.id)) {
         throw new ApiError('FORBIDDEN')
     }
 

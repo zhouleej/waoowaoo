@@ -1,3 +1,4 @@
+import { requireWorkspaceManager } from '@/lib/workspace/access'
 import { NextRequest, NextResponse } from 'next/server'
 import { apiHandler, ApiError } from '@/lib/api-errors'
 import { isErrorResponse, requireProjectAuthLight } from '@/lib/api-auth'
@@ -18,6 +19,7 @@ export const POST = apiHandler(async (request: NextRequest, { params }: { params
   const { projectId } = await params
   const auth = await requireProjectAuthLight(projectId)
   if (isErrorResponse(auth)) return auth
+  await requireWorkspaceManager()
   const { episodeId, snapshotId } = await request.json()
   if (typeof episodeId !== 'string' || typeof snapshotId !== 'string') throw new ApiError('INVALID_PARAMS')
   await requireNovelPromotionEpisodeInProject(projectId, episodeId)

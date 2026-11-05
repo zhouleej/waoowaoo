@@ -1,3 +1,6 @@
+import { readTeamConfig } from '@/lib/workspace/access'
+import { workspaceRuntime } from '@/lib/workspace/runtime'
+import { decryptApiKey } from '@/lib/crypto-utils'
 import {
   buildMobileCloudSignature,
   type MobileCloudSignatureMethod,
@@ -144,8 +147,15 @@ export function createMobileCloudMaasAssetClient(options: AssetClientOptions = {
   const nonce = options.nonce ?? (() => crypto.randomUUID())
   const timeoutMs = options.timeoutMs ?? 15_000
 
-  function requireConfig(): MobileCloudMaasOpenApiConfig {
-    const result = readMobileCloudMaasOpenApiConfig(options.env ?? process.env)
+  async function requireConfig(): Promise<MobileCloudMaasOpenApiConfig> {
+    let env = options.env ?? process.env
+    if (workspaceRuntime().organizationId && workspaceRuntime().billingSource === 'team_api_key') {
+      const config = await readTeamConfig()
+      const provider = (JSON.parse(config!.providers) as Array<{ id: string; accessKey?: string; secretKey?: string; poolId?: string; baseUrl?: string }>).find(item => item.id === 'mobile-cloud')
+      if (!provider?.accessKey || !provider.secretKey) throw new MobileCloudMaasOpenApiError('config', 'MOBILE_CLOUD_OPENAPI_CONFIG_MISSING')
+      env = { MOBILE_CLOUD_MAAS_ACCESS_KEY: decryptApiKey(provider.accessKey), MOBILE_CLOUD_MAAS_SECRET_KEY: decryptApiKey(provider.secretKey), MOBILE_CLOUD_MAAS_POOL_ID: provider.poolId ?? 'CIDC-CORE-00', MOBILE_CLOUD_MAAS_BASE_URL: provider.baseUrl ?? 'https://ecloud.10086.cn' }
+    }
+    const result = readMobileCloudMaasOpenApiConfig(env)
     if (!result.configured) {
       throw new MobileCloudMaasOpenApiError('config', 'MOBILE_CLOUD_OPENAPI_CONFIG_MISSING', undefined, result.missing)
     }
@@ -153,7 +163,7 @@ export function createMobileCloudMaasAssetClient(options: AssetClientOptions = {
   }
 
   async function request<T>(method: string, path: string, requestOptions: RequestOptions = {}): Promise<T> {
-    const config = requireConfig()
+    const config = await requireConfig()
     const signed = buildMobileCloudSignature({
       accessKey: config.accessKey,
       secretKey: config.secretKey,
@@ -215,6 +225,20 @@ export function createMobileCloudMaasAssetClient(options: AssetClientOptions = {
     }
   }
 
+
+  function groupPrefix() { return workspaceRuntime().organizationId ? `waoowaoo-${workspaceRuntime().organizationId}:` : '' }
+  function visibleGroup(group: MobileCloudAssetGroup) { return { ...group, groupName: group.groupName.replace(groupPrefix(), '') } }
+  async function checkGroup(groupId: string) {
+    if (!groupPrefix()) return
+    const group = mapGroup(asRecord(await request('GET', `/api/openapi-maas/exp/aicc/v2/asset-group/${encodeURIComponent(trimId(groupId, 'GROUP_ID'))}`)))
+    if (!group.groupName.startsWith(groupPrefix())) throw new MobileCloudMaasOpenApiError('auth', 'MOBILE_CLOUD_TEAM_ASSET_FORBIDDEN', 403)
+  }
+  async function checkAsset(assetId: string) {
+    if (!groupPrefix()) return
+    const asset = mapAsset(asRecord(await request('GET', `/api/openapi-maas/exp/aicc/v2/asset/${encodeURIComponent(trimId(assetId, 'ASSET_ID'))}`)))
+    await checkGroup(asset.groupId)
+  }
+
   return {
     async listGroups(input: {
       pageNo?: number
@@ -230,18 +254,24 @@ export function createMobileCloudMaasAssetClient(options: AssetClientOptions = {
         ...(input.groupName ? { groupName: input.groupName } : {}),
         ...(input.groupIds?.length ? { groupIds: input.groupIds } : {}),
       }
-      return page(await request('POST', '/api/openapi-maas/exp/aicc/v2/asset-group/query', { body }), mapGroup)
+      if (groupPrefix()) body.groupName = groupPrefix() + (input.groupName ?? '')
+      const result = page(await request('POST', '/api/openapi-maas/exp/aicc/v2/asset-group/query', { body }), mapGroup)
+      return groupPrefix() ? { ...result, items: result.items.filter(group => group.groupName.startsWith(groupPrefix())).map(visibleGroup) } : result
     },
     async getGroup(groupId: string) {
+      await checkGroup(groupId)
       return mapGroup(asRecord(await request('GET', `/api/openapi-maas/exp/aicc/v2/asset-group/${encodeURIComponent(trimId(groupId, 'GROUP_ID'))}`)))
     },
     async createGroup(input: { groupType: 'AIGC'; groupName: string; description?: string }) {
-      return mapGroup(asRecord(await request('POST', '/api/openapi-maas/exp/aicc/v2/asset-group', { body: input })))
+      return mapGroup(asRecord(await request('POST', '/api/openapi-maas/exp/aicc/v2/asset-group', { body: { ...input, groupName: groupPrefix() + input.groupName } })))
     },
     async updateGroup(groupId: string, input: { groupName?: string; description?: string }) {
+      await checkGroup(groupId)
+      if (groupPrefix() && input.groupName) input = { ...input, groupName: groupPrefix() + input.groupName }
       return mapGroup(asRecord(await request('PUT', `/api/openapi-maas/exp/aicc/v2/asset-group/${encodeURIComponent(trimId(groupId, 'GROUP_ID'))}`, { body: input })))
     },
     async deleteGroup(groupId: string) {
+      await checkGroup(groupId)
       const deleted = await request<unknown>('DELETE', `/api/openapi-maas/exp/aicc/v2/asset-group/${encodeURIComponent(trimId(groupId, 'GROUP_ID'))}`)
       if (deleted !== true) {
         throw new MobileCloudMaasOpenApiError('invalid-response', 'MOBILE_CLOUD_ASSET_DELETE_RESPONSE_INVALID')
@@ -264,20 +294,28 @@ export function createMobileCloudMaasAssetClient(options: AssetClientOptions = {
         ...(input.assetName ? { assetName: input.assetName } : {}),
         ...(input.statuses?.length ? { statuses: input.statuses } : {}),
       }
+      if (groupPrefix()) {
+        if (!input.groupIds?.length) return { items: [], total: 0, pageNo: body.pageNo, pageSize: body.pageSize }
+        await Promise.all(input.groupIds.map(checkGroup))
+      }
       return page(await request('POST', '/api/openapi-maas/exp/aicc/v2/asset/query', { body }), mapAsset)
     },
     async getAsset(assetId: string) {
+      await checkAsset(assetId)
       return mapAsset(asRecord(await request('GET', `/api/openapi-maas/exp/aicc/v2/asset/${encodeURIComponent(trimId(assetId, 'ASSET_ID'))}`)))
     },
     async createAsset(input: { groupId: string; assetName: string; assetUrl: string; assetType: MobileCloudAssetType }) {
+      await checkGroup(input.groupId)
       const body = await request<unknown>('POST', '/api/openapi-maas/exp/aicc/v2/asset', { body: input })
       if (typeof body !== 'string' || !body.trim()) throw new MobileCloudMaasOpenApiError('invalid-response', 'MOBILE_CLOUD_ASSET_RESPONSE_INVALID')
       return { assetId: body.trim() }
     },
     async updateAsset(assetId: string, input: { assetName?: string }) {
+      await checkAsset(assetId)
       return mapAsset(asRecord(await request('PUT', `/api/openapi-maas/exp/aicc/v2/asset/${encodeURIComponent(trimId(assetId, 'ASSET_ID'))}`, { body: input })))
     },
     async deleteAsset(assetId: string) {
+      await checkAsset(assetId)
       const deleted = await request<unknown>('DELETE', `/api/openapi-maas/exp/aicc/v2/asset/${encodeURIComponent(trimId(assetId, 'ASSET_ID'))}`)
       if (deleted !== true) {
         throw new MobileCloudMaasOpenApiError('invalid-response', 'MOBILE_CLOUD_ASSET_DELETE_RESPONSE_INVALID')

@@ -1,3 +1,4 @@
+import { requireWorkspaceManager } from '@/lib/workspace/access'
 import { logInfo as _ulogInfo, logError as _ulogError } from '@/lib/logging/core'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
@@ -244,7 +245,8 @@ export const DELETE = apiHandler(async (
   }
 
   // 删除仍保持创建者权限，避免普通组织成员误删共享项目。
-  if (project.userId !== session.user.id) {
+  await requireWorkspaceManager()
+  if (!project.organizationId && project.userId !== session.user.id) {
     throw new ApiError('FORBIDDEN')
   }
 

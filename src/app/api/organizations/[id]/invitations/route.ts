@@ -1,3 +1,4 @@
+import { inviteAccount } from '@/lib/workspace/teams'
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from 'next/server'
 import crypto from 'crypto'
@@ -14,7 +15,9 @@ export const GET = apiHandler<{ id: string }>(async (_req, { params }) => {
   const perm = await requireOrganizationRole(id, auth.session.user.id, ['owner', 'admin'])
   if (perm.error) return perm.error
   const data = await prisma.organizationInvitation.findMany({ where: { organizationId: id }, orderBy: { createdAt: 'desc' }, include: { invitedBy: { select: { id: true, name: true, email: true } } } })
-  return NextResponse.json({ data })
+  const inviteeIds = data.flatMap(item => item.inviteeUserId ? [item.inviteeUserId] : [])
+  const invitees = await prisma.user.findMany({ where: { id: { in: inviteeIds } }, select: { id: true, name: true, image: true } })
+  return NextResponse.json({ data: data.map(({ tokenHash: _token, activeInviteKey: _key, ...item }) => ({ ...item, invitee: invitees.find(user => user.id === item.inviteeUserId) ?? null, status: item.status === 'pending' && item.expiresAt && item.expiresAt < new Date() ? 'expired' : item.status })) })
 })
 
 export const POST = apiHandler<{ id: string }>(async (req, { params }) => {
@@ -26,6 +29,8 @@ export const POST = apiHandler<{ id: string }>(async (req, { params }) => {
   let body: any
   try { body = await req.json() } catch { return badRequest('请求体必须是JSON') }
   try {
+    if (body.account) return NextResponse.json({ data: await inviteAccount(id, auth.session.user.id, body.account, body.role ?? 'member') }, { status: 201 })
+    if (perm.membership?.organization?.billingSource === 'team_api_key') return badRequest('请按账号发送邀请 / Invite by account')
     const email = readString(body.email, '邮箱', { required: true, max: 160 })!.toLowerCase()
     const role = readString(body.role ?? 'member', '角色', { max: 16 })!
     if (!['admin', 'member'].includes(role)) return badRequest('角色只能为 admin 或 member')

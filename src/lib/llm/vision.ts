@@ -1,3 +1,5 @@
+import { workspaceRuntime } from '@/lib/workspace/runtime'
+import { withTeamUsage } from '@/lib/workspace/budget'
 import OpenAI from 'openai'
 import { GoogleGenAI } from '@google/genai'
 import { getInternalBaseUrl } from '@/lib/env'
@@ -46,7 +48,7 @@ function getErrorBody(error: unknown): { message?: unknown; code?: unknown } {
   return root
 }
 
-export async function chatCompletionWithVision(
+async function chatCompletionWithVisionCore(
   userId: string,
   model: string | null | undefined,
   textPrompt: string,
@@ -82,6 +84,7 @@ export async function chatCompletionWithVision(
   for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
     const attemptStartedAt = Date.now()
     try {
+      return await withTeamUsage({ model: selection.modelKey, kind: 'text', quantity: Buffer.byteLength(textPrompt, 'utf8') + imageUrls.length * 32768 + 32768, unit: 'token' }, async () => {
       const providerConfig = await getProviderConfig(userId, provider)
       if (providerKey === 'google' || providerKey === 'gemini-compatible') {
         const ai = new GoogleGenAI({ apiKey: providerConfig.apiKey })
@@ -106,7 +109,7 @@ export async function chatCompletionWithVision(
         const response = await ai.models.generateContent({
           model: resolvedModelId,
           contents: [{ role: 'user', parts }],
-          config: { temperature },
+          config: { temperature, ...(workspaceRuntime().organizationId ? { maxOutputTokens: 32768 } : {}) },
         })
 
         const text = extractGoogleText(response)
@@ -231,6 +234,7 @@ export async function chatCompletionWithVision(
       }
 
       const client = new OpenAI({
+        ...(workspaceRuntime().organizationId ? { maxRetries: 0 } : {}),
         baseURL: config.baseUrl,
         apiKey: config.apiKey,
       })
@@ -258,6 +262,7 @@ export async function chatCompletionWithVision(
         model: resolvedModelId,
         messages: [{ role: 'user', content }],
         temperature,
+        ...(workspaceRuntime().organizationId ? { max_tokens: 32768 } : {}),
       })
       recordCompletionUsage(resolvedModelId, completion as OpenAI.Chat.Completions.ChatCompletion)
       llmLogger.info({
@@ -273,6 +278,7 @@ export async function chatCompletionWithVision(
         },
       })
       return completion
+      })
     } catch (error: unknown) {
       lastError = error instanceof Error ? error : new Error(getErrorMessage(error))
       const errorMessage = getErrorMessage(error)
@@ -303,7 +309,7 @@ export async function chatCompletionWithVision(
   throw lastError || new Error('LLM Vision 调用失败')
 }
 
-export async function chatCompletionWithVisionStream(
+async function chatCompletionWithVisionStreamCore(
   userId: string,
   model: string | null | undefined,
   textPrompt: string,
@@ -331,4 +337,12 @@ export async function chatCompletionWithVisionStream(
     callbacks?.onError?.(error, undefined)
     throw error
   }
+}
+
+export async function chatCompletionWithVision(...args: Parameters<typeof chatCompletionWithVisionCore>) {
+  return chatCompletionWithVisionCore(...args)
+}
+
+export async function chatCompletionWithVisionStream(...args: Parameters<typeof chatCompletionWithVisionStreamCore>) {
+  return chatCompletionWithVisionStreamCore(...args)
 }

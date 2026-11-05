@@ -1,3 +1,5 @@
+import { workspaceRuntime } from '@/lib/workspace/runtime'
+import { withTeamUsage } from '@/lib/workspace/budget'
 import { logInfo as _ulogInfo } from '@/lib/logging/core'
 import { randomUUID } from 'node:crypto'
 import { fal } from '@fal-ai/client'
@@ -158,7 +160,7 @@ async function downloadAudioData(audioUrl: string): Promise<Buffer> {
   return Buffer.from(await response.arrayBuffer())
 }
 
-export async function generateVoiceLine(params: {
+async function generateVoiceLineCore(params: {
   projectId: string
   episodeId?: string | null
   lineId: string
@@ -311,4 +313,11 @@ export async function generateVoiceLine(params: {
 export function estimateVoiceLineMaxSeconds(content: string | null | undefined) {
   const chars = typeof content === 'string' ? content.length : 0
   return Math.max(5, Math.ceil(chars / 2))
+}
+
+export async function generateVoiceLine(params: Parameters<typeof generateVoiceLineCore>[0]) {
+  if (workspaceRuntime().billingSource !== 'team_api_key') return generateVoiceLineCore(params)
+  const line = await prisma.novelPromotionVoiceLine.findUniqueOrThrow({ where: { id: params.lineId }, select: { content: true } })
+  const model = await resolveModelSelectionOrSingle(params.userId, params.audioModel, 'audio')
+  return withTeamUsage({ model: model.modelKey, kind: 'audio', quantity: line.content.length, unit: 'character' }, () => generateVoiceLineCore(params))
 }

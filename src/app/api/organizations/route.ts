@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto'
+import { assertTeamCreationEnabled } from '@/lib/workspace/availability'
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { withPrismaRetry } from '@/lib/prisma-retry'
@@ -16,9 +18,12 @@ export const POST = apiHandler(async (req) => {
   const { session } = authResult
 
   const body = await req.json()
-  const { name, slug } = body
+  const { name } = body
+  const slug = body.slug ?? `team-${randomUUID().slice(0, 8)}`
+  const billingSource = body.billingSource === 'team_api_key' || !body.slug ? 'team_api_key' : 'platform_balance'
+  if (billingSource === 'team_api_key') assertTeamCreationEnabled()
 
-  if (!name || typeof name !== 'string' || !name.trim()) {
+  if (!name || typeof name !== 'string' || !name.trim() || name.length > 50) {
     return badRequest('组织名称不能为空')
   }
   if (!slug || typeof slug !== 'string' || !slug.trim()) {
@@ -46,6 +51,7 @@ export const POST = apiHandler(async (req) => {
       const org = await tx.organization.create({
         data: {
           name: name.trim(),
+          billingSource,
           slug: slug.trim(),
           ownerId: session.user.id,
         },
@@ -150,6 +156,7 @@ export const GET = apiHandler(async () => {
   // 格式化返回数据
   const result = organizations.map((org) => ({
     id: org.id,
+    billingSource: org.billingSource,
     name: org.name,
     slug: org.slug,
     createdAt: org.createdAt,
@@ -157,7 +164,7 @@ export const GET = apiHandler(async () => {
     owner: org.owner,
     currentUserRole: org.members[0]?.role || 'member',
     currentUserStatus: org.members[0]?.status || 'active',
-    balance: org.balance,
+    balance: ['owner', 'admin'].includes(org.members[0]?.role) ? org.balance : null,
     memberCount: org._count.members,
   }))
 

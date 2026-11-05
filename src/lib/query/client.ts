@@ -1,4 +1,5 @@
-import { QueryClient } from '@tanstack/react-query'
+import { getClientWorkspaceScope } from '@/lib/workspace/client-scope'
+import { hashKey, QueryClient } from '@tanstack/react-query'
 
 /**
  * 全局 QueryClient 配置
@@ -7,6 +8,7 @@ import { QueryClient } from '@tanstack/react-query'
 export const queryClient = new QueryClient({
     defaultOptions: {
         queries: {
+            queryKeyHashFn: (key) => hashKey([getClientWorkspaceScope(), ...key]),
             // 数据在 5 秒内认为是新鲜的，不会重新请求
             staleTime: 5000,
             // 缓存数据保留 10 分钟

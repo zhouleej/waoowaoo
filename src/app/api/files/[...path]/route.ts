@@ -1,3 +1,4 @@
+import { assertMediaReadAccess } from '@/lib/workspace/media-access'
 import { logError as _ulogError } from '@/lib/logging/core'
 /**
  * 本地文件服务API
@@ -54,6 +55,8 @@ export async function GET(
             return NextResponse.json({ error: 'Access denied' }, { status: 403 })
         }
 
+        await assertMediaReadAccess({ storageKey: decodedPath })
+
         // 读取文件
         const buffer = await fs.readFile(filePath)
         const mimeType = getMimeType(filePath)
@@ -64,11 +67,12 @@ export async function GET(
             headers: {
                 'Content-Type': mimeType,
                 'Content-Length': buffer.length.toString(),
-                'Cache-Control': 'public, max-age=31536000', // 1年缓存
+                'Cache-Control': 'private, no-store', // 1年缓存
             },
         })
 
     } catch (error: unknown) {
+        if (error instanceof Error && 'code' in error && ['FORBIDDEN', 'UNAUTHORIZED'].includes(String(error.code))) return NextResponse.json({ error: 'Access denied' }, { status: 403 })
         const code = typeof error === 'object' && error !== null && 'code' in error
             ? (error as { code?: unknown }).code
             : undefined

@@ -1,3 +1,5 @@
+import { workspaceRuntime } from '@/lib/workspace/runtime'
+import { withTeamUsage } from '@/lib/workspace/budget'
 import OpenAI from 'openai'
 import { generateText, type ModelMessage } from 'ai'
 import { createOpenAI } from '@ai-sdk/openai'
@@ -52,7 +54,7 @@ function errorMessage(error: unknown): string {
 
 
 
-export async function chatCompletion(
+async function chatCompletionCore(
   userId: string,
   model: string | null | undefined,
   messages: { role: 'user' | 'assistant' | 'system'; content: string }[],
@@ -113,6 +115,7 @@ export async function chatCompletion(
   for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
     const attemptStartedAt = Date.now()
     try {
+      return await withTeamUsage({ model: selection.modelKey, kind: 'text', quantity: messages.reduce((sum, message) => sum + Buffer.byteLength(message.content, 'utf8'), 0) + 32768, unit: 'token' }, async () => {
       if (gatewayRoute === 'openai-compat') {
         // openai-compatible protocol probing only applies to openai-compatible + llm.
         // gemini-compatible is explicitly excluded and must not enter this branch.
@@ -199,6 +202,7 @@ export async function chatCompletion(
           model: resolvedModelId,
           contents,
           config: {
+            ...(workspaceRuntime().organizationId ? { maxOutputTokens: 32768 } : {}),
             temperature,
             ...(systemInstruction ? { systemInstruction } : {}),
             ...(thinkingConfig ? { thinkingConfig } : {}),
@@ -388,6 +392,7 @@ export async function chatCompletion(
           : undefined
         const generateParams: Parameters<typeof generateText>[0] = {
           model: aiOpenAI.chat(resolvedModelId),
+          ...(workspaceRuntime().organizationId ? { maxOutputTokens: 32768 } : {}),
           system: getSystemPrompt(messages),
           messages: getConversationMessages(messages) as ModelMessage[],
           // 推理模型不支持 temperature，仅在非推理模式下传递
@@ -438,6 +443,7 @@ export async function chatCompletion(
       }
 
       const client = new OpenAI({
+        ...(workspaceRuntime().organizationId ? { maxRetries: 0 } : {}),
         baseURL: providerConfig.baseUrl,
         apiKey: providerConfig.apiKey,
       })
@@ -450,6 +456,7 @@ export async function chatCompletion(
       const completion = await client.chat.completions.create({
         model: resolvedModelId,
         messages: messages as OpenAI.Chat.Completions.ChatCompletionMessageParam[],
+        ...(workspaceRuntime().organizationId ? { max_tokens: 32768 } : {}),
         temperature,
         ...extraParams,
       })
@@ -481,6 +488,7 @@ export async function chatCompletion(
         },
       })
       return completion
+      })
     } catch (error: unknown) {
       const normalizedError = error instanceof Error ? error : new Error(errorMessage(error))
       lastError = normalizedError
@@ -519,4 +527,8 @@ export async function chatCompletion(
   }
 
   throw lastError || new Error('LLM 调用失败')
+}
+
+export async function chatCompletion(...args: Parameters<typeof chatCompletionCore>) {
+  return chatCompletionCore(...args)
 }

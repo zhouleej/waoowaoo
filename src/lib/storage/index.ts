@@ -1,3 +1,5 @@
+import { workspaceRuntime } from '@/lib/workspace/runtime'
+import { getStorageProxyUrl } from '@/lib/storage/proxy-url'
 import { createReadStream, createWriteStream } from 'node:fs'
 import { mkdtemp, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -56,6 +58,10 @@ export async function uploadObject(
     RETRY_DELAY_BASE_MS,
   )
 
+  if (workspaceRuntime().actorId) {
+    const { ensureMediaObjectFromStorageKey } = await import('@/lib/media/service')
+    await ensureMediaObjectFromStorageKey(result.key)
+  }
   return result.key
 }
 
@@ -71,6 +77,10 @@ export async function uploadObjectStream(
     contentLength,
     contentType,
   })
+  if (workspaceRuntime().actorId) {
+    const { ensureMediaObjectFromStorageKey } = await import('@/lib/media/service')
+    await ensureMediaObjectFromStorageKey(result.key)
+  }
   return result.key
 }
 
@@ -111,6 +121,7 @@ export async function getSignedObjectUrl(
 }
 
 export function getSignedUrl(key: string, expiresInSeconds: number = DEFAULT_SIGNED_URL_EXPIRES_SECONDS): string {
+  if (workspaceRuntime().actorId) return getStorageProxyUrl(key, Math.min(expiresInSeconds, 900))
   const provider = getStorageProvider()
   if (provider.kind === 'local') {
     return `/api/files/${encodeURIComponent(key)}`

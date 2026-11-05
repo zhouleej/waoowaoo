@@ -1,4 +1,5 @@
 'use client'
+import { getClientWorkspaceScope } from '@/lib/workspace/client-scope'
 import { logDebug as _ulogDebug, logError as _ulogError } from '@/lib/logging/core'
 
 import { useEffect, useMemo, useRef } from 'react'
@@ -23,7 +24,7 @@ export function useSSE({ projectId, episodeId, enabled = true, onEvent }: UseSSE
 
   const url = useMemo(() => {
     if (!projectId) return null
-    const params = new URLSearchParams({ projectId })
+    const params = new URLSearchParams({ projectId, workspaceScope: getClientWorkspaceScope() })
     if (episodeId) params.set('episodeId', episodeId)
     return `/api/sse?${params}`
   }, [projectId, episodeId])

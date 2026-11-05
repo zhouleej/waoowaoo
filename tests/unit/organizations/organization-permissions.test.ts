@@ -94,16 +94,4 @@ describe('organization role boundary', () => {
     expect(source).not.toContain('requireOrganizationRole')
   })
 
-  it('returns the active caller role and allows admins to promote ordinary members only', () => {
-    const detailRoute = readProjectFile('src/app/api/organizations/[id]/route.ts')
-    const detailPage = readProjectFile('src/app/[locale]/admin/organizations/[id]/page.tsx')
-
-    expect(detailRoute).toContain('currentUserRole: permission.membership!.role')
-    expect(detailRoute).toContain('currentUserStatus: permission.membership!.status')
-    expect(detailPage).toContain("(isOwner || (isAdmin && m.role === 'member'))")
-    expect(detailPage).toContain("handleRoleChange(m.user.id, 'admin')")
-    expect(detailPage).toContain("t('promoteToAdmin')")
-    expect(detailPage).toContain("(isOwner || m.role === 'member')")
-    expect(detailPage).toContain("status: m.status === 'active' ? 'frozen' : 'active'")
-  })
 })

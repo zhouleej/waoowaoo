@@ -101,7 +101,7 @@ describe('api contract - run cancel route', () => {
     }))
   })
 
-  it('allows an organization project member to cancel a run created by another member', async () => {
+  it('rejects an ordinary member canceling another member’s run', async () => {
     const { POST } = await import('@/app/api/runs/[runId]/cancel/route')
     getRunByIdMock.mockResolvedValueOnce({
       id: 'run-1',
@@ -118,10 +118,7 @@ describe('api contract - run cancel route', () => {
       params: Promise.resolve({ runId: 'run-1' }),
     })
 
-    expect(res.status).toBe(200)
-    expect(requestRunCancelMock).toHaveBeenCalledWith({
-      runId: 'run-1',
-      userId: 'other-user',
-    })
+    expect(res.status).toBe(403)
+    expect(requestRunCancelMock).not.toHaveBeenCalled()
   })
 })

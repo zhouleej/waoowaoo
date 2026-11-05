@@ -1,3 +1,4 @@
+import { assetScopeWhere } from '@/lib/workspace/runtime'
 import { type Job } from 'bullmq'
 import { prisma } from '@/lib/prisma'
 import { CHARACTER_ASSET_IMAGE_RATIO, LOCATION_IMAGE_RATIO, PROP_IMAGE_RATIO, addCharacterPromptSuffix, addLocationPromptSuffix, addPropPromptSuffix } from '@/lib/constants'
@@ -74,7 +75,7 @@ export async function handleAssetHubImageTask(job: Job<TaskJobData>) {
     if (!characterId) throw new Error('Global character id missing')
 
     const character = await db.globalCharacter.findFirst({
-      where: { id: characterId, userId },
+      where: { id: characterId, ...assetScopeWhere(userId) },
       include: { appearances: { orderBy: { appearanceIndex: 'asc' } } },
     })
 
@@ -127,7 +128,7 @@ export async function handleAssetHubImageTask(job: Job<TaskJobData>) {
     if (!locationId) throw new Error('Global location id missing')
 
     const location = await db.globalLocation.findFirst({
-      where: { id: locationId, userId },
+      where: { id: locationId, ...assetScopeWhere(userId) },
       include: { images: { orderBy: { imageIndex: 'asc' } } },
     })
 

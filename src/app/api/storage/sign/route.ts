@@ -1,3 +1,4 @@
+import { assertMediaReadAccess } from '@/lib/workspace/media-access'
 import { NextRequest, NextResponse } from 'next/server'
 import { apiHandler, ApiError } from '@/lib/api-errors'
 import { getSignedObjectUrl } from '@/lib/storage'
@@ -16,6 +17,7 @@ export const GET = apiHandler(async (request: NextRequest) => {
   const expires = expiresRaw ? Number.parseInt(expiresRaw, 10) : DEFAULT_EXPIRES_SECONDS
   const ttl = Number.isFinite(expires) && expires > 0 ? expires : DEFAULT_EXPIRES_SECONDS
 
-  const signedUrl = await getSignedObjectUrl(key, ttl)
+  await assertMediaReadAccess({ storageKey: key })
+  const signedUrl = await getSignedObjectUrl(key, Math.min(ttl, 900))
   return NextResponse.redirect(signedUrl)
 })

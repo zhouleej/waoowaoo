@@ -1,3 +1,5 @@
+import { requireAssetDeletion } from '@/lib/workspace/asset-access'
+import { canAccessScopedAsset } from '@/lib/workspace/runtime'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUserAuth, isErrorResponse } from '@/lib/api-auth'
@@ -20,7 +22,7 @@ export const GET = apiHandler(async (
         include: { images: true }
     })
 
-    if (!location || location.userId !== session.user.id) {
+    if (!location || !canAccessScopedAsset(location, session.user.id)) {
         throw new ApiError('NOT_FOUND')
     }
 
@@ -43,7 +45,7 @@ export const PATCH = apiHandler(async (
         where: { id: locationId }
     })
 
-    if (!location || location.userId !== session.user.id) {
+    if (!location || !canAccessScopedAsset(location, session.user.id)) {
         throw new ApiError('FORBIDDEN')
     }
 
@@ -58,7 +60,7 @@ export const PATCH = apiHandler(async (
             const folder = await prisma.globalAssetFolder.findUnique({
                 where: { id: folderId }
             })
-            if (!folder || folder.userId !== session.user.id) {
+            if (!folder || !canAccessScopedAsset(folder, session.user.id)) {
                 throw new ApiError('INVALID_PARAMS')
             }
         }
@@ -85,12 +87,13 @@ export const DELETE = apiHandler(async (
     const authResult = await requireUserAuth()
     if (isErrorResponse(authResult)) return authResult
     const { session } = authResult
+    await requireAssetDeletion('location', locationId)
 
     const location = await prisma.globalLocation.findUnique({
         where: { id: locationId }
     })
 
-    if (!location || location.userId !== session.user.id) {
+    if (!location || !canAccessScopedAsset(location, session.user.id)) {
         throw new ApiError('FORBIDDEN')
     }
 

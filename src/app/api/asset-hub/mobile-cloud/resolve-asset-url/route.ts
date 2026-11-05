@@ -1,3 +1,4 @@
+import { assetScopeWhere } from '@/lib/workspace/runtime'
 import { NextRequest, NextResponse } from 'next/server'
 import { apiHandler, ApiError } from '@/lib/api-errors'
 import { isErrorResponse, requireUserAuth } from '@/lib/api-auth'
@@ -46,7 +47,7 @@ export const GET = apiHandler(async (request: NextRequest) => {
 
   if (resolvedKind === 'character') {
     const character = await prisma.globalCharacter.findFirst({
-      where: { id: assetId, userId },
+      where: { id: assetId, ...assetScopeWhere(userId) },
       include: {
         appearances: {
           orderBy: { appearanceIndex: 'asc' },

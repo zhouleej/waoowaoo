@@ -53,7 +53,7 @@ describe('api contract - asset hub character voice', () => {
 
     expect(res.status).toBe(200)
     expect(prismaMock.globalCharacter.findFirst).toHaveBeenCalledWith({
-      where: { id: 'character-1', userId: 'user-1' },
+      where: { id: 'character-1', userId: 'user-1', organizationId: null },
     })
     expect(prismaMock.globalCharacter.update).toHaveBeenCalledWith({
       where: { id: 'character-1' },

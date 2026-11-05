@@ -1,3 +1,4 @@
+import { withTeamUsage } from '@/lib/workspace/budget'
 import { logInfo as _ulogInfo } from '@/lib/logging/core'
 /**
  * 生成器统一入口（增强版）
@@ -67,7 +68,7 @@ function normalizeOpenAICompatImageOptions(options: Record<string, unknown>): Re
  * @param prompt 提示词
  * @param options 生成选项
  */
-export async function generateImage(
+async function generateImageCore(
     userId: string,
     modelKey: string,
     prompt: string,
@@ -188,7 +189,7 @@ export async function generateImage(
  * @param imageUrl 输入图片 URL
  * @param options 生成选项
  */
-export async function generateVideo(
+async function generateVideoCore(
     userId: string,
     modelKey: string,
     imageUrl: string,
@@ -300,7 +301,7 @@ export async function generateVideo(
 /**
  * 生成语音
  */
-export async function generateAudio(
+async function generateAudioCore(
     userId: string,
     modelKey: string,
     text: string,
@@ -350,4 +351,15 @@ export async function generateAudio(
             modelKey: selection.modelKey,
         },
     })
+}
+
+
+export async function generateImage(...args: Parameters<typeof generateImageCore>) {
+  return withTeamUsage({ model: args[1], kind: 'image', quantity: 1, unit: 'image' }, () => generateImageCore(...args))
+}
+export async function generateVideo(...args: Parameters<typeof generateVideoCore>) {
+  return withTeamUsage({ model: args[1], kind: 'video', quantity: Number(args[3]?.duration ?? 5), unit: 'second' }, () => generateVideoCore(...args))
+}
+export async function generateAudio(...args: Parameters<typeof generateAudioCore>) {
+  return withTeamUsage({ model: args[1], kind: 'audio', quantity: args[2].length, unit: 'character' }, () => generateAudioCore(...args))
 }

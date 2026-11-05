@@ -23,7 +23,7 @@ describe('api specific - asset hub custom styles', () => {
     const res = await mod.GET(buildMockRequest({ path: '/api/asset-hub/styles', method: 'GET' }), { params: Promise.resolve({}) })
     expect(res.status).toBe(200)
     expect(await res.json()).toMatchObject({ styles: [{ value: `custom:${id}`, name: '童话' }] })
-    expect(prismaMock.customArtStyle.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { userId: 'user-1' } }))
+    expect(prismaMock.customArtStyle.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { userId: 'user-1', organizationId: null } }))
   })
 
   it('creates trimmed styles owned by the current user', async () => {
@@ -32,7 +32,7 @@ describe('api specific - asset hub custom styles', () => {
     const req = buildMockRequest({ path: '/api/asset-hub/styles', method: 'POST', body: { name: ' 童话 ', prompt: ' warm ' } })
     const res = await mod.POST(req, { params: Promise.resolve({}) })
     expect(res.status).toBe(201)
-    expect(prismaMock.customArtStyle.create).toHaveBeenCalledWith({ data: { userId: 'user-1', name: '童话', prompt: 'warm' } })
+    expect(prismaMock.customArtStyle.create).toHaveBeenCalledWith({ data: { userId: 'user-1', organizationId: null, name: '童话', prompt: 'warm' } })
   })
 
   it('scopes deletion to the current user', async () => {
@@ -41,7 +41,7 @@ describe('api specific - asset hub custom styles', () => {
     const req = buildMockRequest({ path: `/api/asset-hub/styles/${id}`, method: 'DELETE' })
     const res = await mod.DELETE(req, { params: Promise.resolve({ styleId: id }) })
     expect(res.status).toBe(200)
-    expect(prismaMock.customArtStyle.deleteMany).toHaveBeenCalledWith({ where: { id, userId: 'user-1' } })
+    expect(prismaMock.customArtStyle.deleteMany).toHaveBeenCalledWith({ where: { id, userId: 'user-1', organizationId: null } })
   })
 
   it('updates only a style owned by the current user', async () => {
@@ -52,7 +52,7 @@ describe('api specific - asset hub custom styles', () => {
     const res = await mod.PATCH(req, { params: Promise.resolve({ styleId: id }) })
     expect(res.status).toBe(200)
     expect(prismaMock.customArtStyle.updateMany).toHaveBeenCalledWith({
-      where: { id, userId: 'user-1' }, data: { name: '水墨', prompt: 'ink wash' },
+      where: { id, userId: 'user-1', organizationId: null }, data: { name: '水墨', prompt: 'ink wash' },
     })
   })
 })

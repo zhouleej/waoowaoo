@@ -1,3 +1,4 @@
+import { assetScopeWhere } from '@/lib/workspace/runtime'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUserAuth, isErrorResponse } from '@/lib/api-auth'
@@ -58,7 +59,7 @@ export const POST = apiHandler(async (request: NextRequest) => {
     }
 
     const character = await db.globalCharacter.findFirst({
-        where: { id: characterId, userId: session.user.id },
+        where: { id: characterId, ...assetScopeWhere(session.user.id) },
         include: { appearances: true }
     })
     if (!character) {
@@ -111,7 +112,7 @@ export const PATCH = apiHandler(async (request: NextRequest) => {
     }
 
     const character = await db.globalCharacter.findFirst({
-        where: { id: characterId, userId: session.user.id }
+        where: { id: characterId, ...assetScopeWhere(session.user.id) }
     })
     if (!character) {
         throw new ApiError('NOT_FOUND')
@@ -179,7 +180,7 @@ export const DELETE = apiHandler(async (request: NextRequest) => {
     }
 
     const character = await db.globalCharacter.findFirst({
-        where: { id: characterId, userId: session.user.id }
+        where: { id: characterId, ...assetScopeWhere(session.user.id) }
     })
     if (!character) {
         throw new ApiError('NOT_FOUND')

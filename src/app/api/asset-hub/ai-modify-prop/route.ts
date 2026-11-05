@@ -1,3 +1,4 @@
+import { assetScopeWhere } from '@/lib/workspace/runtime'
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUserAuth, isErrorResponse } from '@/lib/api-auth'
@@ -23,7 +24,7 @@ export const POST = apiHandler(async (request: NextRequest) => {
   const prop = await prisma.globalLocation.findFirst({
     where: {
       id: propId,
-      userId: session.user.id,
+      ...assetScopeWhere(session.user.id),
       assetKind: 'prop',
     },
     select: {

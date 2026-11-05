@@ -22,8 +22,7 @@ export async function resolveInspirationVideoWorkspace(userId: string) {
   if ('error' in organizationContext) return organizationContext
 
   const organizationId = organizationContext.organizationId
-  const isSharedOrganizationWorkspace = organizationId
-    && (organizationContext.membership?.role === 'owner' || organizationContext.membership?.role === 'admin')
+  const isSharedOrganizationWorkspace = Boolean(organizationId)
   const scopeKey = isSharedOrganizationWorkspace
     ? `organization:${organizationId}`
     : organizationId

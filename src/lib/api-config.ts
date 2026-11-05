@@ -1,3 +1,4 @@
+import { teamPreference } from '@/lib/workspace/access'
 /**
  * API 配置读取器（配置中心严格模式）
  *
@@ -118,7 +119,7 @@ function assertModelKey(value: string, field: string): { provider: string; model
   return parsed
 }
 
-function parseCustomProviders(rawProviders: string | null | undefined): CustomProvider[] {
+export function parseCustomProviders(rawProviders: string | null | undefined): CustomProvider[] {
   if (!rawProviders) return []
 
   let parsedUnknown: unknown
@@ -256,7 +257,7 @@ function normalizeStoredModel(raw: unknown, index: number): CustomModel {
   }
 }
 
-function parseCustomModels(rawModels: string | null | undefined): CustomModel[] {
+export function parseCustomModels(rawModels: string | null | undefined): CustomModel[] {
   if (!rawModels) return []
 
   let parsedUnknown: unknown
@@ -289,17 +290,15 @@ function pickProviderStrict(
 }
 
 async function readUserConfig(userId: string): Promise<{ models: CustomModel[]; providers: CustomProvider[] }> {
-  const pref = await prisma.userPreference.findUnique({
+  const team = await teamPreference()
+  const pref = team ?? await prisma.userPreference.findUnique({
     where: { userId },
-    select: {
-      customModels: true,
-      customProviders: true,
-    },
+    select: { customModels: true, customProviders: true },
   })
 
   return {
-    models: parseCustomModels(pref?.customModels),
-    providers: parseCustomProviders(pref?.customProviders),
+    models: parseCustomModels(typeof pref?.customModels === 'string' ? pref.customModels : null),
+    providers: parseCustomProviders(typeof pref?.customProviders === 'string' ? pref.customProviders : null),
   }
 }
 
@@ -498,11 +497,11 @@ export async function getLipSyncApiKey(userId: string, model?: string | null): P
  * 检查用户是否有任意 API 配置
  */
 export async function hasApiConfig(userId: string): Promise<boolean> {
-  const pref = await prisma.userPreference.findUnique({
+  const pref = await teamPreference() ?? await prisma.userPreference.findUnique({
     where: { userId },
     select: { customProviders: true },
   })
 
-  const providers = parseCustomProviders(pref?.customProviders)
+  const providers = parseCustomProviders(typeof pref?.customProviders === 'string' ? pref.customProviders : null)
   return providers.some((provider) => !!provider.apiKey)
 }

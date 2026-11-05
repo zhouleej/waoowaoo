@@ -65,6 +65,8 @@ vi.mock('@/lib/platform-admin', async () => {
 })
 
 vi.mock('@/lib/logging/file-writer', () => loggingMock)
+vi.mock('@/lib/workspace/media-access', () => ({ assertMediaReadAccess: vi.fn(async () => undefined) }))
+
 vi.mock('@/lib/storage', () => storageMock)
 
 describe('api contract - infra routes (behavior)', () => {
@@ -173,9 +175,9 @@ describe('api contract - infra routes (behavior)', () => {
 
     const res = await mod.GET(req, { params: Promise.resolve({}) })
 
-    expect(storageMock.getSignedObjectUrl).toHaveBeenCalledWith('folder/a.png', 3600)
+    expect(storageMock.getSignedObjectUrl).toHaveBeenCalledWith('folder/a.png', 900)
     expect(res.status).toBe(307)
-    expect(res.headers.get('location')).toBe('https://signed.example/folder/a.png?expires=3600')
+    expect(res.headers.get('location')).toBe('https://signed.example/folder/a.png?expires=900')
   })
 
   it('GET /api/storage/proxy serves a signed object through the application origin', async () => {
@@ -329,6 +331,6 @@ describe('api contract - infra routes (behavior)', () => {
     expect(res.status).toBe(200)
     expect(text).toBe('hello local file')
     expect(res.headers.get('content-type')).toBe('text/plain')
-    expect(res.headers.get('cache-control')).toBe('public, max-age=31536000')
+    expect(res.headers.get('cache-control')).toBe('private, no-store')
   })
 })

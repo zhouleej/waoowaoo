@@ -1,3 +1,5 @@
+import { teamPreference } from '@/lib/workspace/access'
+import type { UserPreference } from '@prisma/client'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUserAuth, isErrorResponse } from '@/lib/api-auth'
@@ -231,7 +233,7 @@ export const POST = apiHandler(async (request: NextRequest) => {
   const { name, description } = normalizeProjectDraft(draft)
 
   // 获取用户偏好配置
-  const userPreference = await prisma.userPreference.findUnique({
+  const userPreference = (await teamPreference() as UserPreference | null) ?? await prisma.userPreference.findUnique({
     where: { userId: session.user.id }
   })
   let requestedOrganizationId: string | null

@@ -1,3 +1,4 @@
+import { workspaceRuntime } from '@/lib/workspace/runtime'
 import { prisma } from '@/lib/prisma'
 import { normalizeTaskError } from '@/lib/errors/normalize'
 import { coerceTaskIntent, type TaskIntent } from './intent'
@@ -234,7 +235,7 @@ export async function queryTaskTargetStates(params: {
     const rows = await prisma.task.findMany({
       where: {
         projectId: params.projectId,
-        userId: params.userId,
+        ...(workspaceRuntime().organizationId ? { organizationId: workspaceRuntime().organizationId } : { userId: params.userId, organizationId: null }),
         OR: batch.map((item) => ({
           targetType: item.targetType,
           targetId: item.targetId,

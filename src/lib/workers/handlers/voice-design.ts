@@ -1,3 +1,7 @@
+import { withTeamUsage } from '@/lib/workspace/budget'
+import { getUserModelConfig } from '@/lib/config-service'
+import { workspaceRuntime } from '@/lib/workspace/runtime'
+import { teamPreference } from '@/lib/workspace/access'
 import type { Job } from 'bullmq'
 import {
   createVoiceDesign,
@@ -53,7 +57,12 @@ export async function handleVoiceDesignTask(job: Job<TaskJobData>) {
     preferredName,
     language,
   }
-  const designed = await createVoiceDesign(input, apiKey)
+  const preference = await teamPreference()
+  const config = workspaceRuntime().organizationId ? await getUserModelConfig(job.data.userId) : null
+  const voiceModel = typeof preference?.voiceDesignModel === 'string' ? preference.voiceDesignModel : config?.audioModel
+  const designed = workspaceRuntime().organizationId
+    ? await withTeamUsage({ model: voiceModel ?? '', kind: 'audio', quantity: previewText.length, unit: 'character' }, () => createVoiceDesign(input, apiKey))
+    : await createVoiceDesign(input, apiKey)
   if (!designed.success) {
     throw new Error(designed.error || '声音设计失败')
   }

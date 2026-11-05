@@ -1,3 +1,4 @@
+import { assetScopeWhere } from '@/lib/workspace/runtime'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { uploadObject, generateUniqueKey, getSignedUrl } from '@/lib/storage'
@@ -54,7 +55,7 @@ export const POST = apiHandler(async (request: NextRequest) => {
 
         // 验证角色属于用户
         const character = await db.globalCharacter.findFirst({
-            where: { id: characterId, userId: session.user.id }
+            where: { id: characterId, ...assetScopeWhere(session.user.id) }
         })
         if (!character) {
             throw new ApiError('NOT_FOUND')
@@ -95,7 +96,7 @@ export const POST = apiHandler(async (request: NextRequest) => {
 
     // 验证角色属于用户
     const character = await db.globalCharacter.findFirst({
-        where: { id: characterId, userId: session.user.id }
+        where: { id: characterId, ...assetScopeWhere(session.user.id) }
     })
     if (!character) {
         throw new ApiError('NOT_FOUND')
@@ -153,7 +154,7 @@ export const PATCH = apiHandler(async (request: NextRequest) => {
 
     // 验证角色属于用户
     const character = await db.globalCharacter.findFirst({
-        where: { id: characterId, userId: session.user.id }
+        where: { id: characterId, ...assetScopeWhere(session.user.id) }
     })
     if (!character) {
         throw new ApiError('NOT_FOUND')

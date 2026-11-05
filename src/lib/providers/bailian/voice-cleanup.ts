@@ -1,4 +1,5 @@
 import { getProviderConfig } from '@/lib/api-config'
+import { assetScopeWhere } from '@/lib/workspace/runtime'
 import { prisma } from '@/lib/prisma'
 import { deleteBailianVoice } from './voice-manage'
 
@@ -126,7 +127,7 @@ async function findReferencedVoiceIds(params: {
         : {}),
       novelPromotionProject: {
         project: {
-          userId: scope.userId,
+          ...assetScopeWhere(scope.userId),
           ...(scope.excludeProjectId
             ? { id: { not: scope.excludeProjectId } }
             : {}),
@@ -142,7 +143,7 @@ async function findReferencedVoiceIds(params: {
 
   const globalCharacters = await prisma.globalCharacter.findMany({
     where: {
-      userId: scope.userId,
+      ...assetScopeWhere(scope.userId),
       voiceId: { in: voiceIds },
       ...(scope.excludeGlobalCharacterId
         ? { id: { not: scope.excludeGlobalCharacterId } }
@@ -157,7 +158,7 @@ async function findReferencedVoiceIds(params: {
 
   const globalVoices = await prisma.globalVoice.findMany({
     where: {
-      userId: scope.userId,
+      ...assetScopeWhere(scope.userId),
       voiceId: { in: voiceIds },
     },
     select: { voiceId: true },
@@ -172,7 +173,7 @@ async function findReferencedVoiceIds(params: {
       speakerVoices: { not: null },
       novelPromotionProject: {
         project: {
-          userId: scope.userId,
+          ...assetScopeWhere(scope.userId),
           ...(scope.excludeProjectId
             ? { id: { not: scope.excludeProjectId } }
             : {}),

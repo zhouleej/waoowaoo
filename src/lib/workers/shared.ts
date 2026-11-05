@@ -1,3 +1,5 @@
+import { withWorkspaceRuntime } from '@/lib/workspace/runtime'
+import { releaseTeamReservation } from '@/lib/workspace/budget'
 import { UnrecoverableError, type Job } from 'bullmq'
 import { prisma } from '@/lib/prisma'
 import { createScopedLogger } from '@/lib/logging/core'
@@ -317,7 +319,7 @@ async function resolveProjectNameForLogging(projectId: string): Promise<void> {
   }
 }
 
-export async function withTaskLifecycle(job: Job<TaskJobData>, handler: (job: Job<TaskJobData>) => Promise<Record<string, unknown> | void>) {
+async function withTaskLifecycleCore(job: Job<TaskJobData>, handler: (job: Job<TaskJobData>) => Promise<Record<string, unknown> | void>) {
   const data = job.data
   const taskId = data.taskId
   const logger = buildWorkerLogger(data, job.queueName)
@@ -732,5 +734,24 @@ export async function reportTaskStreamChunk(
       },
     },
     persist: shouldPersistRunStreamReplay(job.data.type),
+  })
+}
+
+
+export async function withTaskLifecycle(job: Job<TaskJobData>, handler: (job: Job<TaskJobData>) => Promise<Record<string, unknown> | void>) {
+  const task = await prisma.task.findUnique({ where: { id: job.data.taskId }, include: { organization: true } })
+  if (!task) return
+  return withWorkspaceRuntime({
+    actorId: task.userId, organizationId: task.organizationId, projectId: task.projectId,
+    expectedRevisions: (task.payload as Record<string, unknown> | null)?.__targetRevisions as Record<string, number> | undefined ?? {}, readRevisions: {}, createdIds: new Set(),
+    taskId: task.id, configVersionId: task.modelConfigVersionId, billingSource: task.organization?.billingSource,
+  }, async () => {
+    try { return await withTaskLifecycleCore(job, handler) }
+    finally {
+      if (task.organization?.billingSource === 'team_api_key') {
+        const latest = await prisma.task.findUnique({ where: { id: task.id }, select: { status: true } })
+        if (latest && ['completed', 'failed', 'canceled', 'dismissed'].includes(latest.status)) await releaseTeamReservation(task.id)
+      }
+    }
   })
 }

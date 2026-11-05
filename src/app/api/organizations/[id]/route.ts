@@ -55,6 +55,9 @@ export const GET = apiHandler(async (_req, ctx) => {
 
   return NextResponse.json({
     ...organization,
+    ...(organization.billingSource === 'team_api_key' ? { candidates: await prisma.task.findMany({ where: { organizationId, result: { path: '$.reason', equals: 'revision_conflict' } }, select: { id: true, targetType: true, targetId: true, result: true, createdAt: true }, orderBy: { createdAt: 'desc' }, take: 20 }) } : {}),
+    balance: ['owner', 'admin'].includes(permission.membership!.role) ? organization.balance : null,
+    members: organization.members.map(member => ({ ...member, quota: ['owner', 'admin'].includes(permission.membership!.role) || member.userId === session.user.id ? member.quota : null })),
     currentUserRole: permission.membership!.role,
     currentUserStatus: permission.membership!.status,
   })
@@ -77,7 +80,7 @@ export const PATCH = apiHandler(async (req, ctx) => {
   const body = await req.json()
   const { name } = body
 
-  if (name !== undefined && (typeof name !== 'string' || !name.trim())) {
+  if (name !== undefined && (typeof name !== 'string' || !name.trim() || name.length > 50)) {
     return badRequest('组织名称不能为空')
   }
 
@@ -164,6 +167,8 @@ export const DELETE = apiHandler(async (_req, ctx) => {
 
   const permission = await requireOrganizationRole(organizationId, session.user.id, ['owner'])
   if (permission.error) return permission.error
+
+  if (organization.billingSource === 'team_api_key') return forbidden('Team dissolution is not available')
 
   if (organization.projects.length > 0) {
     return forbidden('组织仍存在项目，禁止硬删除；请先迁移或删除组织项目')

@@ -230,6 +230,8 @@ export async function createTask(input: CreateTaskInput) {
   }
 
   const createData = {
+    modelConfigVersionId: input.modelConfigVersionId,
+    targetRevision: input.targetRevision,
     userId: input.userId,
     projectId: input.projectId,
     organizationId: organizationId || null,

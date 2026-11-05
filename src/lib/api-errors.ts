@@ -1,3 +1,4 @@
+import { withWorkspaceRequest } from '@/lib/workspace/revisions'
 import { createScopedLogger } from '@/lib/logging/core'
 import { withLogContext } from '@/lib/logging/context'
 import { NextRequest, NextResponse } from 'next/server'
@@ -471,7 +472,7 @@ export function apiHandler<TParams extends RouteParams>(handler: ApiHandler<TPar
         const streamCallbacks = buildInternalLLMStreamCallbacks(req)
 
         try {
-          const response = await withInternalLLMStreamCallbacks(streamCallbacks, async () => await handler(req, ctx))
+          const response = await withInternalLLMStreamCallbacks(streamCallbacks, async () => await withWorkspaceRequest(req, () => handler(req, ctx)))
           await streamCallbacks?.flush?.()
           response.headers.set('x-request-id', requestId)
 

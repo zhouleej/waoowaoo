@@ -1,3 +1,5 @@
+import { requireAssetDeletion } from '@/lib/workspace/asset-access'
+import { canAccessScopedAsset } from '@/lib/workspace/runtime'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUserAuth, isErrorResponse } from '@/lib/api-auth'
@@ -14,6 +16,7 @@ export const DELETE = apiHandler(async (
     const { session } = authResult
 
     const { id } = await params
+    await requireAssetDeletion('voice', id)
 
     const voice = await prisma.globalVoice.findUnique({
         where: { id }
@@ -23,7 +26,7 @@ export const DELETE = apiHandler(async (
         throw new ApiError('NOT_FOUND')
     }
 
-    if (voice.userId !== session.user.id) {
+    if (!canAccessScopedAsset(voice, session.user.id)) {
         throw new ApiError('FORBIDDEN')
     }
 
@@ -55,7 +58,7 @@ export const PATCH = apiHandler(async (
         throw new ApiError('NOT_FOUND')
     }
 
-    if (voice.userId !== session.user.id) {
+    if (!canAccessScopedAsset(voice, session.user.id)) {
         throw new ApiError('FORBIDDEN')
     }
 

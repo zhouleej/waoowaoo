@@ -1,3 +1,4 @@
+import { assetScopeWhere } from '@/lib/workspace/runtime'
 import { prisma } from '@/lib/prisma'
 import { attachMediaFieldsToGlobalCharacter, attachMediaFieldsToGlobalLocation, attachMediaFieldsToGlobalVoice, attachMediaFieldsToProject } from '@/lib/media/attach'
 import {
@@ -60,7 +61,7 @@ async function readProjectAssets(projectId: string): Promise<AssetSummary[]> {
 async function readGlobalAssets(input: { folderId?: string | null; userId: string }): Promise<AssetSummary[]> {
   const folderFilter = input.folderId ? { folderId: input.folderId } : {}
   const where = {
-    userId: input.userId,
+    ...assetScopeWhere(input.userId),
     ...folderFilter,
   }
   const [characters, locations, props, voices] = await Promise.all([

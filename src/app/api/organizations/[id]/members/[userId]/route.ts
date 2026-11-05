@@ -1,3 +1,4 @@
+import { updateTeamMember } from '@/lib/workspace/teams'
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { withPrismaRetry } from '@/lib/prisma-retry'
@@ -54,7 +55,12 @@ export const PATCH = apiHandler(async (req, ctx) => {
   }
 
   const body = await req.json()
+  if (currentUser?.organization?.billingSource === 'team_api_key') {
+    await updateTeamMember(organizationId, session.user.id, targetUserId, body)
+    return NextResponse.json({ success: true })
+  }
   const { role, quota, status } = body
+  if (currentUser?.role === 'admin' && role === 'admin') return forbidden('Only the owner can appoint administrators')
 
   // 验证 role
   if (role !== undefined) {
@@ -68,6 +74,8 @@ export const PATCH = apiHandler(async (req, ctx) => {
     }
 
   }
+
+  if (targetMember.role === 'owner') return forbidden('Cannot modify the owner')
 
   // 验证 status
   if (status !== undefined) {
@@ -162,6 +170,11 @@ export const DELETE = apiHandler(async (_req, ctx) => {
   // admin 不能移除其他 admin
   if (currentUser?.role === 'admin' && targetMember.role === 'admin') {
     return forbidden('管理员不能移除其他管理员')
+  }
+
+  if (currentUser?.organization?.billingSource === 'team_api_key') {
+    await updateTeamMember(organizationId, session.user.id, targetUserId, {}, true)
+    return new NextResponse(null, { status: 204 })
   }
 
   // 移除成员

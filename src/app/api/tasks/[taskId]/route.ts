@@ -1,3 +1,5 @@
+import { workspaceRuntime } from '@/lib/workspace/runtime'
+import { releaseTeamReservation } from '@/lib/workspace/budget'
 import { NextRequest, NextResponse } from 'next/server'
 import { apiHandler, ApiError } from '@/lib/api-errors'
 import { isErrorResponse, requireUserAuth } from '@/lib/api-auth'
@@ -58,12 +60,14 @@ export const DELETE = apiHandler(async (
   const access = await requireProjectScopedResourceAccess(session, task)
   if (isErrorResponse(access)) return access
 
+  if (task.userId !== session.user.id && !['owner', 'admin'].includes(workspaceRuntime().role ?? '')) throw new ApiError('FORBIDDEN')
   const { task: updatedTask, cancelled } = await cancelTask(taskId)
   if (!updatedTask) {
     throw new ApiError('NOT_FOUND')
   }
 
   if (cancelled) {
+    if (task.organizationId && !task.externalId) await releaseTeamReservation(taskId)
     // Best effort: remove queued job to avoid worker picking it up after cancellation.
     await removeTaskJob(taskId).catch(() => false)
     await publishTaskEvent({

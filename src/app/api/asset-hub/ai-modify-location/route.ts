@@ -1,3 +1,4 @@
+import { canAccessScopedAsset } from '@/lib/workspace/runtime'
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUserAuth, isErrorResponse } from '@/lib/api-auth'
@@ -24,8 +25,8 @@ export const POST = apiHandler(async (request: NextRequest) => {
 
   const location = await prisma.globalLocation.findUnique({
     where: { id: locationId },
-    select: { id: true, userId: true, name: true }})
-  if (!location || location.userId !== session.user.id) {
+    select: { id: true, userId: true, name: true , organizationId: true }})
+  if (!location || !canAccessScopedAsset(location, session.user.id)) {
     throw new ApiError('NOT_FOUND')
   }
 

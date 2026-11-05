@@ -1,3 +1,4 @@
+import { assetScopeData, canAccessScopedAsset } from '@/lib/workspace/runtime'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { uploadObject, generateUniqueKey, getSignedUrl } from '@/lib/storage'
@@ -41,7 +42,7 @@ export const POST = apiHandler(async (request: NextRequest) => {
         const folder = await prisma.globalAssetFolder.findUnique({
             where: { id: folderId }
         })
-        if (!folder || folder.userId !== session.user.id) {
+        if (!folder || !canAccessScopedAsset(folder, session.user.id)) {
             throw new ApiError('INVALID_PARAMS')
         }
     }
@@ -57,7 +58,7 @@ export const POST = apiHandler(async (request: NextRequest) => {
     // 创建音色记录
     const voice = await prisma.globalVoice.create({
         data: {
-            userId: session.user.id,
+            ...assetScopeData(session.user.id),
             folderId: folderId || null,
             name: name.trim(),
             description: description?.trim() || null,

@@ -34,7 +34,6 @@ export const GET = apiHandler(async () => {
     }),
   ])
   const current = memberships.find((membership) => membership.organizationId === preference?.currentOrganizationId)
-    ?? memberships[0]
     ?? null
 
   return NextResponse.json({

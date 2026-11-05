@@ -1,3 +1,4 @@
+import { workspaceRuntime } from '@/lib/workspace/runtime'
 import OpenAI from 'openai'
 import type { ChatCompletionStreamCallbacks } from '@/lib/llm/types'
 import { buildOpenAIChatCompletion } from '@/lib/llm/providers/openai-compat'
@@ -13,6 +14,7 @@ export async function runOpenAICompatChatCompletion(input: OpenAICompatChatReque
   return await client.chat.completions.create({
     model: input.modelId,
     messages: input.messages as OpenAI.Chat.Completions.ChatCompletionMessageParam[],
+    ...(workspaceRuntime().organizationId ? { max_tokens: 32768 } : {}),
     temperature: input.temperature,
   })
 }
@@ -33,6 +35,7 @@ export async function runOpenAICompatChatCompletionStream(
   const stream = await client.chat.completions.create({
     model: input.modelId,
     messages: input.messages as OpenAI.Chat.Completions.ChatCompletionMessageParam[],
+    ...(workspaceRuntime().organizationId ? { max_tokens: 32768 } : {}),
     temperature: input.temperature,
     stream: true,
   } as OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming)

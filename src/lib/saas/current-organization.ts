@@ -1,3 +1,4 @@
+import { workspaceRuntime } from '@/lib/workspace/runtime'
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { badRequest } from '@/lib/api-auth'
@@ -53,7 +54,9 @@ export async function resolveCurrentOrganization(
   requestedOrganizationId?: string | null,
   currentOrganizationId?: string | null,
 ): Promise<CurrentOrganizationContext | { error: NextResponse }> {
-  const requestedId = requestedOrganizationId?.trim()
+  const runtime = workspaceRuntime()
+  if (runtime.hint === 'personal') return { organizationId: null, membership: null }
+  const requestedId = requestedOrganizationId?.trim() || runtime.organizationId
 
   if (requestedId) {
     const permission = await requireOrganizationRole(requestedId, userId, MEMBER_ROLES)

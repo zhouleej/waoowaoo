@@ -1,3 +1,4 @@
+import { teamPreference } from '@/lib/workspace/access'
 /**
  * 获取用户的模型列表
  *
@@ -171,7 +172,7 @@ export const GET = apiHandler(async () => {
   const { session } = authResult
   const userId = session.user.id
 
-  const pref = await prisma.userPreference.findUnique({
+  const pref = await teamPreference() ?? await prisma.userPreference.findUnique({
     where: { userId },
     select: { customModels: true, customProviders: true },
   })

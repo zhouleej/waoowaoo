@@ -1,3 +1,4 @@
+import { assetScopeWhere } from '@/lib/workspace/runtime'
 import { type Job } from 'bullmq'
 import { prisma } from '@/lib/prisma'
 import { LOCATION_IMAGE_RATIO, PROP_IMAGE_RATIO } from '@/lib/constants'
@@ -100,7 +101,7 @@ export async function handleAssetHubModifyTask(job: Job<TaskJobData>) {
 
   if (payload.type === 'character') {
     const character = await db.globalCharacter.findFirst({
-      where: { id: payload.id, userId },
+      where: { id: payload.id, ...assetScopeWhere(userId) },
       include: { appearances: true },
     })
     if (!character) throw new Error('Global character not found')
@@ -193,7 +194,7 @@ export async function handleAssetHubModifyTask(job: Job<TaskJobData>) {
 
   if (payload.type === 'location' || payload.type === 'prop') {
     const location = await db.globalLocation.findFirst({
-      where: { id: payload.id, userId },
+      where: { id: payload.id, ...assetScopeWhere(userId) },
       include: { images: true },
     })
     if (!location) throw new Error('Global location not found')

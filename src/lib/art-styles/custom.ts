@@ -1,3 +1,4 @@
+import { assetScopeWhere } from '@/lib/workspace/runtime'
 import { ApiError } from '@/lib/api-errors'
 import { isArtStyleValue, getArtStylePrompt } from '@/lib/constants'
 import { prisma } from '@/lib/prisma'
@@ -29,7 +30,7 @@ export function customArtStyleId(value: unknown): string | null {
 export async function findUserCustomArtStyle(userId: string, value: string) {
   const id = customArtStyleId(value)
   if (!id) return null
-  return prisma.customArtStyle.findFirst({ where: { id, userId } })
+  return prisma.customArtStyle.findFirst({ where: { id, ...assetScopeWhere(userId) } })
 }
 
 export async function validateUserArtStyle(value: unknown, userId: string): Promise<string> {

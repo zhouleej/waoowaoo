@@ -21,6 +21,7 @@ const mapTaskSSEEventToRunEventsMock = vi.hoisted(() =>
 
 vi.mock('@/lib/prisma', () => ({
   prisma: {
+    task: { findUnique: vi.fn(async () => ({ id: 'task-1', userId: 'user-1', projectId: 'project-1', organizationId: null, payload: {} })) },
     project: {
       findUnique: vi.fn(async () => null),
     },

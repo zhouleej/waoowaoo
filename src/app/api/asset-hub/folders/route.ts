@@ -1,3 +1,4 @@
+import { assetScopeWhere, assetScopeData } from '@/lib/workspace/runtime'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUserAuth, isErrorResponse } from '@/lib/api-auth'
@@ -11,7 +12,7 @@ export const GET = apiHandler(async () => {
     const { session } = authResult
 
     const folders = await prisma.globalAssetFolder.findMany({
-        where: { userId: session.user.id },
+        where: { ...assetScopeWhere(session.user.id) },
         orderBy: { name: 'asc' }
     })
 
@@ -34,7 +35,7 @@ export const POST = apiHandler(async (request: NextRequest) => {
 
     const folder = await prisma.globalAssetFolder.create({
         data: {
-            userId: session.user.id,
+            ...assetScopeData(session.user.id),
             name: name.trim()
         }
     })

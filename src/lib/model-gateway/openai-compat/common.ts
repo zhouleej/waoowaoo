@@ -1,3 +1,4 @@
+import { workspaceRuntime } from '@/lib/workspace/runtime'
 import OpenAI, { toFile } from 'openai'
 import { getProviderConfig } from '@/lib/api-config'
 import { getInternalBaseUrl } from '@/lib/env'
@@ -46,6 +47,7 @@ export async function resolveOpenAICompatClientConfig(userId: string, providerId
 
 export function createOpenAICompatClient(config: OpenAICompatClientConfig): OpenAI {
   return new OpenAI({
+    ...(workspaceRuntime().organizationId ? { maxRetries: 0 } : {}),
     apiKey: config.apiKey,
     baseURL: config.baseUrl,
   })

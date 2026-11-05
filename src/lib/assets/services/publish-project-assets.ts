@@ -1,3 +1,4 @@
+import { assetScopeWhere, assetScopeData } from '@/lib/workspace/runtime'
 import { prisma } from '@/lib/prisma'
 import { ApiError } from '@/lib/api-errors'
 import type { AssetKind } from '@/lib/assets/contracts'
@@ -48,7 +49,7 @@ async function publishVoiceFromCharacter(character: {
   if (!character.voiceId && !character.customVoiceUrl) return null
   const existing = await prisma.globalVoice.findFirst({
     where: {
-      userId: access.userId,
+      ...assetScopeWhere(access.userId),
       OR: [
         ...(character.voiceId ? [{ voiceId: character.voiceId }] : []),
         ...(character.customVoiceUrl ? [{ customVoiceUrl: character.customVoiceUrl }] : []),
@@ -59,7 +60,7 @@ async function publishVoiceFromCharacter(character: {
   if (existing) return existing.id
   const voice = await prisma.globalVoice.create({
     data: {
-      userId: access.userId,
+      ...assetScopeData(access.userId),
       name: `${character.name} 的音色`,
       voiceId: character.voiceId,
       voiceType: character.voiceType || (character.customVoiceUrl ? 'custom' : 'qwen-designed'),
@@ -91,7 +92,7 @@ export async function publishProjectAsset(input: PublishAccess & { assetId: stri
     })
     if (!character) throw new ApiError('NOT_FOUND')
     if (character.sourceGlobalCharacterId) {
-      const global = await prisma.globalCharacter.findFirst({ where: { id: character.sourceGlobalCharacterId, userId: input.userId }, include: { appearances: { orderBy: { appearanceIndex: 'asc' } } } })
+      const global = await prisma.globalCharacter.findFirst({ where: { id: character.sourceGlobalCharacterId, ...assetScopeWhere(input.userId) }, include: { appearances: { orderBy: { appearanceIndex: 'asc' } } } })
       const currentImages = character.appearances.filter((item) => selectedCharacterImage(item))
       const same = global && global.name === character.name && global.aliases === character.aliases
         && global.profileData === character.profileData && global.voiceId === character.voiceId
@@ -111,7 +112,7 @@ export async function publishProjectAsset(input: PublishAccess & { assetId: stri
     const globalVoiceId = await publishVoiceFromCharacter(character, input)
     const global = await prisma.globalCharacter.create({
       data: {
-        userId: input.userId,
+        ...assetScopeData(input.userId),
         name: character.name,
         aliases: character.aliases,
         profileData: character.profileData,
@@ -148,7 +149,7 @@ export async function publishProjectAsset(input: PublishAccess & { assetId: stri
   if (!location) throw new ApiError('NOT_FOUND')
   const image = location.images.find((item) => item.isSelected && item.imageUrl) || location.images.find((item) => item.imageUrl)
   if (location.sourceGlobalLocationId) {
-    const global = await prisma.globalLocation.findFirst({ where: { id: location.sourceGlobalLocationId, userId: input.userId }, include: { images: true } })
+    const global = await prisma.globalLocation.findFirst({ where: { id: location.sourceGlobalLocationId, ...assetScopeWhere(input.userId) }, include: { images: true } })
     const saved = global?.images.find((item) => item.isSelected) || global?.images[0]
     if (global && global.name === location.name && global.summary === location.summary && saved?.imageUrl === image?.imageUrl
       && saved?.description === image?.description && saved?.availableSlots === image?.availableSlots) {
@@ -158,7 +159,7 @@ export async function publishProjectAsset(input: PublishAccess & { assetId: stri
   if (!image?.imageUrl) return { kind: input.kind, status: 'skipped', reason: 'NO_SELECTED_RENDER' }
   const global = await prisma.globalLocation.create({
     data: {
-      userId: input.userId,
+      ...assetScopeData(input.userId),
       name: location.name,
       summary: location.summary,
       assetKind: input.kind,

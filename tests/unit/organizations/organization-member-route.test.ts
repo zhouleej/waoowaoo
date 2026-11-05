@@ -115,7 +115,7 @@ describe('organization member management routes', () => {
     }))
   })
 
-  it('allows an active organization admin to promote an ordinary member to administrator', async () => {
+  it('rejects administrator privilege escalation when promoting an ordinary member', async () => {
     prismaMock.organizationMember.findUnique.mockResolvedValue({
       id: 'membership-2', organizationId: 'org-1', userId: 'member-2', role: 'member', status: 'active',
     })
@@ -130,10 +130,8 @@ describe('organization member management routes', () => {
       { params: Promise.resolve({ id: 'org-1', userId: 'member-2' }) },
     )
 
-    expect(response.status).toBe(200)
-    expect(prismaMock.organizationMember.update).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ role: 'admin' }),
-    }))
+    expect(response.status).toBe(403)
+    expect(prismaMock.organizationMember.update).not.toHaveBeenCalled()
   })
 
   it('keeps the active-member read path while rejecting an inactive member before listing the directory', async () => {
