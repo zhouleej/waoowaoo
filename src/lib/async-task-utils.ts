@@ -7,6 +7,7 @@
 
 import { logInternal } from './logging/semantic'
 import { buildFalQueueUrl } from '@/lib/providers/fal/base-url'
+import { ARK_BASE_URL } from '@/lib/ark-api'
 
 export interface TaskStatus {
     status: 'pending' | 'completed' | 'failed'
@@ -306,19 +307,23 @@ export async function querySeedanceVideoStatus(taskId: string, apiKey: string): 
 
     try {
         const queryResponse = await fetch(
-            `https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks/${taskId}`,
+            `${ARK_BASE_URL}/contents/generations/tasks/${encodeURIComponent(taskId)}`,
             {
                 method: 'GET',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${apiKey}`
                 },
-                cache: 'no-store'
+                cache: 'no-store',
+                signal: AbortSignal.timeout(30_000),
             }
         )
 
         if (!queryResponse.ok) {
             logInternal('Seedance', 'ERROR', `Status query failed: ${queryResponse.status}`)
+            if (queryResponse.status >= 400 && queryResponse.status < 500 && queryResponse.status !== 408 && queryResponse.status !== 429) {
+                return { status: 'failed', error: `Ark task query failed (HTTP ${queryResponse.status}); check API Key permissions and task ID` }
+            }
             return { status: 'pending' }
         }
 
@@ -340,9 +345,9 @@ export async function querySeedanceVideoStatus(taskId: string, apiKey: string): 
             }
 
             return { status: 'failed', error: 'No video URL in response' }
-        } else if (status === 'failed') {
+        } else if (status === 'failed' || status === 'cancelled' || status === 'expired') {
             const errorObj = queryData.error || {}
-            const errorMessage = errorObj.message || 'Unknown error'
+            const errorMessage = errorObj.message || `Ark video task ${status}`
             return { status: 'failed', error: errorMessage }
         }
 

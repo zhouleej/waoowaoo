@@ -25,7 +25,8 @@ import {
 } from './base'
 import { getProviderConfig } from '@/lib/api-config'
 import { arkImageGeneration, arkCreateVideoTask } from '@/lib/ark-api'
-import { normalizeToBase64ForGeneration } from '@/lib/media/outbound-image'
+import { getPublicBaseUrl } from '@/lib/env'
+import { normalizeToBase64ForGeneration, normalizeToOriginalMediaUrl } from '@/lib/media/outbound-image'
 
 interface ArkImageOptions {
     aspectRatio?: string
@@ -51,6 +52,9 @@ interface ArkVideoOptions {
     seed?: number
     cameraFixed?: boolean
     watermark?: boolean
+    referenceImages?: string[]
+    referenceVideos?: string[]
+    referenceAudios?: string[]
     provider?: string
     modelKey?: string
 }
@@ -144,6 +148,36 @@ const ARK_VIDEO_ALLOWED_RATIOS = new Set(['16:9', '4:3', '1:1', '3:4', '9:16', '
 
 function isInteger(value: unknown): value is number {
     return typeof value === 'number' && Number.isInteger(value)
+}
+
+function readReferenceUrls(value: unknown, field: string): string[] {
+    if (value === undefined) return []
+    if (!Array.isArray(value)) {
+        throw new Error(`ARK_VIDEO_OPTION_INVALID: ${field} must be an array`)
+    }
+    return value.map((item, index) => {
+        if (typeof item !== 'string' || !item.trim()) {
+            throw new Error(`ARK_VIDEO_OPTION_INVALID: ${field}[${index}] must be a non-empty string`)
+        }
+        return item.trim()
+    })
+}
+
+function isArkAssetUri(value: string): boolean {
+    return /^asset:\/\/[A-Za-z0-9._:-]+$/.test(value)
+}
+
+async function normalizeArkImage(value: string): Promise<string> {
+    return isArkAssetUri(value) ? value : await normalizeToBase64ForGeneration(value)
+}
+
+async function normalizeArkReference(value: string, type: 'video' | 'audio'): Promise<string> {
+    if (isArkAssetUri(value)) return value
+    const normalized = await normalizeToOriginalMediaUrl(value, { absoluteBaseUrl: getPublicBaseUrl() })
+    if (/^https?:\/\//.test(normalized) || (type === 'audio' && normalized.startsWith('data:audio/'))) {
+        return normalized
+    }
+    throw new Error(`ARK_VIDEO_OPTION_INVALID: reference ${type} must use an HTTP(S) URL${type === 'audio' ? ', audio data URL' : ''} or asset URI`)
 }
 
 // ============================================================
@@ -343,6 +377,9 @@ export class ArkVideoGenerator extends BaseVideoGenerator {
             'seed',
             'cameraFixed',
             'watermark',
+            'referenceImages',
+            'referenceVideos',
+            'referenceAudios',
         ])
         for (const [key, value] of Object.entries(options)) {
             if (value === undefined) continue
@@ -359,6 +396,34 @@ export class ArkVideoGenerator extends BaseVideoGenerator {
             throw new Error(`ARK_VIDEO_MODEL_UNSUPPORTED: ${realModel}`)
         }
 
+        const primaryImage = imageUrl.trim()
+        const referenceImages = readReferenceUrls(options.referenceImages, 'referenceImages')
+        const referenceVideos = readReferenceUrls(options.referenceVideos, 'referenceVideos')
+        const referenceAudios = readReferenceUrls(options.referenceAudios, 'referenceAudios')
+        const hasReferences = referenceImages.length + referenceVideos.length + referenceAudios.length > 0
+        const isSeedance2 = realModel.startsWith('doubao-seedance-2-0-')
+        if (hasReferences && !isSeedance2) {
+            throw new Error('ARK_VIDEO_OPTION_UNSUPPORTED: multimodal references require Seedance 2.0')
+        }
+        if (lastFrameImageUrl && hasReferences) {
+            throw new Error('ARK_VIDEO_OPTION_INVALID: first/last frames cannot be combined with multimodal references')
+        }
+        if (lastFrameImageUrl && !primaryImage) {
+            throw new Error('ARK_VIDEO_OPTION_INVALID: lastFrameImageUrl requires a first frame')
+        }
+        if (hasReferences) {
+            const imageCount = referenceImages.length + (primaryImage ? 1 : 0)
+            if (imageCount > 9) throw new Error('ARK_VIDEO_OPTION_INVALID: referenceImages exceeds 9 images')
+            if (referenceVideos.length > 3) throw new Error('ARK_VIDEO_OPTION_INVALID: referenceVideos exceeds 3 videos')
+            if (referenceAudios.length > 3) throw new Error('ARK_VIDEO_OPTION_INVALID: referenceAudios exceeds 3 audios')
+            if (referenceAudios.length > 0 && imageCount === 0 && referenceVideos.length === 0) {
+                throw new Error('ARK_VIDEO_OPTION_INVALID: reference audio requires an image or video')
+            }
+        }
+        if (!prompt.trim() && !primaryImage && !hasReferences) {
+            throw new Error('ARK_VIDEO_OPTION_INVALID: prompt or visual input is required')
+        }
+
         if (resolution !== undefined && !modelSpec.resolutionOptions.includes(resolution as '480p' | '720p' | '1080p')) {
             throw new Error(`ARK_VIDEO_OPTION_VALUE_UNSUPPORTED: resolution=${resolution}`)
         }
@@ -370,8 +435,8 @@ export class ArkVideoGenerator extends BaseVideoGenerator {
             if (durationOutOfRange) {
                 throw new Error(`ARK_VIDEO_OPTION_VALUE_UNSUPPORTED: duration=${duration}`)
             }
-            if (duration === -1 && realModel !== 'doubao-seedance-1-5-pro-251215') {
-                throw new Error('ARK_VIDEO_OPTION_VALUE_UNSUPPORTED: duration=-1 only supported by Seedance 1.5 Pro')
+            if (duration === -1 && realModel !== 'doubao-seedance-1-5-pro-251215' && !isSeedance2) {
+                throw new Error('ARK_VIDEO_OPTION_VALUE_UNSUPPORTED: duration=-1 requires Seedance 1.5 Pro or 2.0')
             }
         }
         if (frames !== undefined) {
@@ -430,18 +495,26 @@ export class ArkVideoGenerator extends BaseVideoGenerator {
 
         _ulogInfo(`[ARK Video] 模型: ${realModel}, 批量: ${isBatchMode}, 分辨率: ${resolution || '(默认)'}, 时长: ${duration ?? '(默认)'}`)
 
-        // 转换图片为 base64
-        const imageBase64 = await normalizeToBase64ForGeneration(imageUrl)
-
         // 构建请求体 content
         const content: ArkVideoContentItem[] = []
         if (prompt.trim()) {
             content.push({ type: 'text', text: prompt })
         }
 
-        if (lastFrameImageUrl) {
+        if (hasReferences) {
+            for (const image of [...(primaryImage ? [primaryImage] : []), ...referenceImages]) {
+                content.push({ type: 'image_url', image_url: { url: await normalizeArkImage(image) }, role: 'reference_image' })
+            }
+            for (const video of referenceVideos) {
+                content.push({ type: 'video_url', video_url: { url: await normalizeArkReference(video, 'video') }, role: 'reference_video' })
+            }
+            for (const audio of referenceAudios) {
+                content.push({ type: 'audio_url', audio_url: { url: await normalizeArkReference(audio, 'audio') }, role: 'reference_audio' })
+            }
+        } else if (lastFrameImageUrl) {
             // 首尾帧模式
-            const lastImageBase64 = await normalizeToBase64ForGeneration(lastFrameImageUrl)
+            const imageBase64 = await normalizeArkImage(primaryImage)
+            const lastImageBase64 = await normalizeArkImage(lastFrameImageUrl.trim())
             content.push({
                 type: 'image_url',
                 image_url: { url: imageBase64 },
@@ -453,10 +526,10 @@ export class ArkVideoGenerator extends BaseVideoGenerator {
                 role: 'last_frame'
             })
             _ulogInfo(`[ARK Video] 首尾帧模式`)
-        } else {
+        } else if (primaryImage) {
             content.push({
                 type: 'image_url',
-                image_url: { url: imageBase64 }
+                image_url: { url: await normalizeArkImage(primaryImage) }
             })
         }
 
@@ -523,7 +596,7 @@ export class ArkVideoGenerator extends BaseVideoGenerator {
             _ulogInfo('[ARK Video] 批量模式: service_tier=flex')
         }
 
-        // 音频生成（仅 Seedance 1.5 Pro）
+        // 音频生成（Seedance 1.5 Pro / 2.0）
         if (generateAudio !== undefined) {
             requestBody.generate_audio = generateAudio
         }

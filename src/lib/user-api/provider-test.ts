@@ -1,5 +1,6 @@
 import OpenAI from 'openai'
 import { setProxy } from '../../../lib/prompts/proxy'
+import { ARK_BASE_URL } from '@/lib/ark-api'
 
 export type TestStepName = 'models' | 'textGen' | 'imageGen' | 'credits' | 'audioGen'
 export type TestStepStatus = 'pass' | 'fail' | 'skip'
@@ -366,62 +367,40 @@ interface GeminiGenerateContentResponse {
 // ---------------------------------------------------------------------------
 
 async function testArkProvider(apiKey: string): Promise<TestProviderResult> {
-  const steps: TestStep[] = []
-  // 和 src/lib/ark-llm.ts 的 arkResponsesCompletion 保持一致，使用字节原生 Responses API
-  const model = 'doubao-seed-2-0-lite-260215'
-
+  // Verify connectivity and authentication without requiring access to a
+  // particular text model or creating a paid video/image generation task.
   try {
-    const response = await fetch('https://ark.cn-beijing.volces.com/api/v3/responses', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        input: [
-          {
-            role: 'user',
-            content: [{ type: 'input_text', text: '你好' }],
-          },
-        ],
-      }),
+    const response = await fetch(`${ARK_BASE_URL}/models`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${apiKey}` },
       signal: AbortSignal.timeout(30_000),
+      cache: 'no-store',
     })
 
     if (!response.ok) {
-      const errorText = await response.text().catch(() => '')
-      steps.push({
-        name: 'textGen',
-        status: 'fail',
-        model,
-        message: `HTTP ${response.status}`,
-        detail: errorText.slice(0, 500),
-      })
-      return { success: false, steps }
+      await response.body?.cancel().catch(() => undefined)
+      const failure = response.status === 403
+        ? { status: 'fail' as const, message: 'Access denied (403); check API Key permissions' }
+        : classifyProbeFailure(response.status)
+      return { success: false, steps: [{ name: 'models', ...failure }] }
     }
 
-    const data = await response.json() as Record<string, unknown>
-    // 和 ark-llm.ts 一样提取 output_text
-    const outputText = typeof data.output_text === 'string'
-      ? data.output_text
-      : ''
-    const text = outputText.trim().slice(0, 80) || 'OK'
-    steps.push({
-      name: 'textGen',
-      status: 'pass',
-      model,
-      message: `Response: ${text}`,
-    })
-    return { success: true, steps }
+    const data: unknown = await response.json().catch(() => null)
+    if (!isRecord(data) || !Array.isArray(data.data)) {
+      return { success: false, steps: [{ name: 'models', status: 'fail', message: 'Invalid response from Ark models API' }] }
+    }
+    return { success: true, steps: [{
+      name: 'models', status: 'pass',
+      message: `Connected; found ${data.data.length} models. Model inference was not executed.`,
+    }] }
   } catch (error) {
-    steps.push({
-      name: 'textGen',
-      status: 'fail',
-      model,
-      message: toErrorMessage(error),
-    })
-    return { success: false, steps }
+    const timedOut = error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError')
+    return { success: false, steps: [{
+      name: 'models', status: 'fail',
+      message: timedOut
+        ? 'Ark connection timed out'
+        : 'Ark network connection failed; check server DNS, outbound HTTPS and proxy settings',
+    }] }
   }
 }
 

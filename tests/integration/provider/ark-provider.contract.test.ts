@@ -99,6 +99,7 @@ describe('provider contract - ark seedance', () => {
           'Authorization': 'Bearer ark-key',
         },
         cache: 'no-store',
+        signal: expect.any(AbortSignal),
       },
     )
   })

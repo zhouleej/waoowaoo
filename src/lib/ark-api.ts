@@ -11,7 +11,7 @@ import { logInfo as _ulogInfo, logError as _ulogError } from '@/lib/logging/core
  * - 详细的错误日志
  */
 
-const ARK_BASE_URL = 'https://ark.cn-beijing.volces.com/api/v3'
+export const ARK_BASE_URL = 'https://ark.cn-beijing.volces.com/api/v3'
 
 // 超时配置
 const DEFAULT_TIMEOUT_MS = 60 * 1000  // 60秒
