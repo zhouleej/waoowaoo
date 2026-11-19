@@ -1,23 +1,25 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { apiFetch } from '@/lib/api-fetch'
 import { readApiErrorMessage } from '@/lib/api/read-error-message'
 import type { DiscoveredModel, DiscoveredModelType, ModelDiscoveryResult } from '@/lib/user-api/model-discovery'
 import { buildDiscoveryImportPlan } from '../discovery-import'
 import type { ProviderCardProps, ProviderCardTranslator } from './types'
+import { getProviderKey } from '../types'
 
 interface ModelDiscoveryPanelProps {
   provider: ProviderCardProps['provider']
   allModels: NonNullable<ProviderCardProps['allModels']>
   onAddModels: NonNullable<ProviderCardProps['onAddModels']>
+  onFlushConfig?: ProviderCardProps['onFlushConfig']
   t: ProviderCardTranslator
 }
 
 const TYPES: DiscoveredModelType[] = ['llm', 'image', 'video', 'audio']
 
-export function ModelDiscoveryPanel({ provider, allModels, onAddModels, t }: ModelDiscoveryPanelProps) {
+export function ModelDiscoveryPanel({ provider, allModels, onAddModels, onFlushConfig, t }: ModelDiscoveryPanelProps) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [importing, setImporting] = useState(false)
@@ -28,11 +30,25 @@ export function ModelDiscoveryPanel({ provider, allModels, onAddModels, t }: Mod
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [types, setTypes] = useState<Record<string, DiscoveredModelType>>({})
   const [importSummary, setImportSummary] = useState('')
+  const requestVersion = useRef(0)
+  const isArk = getProviderKey(provider.id) === 'ark'
   const existing = useMemo(() => new Set(allModels.filter((model) => model.provider === provider.id).map((model) => model.modelId)), [allModels, provider.id])
   const visible = useMemo(() => (result?.models ?? []).filter((model) => {
     const matchesQuery = `${model.id} ${model.name ?? ''}`.toLowerCase().includes(query.trim().toLowerCase())
     return matchesQuery && (filter === 'all' || (types[model.id] ?? model.suggestedType) === filter)
   }), [filter, query, result, types])
+
+  useEffect(() => {
+    requestVersion.current += 1
+    setOpen(false)
+    setLoading(false)
+    setResult(null)
+    setSelected(new Set())
+    setTypes({})
+    setError('')
+    setImportSummary('')
+    return () => { requestVersion.current += 1 }
+  }, [provider.id, provider.baseUrl, provider.apiKey])
 
   useEffect(() => {
     if (!open) return
@@ -49,10 +65,19 @@ export function ModelDiscoveryPanel({ provider, allModels, onAddModels, t }: Mod
   }, [open])
 
   const load = async (forceRefresh = false) => {
+    const version = ++requestVersion.current
     setLoading(true)
+    setResult(null)
+    setSelected(new Set())
     setError('')
     setImportSummary('')
     try {
+      try {
+        await onFlushConfig?.()
+      } catch {
+        throw new Error(t('flushConfigFailed'))
+      }
+      if (version !== requestVersion.current) return
       const response = await apiFetch('/api/user/api-config/discover-models', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -60,13 +85,14 @@ export function ModelDiscoveryPanel({ provider, allModels, onAddModels, t }: Mod
       })
       if (!response.ok) throw new Error(await readApiErrorMessage(response, t('discoveryErrorUnknown')))
       const payload = await response.json() as ModelDiscoveryResult
+      if (version !== requestVersion.current) return
       setResult(payload)
       setTypes(Object.fromEntries(payload.models.map((model) => [model.id, model.suggestedType])))
       setSelected(new Set(payload.models.filter((model) => !existing.has(model.id)).map((model) => model.id)))
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : t('discoveryErrorUnknown'))
+      if (version === requestVersion.current) setError(cause instanceof Error ? cause.message : t('discoveryErrorUnknown'))
     } finally {
-      setLoading(false)
+      if (version === requestVersion.current) setLoading(false)
     }
   }
 
@@ -99,10 +125,15 @@ export function ModelDiscoveryPanel({ provider, allModels, onAddModels, t }: Mod
       return
     }
     setImporting(true)
-    const saved = await onAddModels(plan.additions)
-    setImporting(false)
-    setImportSummary(saved ? t('discoveryImported', { count: plan.additions.length }) : t('discoveryImportFailed'))
-    if (saved) setSelected(new Set())
+    try {
+      const saved = await onAddModels(plan.additions)
+      setImportSummary(saved ? t('discoveryImported', { count: plan.additions.length }) : t('discoveryImportFailed'))
+      if (saved) setSelected(new Set())
+    } catch {
+      setImportSummary(t('discoveryImportFailed'))
+    } finally {
+      setImporting(false)
+    }
   }
 
   const dialog = open && typeof document !== 'undefined' ? createPortal(
@@ -140,6 +171,7 @@ export function ModelDiscoveryPanel({ provider, allModels, onAddModels, t }: Mod
             </select>
             <button type="button" onClick={() => void load(true)} disabled={loading} className="glass-btn-base glass-btn-secondary px-3 py-2 text-xs disabled:opacity-50">{t('forceRefresh')}</button>
           </div>
+          {isArk ? <p className="mt-3 text-xs text-[var(--glass-text-tertiary)]">{t('arkDiscoveryHint')}</p> : null}
 
           {error ? <div className="mt-3 shrink-0 rounded-xl bg-red-500/10 p-3 text-sm text-red-500">{error}</div> : null}
           {result?.warnings.length ? <div className="mt-3 shrink-0 rounded-xl bg-yellow-500/10 p-3 text-xs">{t('discoveryPartialWarning')} ({result.warnings.join(', ')})</div> : null}
@@ -195,9 +227,10 @@ export function ModelDiscoveryPanel({ provider, allModels, onAddModels, t }: Mod
 
   return (
     <div className="px-3.5 pb-2.5">
-      <button type="button" onClick={show} disabled={!provider.hasApiKey || !provider.baseUrl} className="glass-btn-base glass-btn-secondary px-3 py-1.5 text-xs disabled:opacity-50">
+      <button type="button" onClick={show} disabled={!provider.hasApiKey || (!isArk && !provider.baseUrl)} className="glass-btn-base glass-btn-secondary px-3 py-1.5 text-xs disabled:opacity-50">
         {t('discoverModels')}
       </button>
+      {isArk ? <p className="mt-2 text-xs text-[var(--glass-text-tertiary)]">{t('arkDiscoveryHint')}</p> : null}
       {dialog}
     </div>
   )

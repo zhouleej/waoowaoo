@@ -25,6 +25,7 @@ vi.mock('@/lib/security/safe-outbound-http', async (importOriginal) => {
 vi.mock('node:dns/promises', () => ({ lookup: vi.fn(async () => [{ address: '203.0.113.10', family: 4 }]) }))
 
 import { checkModelHealth, checkProviderHealth, clearModelHealthRuntimeState } from '@/lib/user-api/model-health'
+import { clearModelDiscoveryCache } from '@/lib/user-api/model-discovery'
 
 function model(modelId: string, type: 'llm' | 'image' | 'video' = 'llm', protocol?: 'responses' | 'chat-completions') {
   return { modelId, modelKey: `openai-compatible:p1::${modelId}`, name: modelId, type, provider: 'openai-compatible:p1', price: 0, ...(protocol ? { llmProtocol: protocol } : {}) }
@@ -34,6 +35,7 @@ describe('model health service', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     clearModelHealthRuntimeState()
+    clearModelDiscoveryCache()
     state.models = []
     state.provider = { id: 'openai-compatible:p1', name: 'Compat', baseUrl: 'https://compat.example.com/v1', apiKey: 'secret' }
     state.findUnique.mockResolvedValue(null)
@@ -97,6 +99,26 @@ describe('model health service', () => {
     expect(health).toMatchObject({ status: 'degraded', checkLevel: 'existence', errorCode: 'MODEL_DISCOVERED' })
     const firstCall = fetchMock.mock.calls[0] as unknown as [unknown, RequestInit]
     expect(firstCall[1].method).toBe('GET')
+  })
+
+  it.each(['llm', 'image', 'video', 'audio'] as const)('checks a saved Ark %s model against the official list without inference', async (type) => {
+    state.provider = { id: 'ark', name: 'Ark', baseUrl: '', apiKey: 'test-key' }
+    state.models = [{ ...model('account-model'), type, provider: 'ark', modelKey: 'ark::account-model' }]
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ data: [{ id: 'account-model' }] }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    const health = await checkModelHealth({ userId: 'u1', providerId: 'ark', modelKey: 'ark::account-model' })
+    expect(health).toMatchObject({ status: 'degraded', checkLevel: 'existence', errorCode: 'MODEL_DISCOVERED' })
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [unknown, RequestInit]
+    expect(String(url)).toBe('https://ark.cn-beijing.volces.com/api/v3/models')
+    expect(init.method).toBe('GET')
+    expect(init.body).toBeUndefined()
+  })
+
+  it('reports a missing saved Ark model when the visible list is empty', async () => {
+    state.provider = { id: 'ark', name: 'Ark', baseUrl: '', apiKey: 'test-key' }
+    state.models = [{ ...model('removed-model'), provider: 'ark', modelKey: 'ark::removed-model' }]
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ data: [] }), { status: 200 })))
+    expect(await checkModelHealth({ userId: 'u1', providerId: 'ark', modelKey: 'ark::removed-model' })).toMatchObject({ status: 'unhealthy', checkLevel: 'existence', errorCode: 'MODEL_NOT_FOUND' })
   })
 
   it('deduplicates an in-flight check and short-term repeated checks', async () => {

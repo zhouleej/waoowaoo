@@ -21,6 +21,26 @@ function response(payload: unknown, status = 200, headers: Record<string, string
 }
 
 describe('model discovery parsing', () => {
+  it('classifies Ark domains and output modalities without treating visual inputs as image generation', () => {
+    const models = parseDiscoveredModels({ data: [
+      { id: 'vision-reader', domain: 'VLM', modalities: { input_modalities: ['text', 'image', 'video'], output_modalities: ['text'] } },
+      { id: 'custom-image', domain: 'ImageGeneration' },
+      { id: 'custom-video', domain: 'VideoGeneration' },
+      { id: 'custom-audio', domain: 'Audio' },
+      { id: 'output-video', modalities: { input_modalities: ['image'], output_modalities: ['video'] } },
+      { id: 'output-text', modalities: { input_modalities: ['audio', 'image'], output_modalities: ['text'] } },
+      { id: 'doubao-seedream-new' },
+      { id: 'doubao-seedance-new' },
+      { id: 'vector-model', domain: 'Embedding' },
+      { id: 'mesh-model', domain: '3DGeneration' },
+    ] })
+    expect(models.map(({ id, suggestedType }) => [id, suggestedType])).toEqual([
+      ['vision-reader', 'llm'], ['custom-image', 'image'], ['custom-video', 'video'], ['custom-audio', 'audio'],
+      ['output-video', 'video'], ['output-text', 'llm'], ['doubao-seedream-new', 'image'], ['doubao-seedance-new', 'video'],
+    ])
+    expect(models.slice(0, 6).every(({ confidence }) => confidence === 'high')).toBe(true)
+  })
+
   it('parses common roots, object fields, metadata and deduplicates later in discovery', () => {
     expect(parseDiscoveredModels({ result: { items: [
       'gpt-x',
@@ -54,6 +74,30 @@ describe('model discovery SSRF', () => {
 
 describe('model discovery pagination and cache', () => {
   beforeEach(() => clearModelDiscoveryCache())
+
+  it('uses the official Ark v3 models URL and accepts an empty visible list', async () => {
+    const fetchImpl = vi.fn(async () => response({ object: 'list', data: [] }))
+    const result = await discoverModels({ userId: 'u', providerId: 'ark', baseUrl: 'https://ark.cn-beijing.volces.com/api/v3', apiKey: 'test-key', fetchImpl, lookup: publicLookup })
+    expect(result).toMatchObject({ models: [], partial: false, warnings: [] })
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    expect(fetchImpl).toHaveBeenCalledWith('https://ark.cn-beijing.volces.com/api/v3/models', expect.objectContaining({ method: 'GET', headers: expect.objectContaining({ Authorization: 'Bearer test-key' }) }))
+  })
+
+  it('rejects a successful HTTP response with no model array', async () => {
+    const fetchImpl = vi.fn(async () => response({ error: { message: 'not a model list' } }))
+    await expect(discoverModels({ userId: 'u', providerId: 'ark', baseUrl: 'https://ark.cn-beijing.volces.com/api/v3', apiKey: 'test-key', fetchImpl, lookup: publicLookup })).rejects.toMatchObject({ code: 'UPSTREAM_RESPONSE' })
+  })
+
+  it('isolates discovery caches by user and key and supports forced refresh', async () => {
+    const fetchImpl = vi.fn(async () => response({ data: ['custom-model'] }))
+    const input = { userId: 'u', providerId: 'ark', baseUrl: 'https://models.example.com/v3', apiKey: 'key-1', fetchImpl, lookup: publicLookup }
+    await discoverModels(input)
+    expect((await discoverModels(input)).cacheHit).toBe(true)
+    await discoverModels({ ...input, userId: 'other' })
+    await discoverModels({ ...input, apiKey: 'key-2' })
+    await discoverModels({ ...input, forceRefresh: true })
+    expect(fetchImpl).toHaveBeenCalledTimes(4)
+  })
 
   it('follows same-origin cursor pagination, deduplicates and sorts', async () => {
     const fetchImpl = vi.fn(async (url: string) => url.includes('after=cursor-2')

@@ -3,6 +3,7 @@ import { getProviderConfig, getProviderKey, getUserModels, type CustomModel } fr
 import { prisma } from '@/lib/prisma'
 import { safeOutboundFetch, SafeOutboundError } from '@/lib/security/safe-outbound-http'
 import { discoverModels, ModelDiscoveryError } from '@/lib/user-api/model-discovery'
+import { ARK_BASE_URL } from '@/lib/ark-api'
 
 export type ModelHealth = 'unknown' | 'healthy' | 'degraded' | 'unhealthy'
 export type ModelHealthCheckLevel = 'existence' | 'inference'
@@ -38,7 +39,7 @@ const recent = new Map<string, { expiresAt: number; result: ModelHealthResult }>
 function safeMessage(code: string): string {
   const messages: Record<string, string> = {
     INFERENCE_OK: 'Model inference succeeded',
-    MODEL_DISCOVERED: 'Model discovered; paid media generation was not executed',
+    MODEL_DISCOVERED: 'Model discovered; inference was not executed',
     MODEL_NOT_FOUND: 'Model was not found in the provider model list',
     DISCOVERY_UNSUPPORTED: 'Provider model listing is not supported; paid media generation was not executed',
     CHECK_UNSUPPORTED: 'Provider inference health check is not supported; no inference request was sent',
@@ -176,15 +177,17 @@ const openAICompatibleLlmDetector: Detector = async ({ model, provider }) => {
 const unsupportedLlmDetector: Detector = async () =>
   result('CHECK_UNSUPPORTED', 'degraded', 'existence')
 
-const mediaExistenceDetector: Detector = async ({ userId, model, provider }) => {
-  if (getProviderKey(model.provider) !== 'openai-compatible' || !provider.baseUrl) {
+const modelExistenceDetector: Detector = async ({ userId, model, provider }) => {
+  const providerKey = getProviderKey(model.provider)
+  const baseUrl = providerKey === 'ark' ? ARK_BASE_URL : provider.baseUrl
+  if ((providerKey !== 'openai-compatible' && providerKey !== 'ark') || !baseUrl) {
     return result('DISCOVERY_UNSUPPORTED', 'degraded', 'existence')
   }
   try {
     const discovered = await discoverModels({
       userId,
       providerId: model.provider,
-      baseUrl: provider.baseUrl,
+      baseUrl,
       apiKey: provider.apiKey,
     })
     return discovered.models.some((candidate) => candidate.id === model.modelId)
@@ -205,10 +208,11 @@ const mediaExistenceDetector: Detector = async ({ userId, model, provider }) => 
 
 const detectorRegistry = new Map<string, Detector>([
   ['openai-compatible:llm', openAICompatibleLlmDetector],
+  ['ark:llm', modelExistenceDetector],
   ['*:llm', unsupportedLlmDetector],
-  ['*:image', mediaExistenceDetector],
-  ['*:video', mediaExistenceDetector],
-  ['*:audio', mediaExistenceDetector],
+  ['*:image', modelExistenceDetector],
+  ['*:video', modelExistenceDetector],
+  ['*:audio', modelExistenceDetector],
 ])
 
 function detectorFor(model: CustomModel): Detector | undefined {

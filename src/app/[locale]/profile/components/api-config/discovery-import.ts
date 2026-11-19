@@ -1,5 +1,5 @@
 import type { CustomModel } from './types'
-import { encodeModelKey } from './types'
+import { encodeModelKey, getProviderKey } from './types'
 import type { DiscoveredModel, DiscoveredModelType } from '@/lib/user-api/model-discovery'
 
 export interface DiscoveryImportSelection {
@@ -44,7 +44,7 @@ export function buildDiscoveryImportPlan(input: {
       type: selection.type,
       provider: input.providerId,
       price: 0,
-      ...(selection.type === 'llm' ? { llmProtocol: 'chat-completions' as const } : {}),
+      ...(selection.type === 'llm' && getProviderKey(input.providerId) === 'openai-compatible' ? { llmProtocol: 'chat-completions' as const } : {}),
     })
   }
   return { additions, existingIds, duplicateSelectionIds }

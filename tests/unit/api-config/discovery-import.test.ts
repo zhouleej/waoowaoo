@@ -8,6 +8,26 @@ const existing: CustomModel[] = [{
 }]
 
 describe('buildDiscoveryImportPlan', () => {
+  it('imports only selected Ark models through the native provider and preserves saved models', () => {
+    const saved: CustomModel[] = [{ modelId: 'my-saved', modelKey: 'ark::my-saved', name: 'My saved name', type: 'llm', provider: 'ark', price: 2, enabled: true }]
+    const snapshot = structuredClone(saved)
+    const plan = buildDiscoveryImportPlan({
+      providerId: 'ark', existingModels: saved,
+      selections: [
+        { model: { id: 'my-saved', suggestedType: 'llm', confidence: 'high' }, type: 'llm' },
+        { model: { id: 'account-visible-chat', name: 'Visible Chat', suggestedType: 'llm', confidence: 'high' }, type: 'llm' },
+        { model: { id: 'account-visible-video', suggestedType: 'video', confidence: 'high' }, type: 'video' },
+      ],
+    })
+    expect(plan.existingIds).toEqual(['my-saved'])
+    expect(plan.additions).toEqual([
+      expect.objectContaining({ modelId: 'account-visible-chat', modelKey: 'ark::account-visible-chat', name: 'Visible Chat' }),
+      expect.objectContaining({ modelId: 'account-visible-video', type: 'video' }),
+    ])
+    expect(plan.additions.every((addition) => addition.llmProtocol === undefined)).toBe(true)
+    expect(saved).toEqual(snapshot)
+  })
+
   it('deduplicates by provider and model ID without overwriting existing models', () => {
     const discovered = { id: 'new-model', suggestedType: 'image' as const, confidence: 'medium' as const }
     const plan = buildDiscoveryImportPlan({

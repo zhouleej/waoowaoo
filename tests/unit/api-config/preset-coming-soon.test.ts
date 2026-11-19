@@ -15,15 +15,8 @@ describe('api-config preset coming soon', () => {
     expect(model?.name).toBe('Nano Banana 2')
   })
 
-  it('registers Seedance 2.0 and Seedance 2.0 Fast as preset video models', () => {
-    const modelIds = PRESET_MODELS
-      .filter((entry) => entry.provider === 'ark' && entry.type === 'video')
-      .map((entry) => entry.modelId)
-
-    expect(modelIds).toEqual(expect.arrayContaining([
-      'doubao-seedance-2-0-260128',
-      'doubao-seedance-2-0-fast-260128',
-    ]))
+  it('leaves Ark model choices empty until discovery or manual configuration', () => {
+    expect(PRESET_MODELS.filter((entry) => entry.provider === 'ark')).toEqual([])
   })
 
   it('does not mark live preset models as coming soon', () => {

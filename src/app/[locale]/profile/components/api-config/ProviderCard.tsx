@@ -59,8 +59,8 @@ export function ProviderCard({
       state={state}
     >
       <ProviderBaseFields provider={provider} t={t} state={state} />
-      {state.providerKey === 'openai-compatible' && provider.hasApiKey && onAddModels && (
-        <ModelDiscoveryPanel provider={provider} allModels={allModels || models} onAddModels={onAddModels} t={t} />
+      {(state.providerKey === 'openai-compatible' || state.providerKey === 'ark') && provider.hasApiKey && onAddModels && (
+        <ModelDiscoveryPanel provider={provider} allModels={allModels || models} onAddModels={onAddModels} onFlushConfig={onFlushConfig} t={t} />
       )}
       <ProviderAdvancedFields
         provider={provider}

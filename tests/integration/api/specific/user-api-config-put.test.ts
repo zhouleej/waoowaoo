@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { buildMockRequest } from '../../../helpers/request'
+import { buildDiscoveryImportPlan } from '@/app/[locale]/profile/components/api-config/discovery-import'
 import {
   installAuthMocks,
   mockAuthenticated,
@@ -109,6 +110,30 @@ describe('api specific - user api-config PUT provider uniqueness', () => {
     })
     prismaMock.userPreference.upsert.mockResolvedValue({ id: 'pref-1' })
     getBillingModeMock.mockResolvedValue('OFF')
+  })
+
+  it('persists models selected from Ark discovery using the native provider contract', async () => {
+    installAuthMocks()
+    mockAuthenticated('user-1')
+    const route = await import('@/app/api/user/api-config/route')
+    const plan = buildDiscoveryImportPlan({
+      providerId: 'ark', existingModels: [], selections: [
+        { model: { id: 'account-chat', suggestedType: 'llm', confidence: 'high' }, type: 'llm' },
+        { model: { id: 'account-image', suggestedType: 'image', confidence: 'high' }, type: 'image' },
+        { model: { id: 'account-video', suggestedType: 'video', confidence: 'high' }, type: 'video' },
+      ],
+    })
+    const response = await route.PUT(buildMockRequest({
+      path: '/api/user/api-config', method: 'PUT', body: {
+        providers: [{ id: 'ark', name: 'Ark', apiKey: 'test-key' }], models: plan.additions,
+      },
+    }), routeContext)
+    expect(response.status).toBe(200)
+    expect(readSavedModelsFromUpsert().map(({ modelKey, type, llmProtocol }) => ({ modelKey, type, llmProtocol }))).toEqual([
+      { modelKey: 'ark::account-chat', type: 'llm', llmProtocol: undefined },
+      { modelKey: 'ark::account-image', type: 'image', llmProtocol: undefined },
+      { modelKey: 'ark::account-video', type: 'video', llmProtocol: undefined },
+    ])
   })
 
   it('allows multiple providers with the same api type when provider ids differ', async () => {

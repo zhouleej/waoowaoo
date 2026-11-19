@@ -44,6 +44,9 @@ const REQUEST_TIMEOUT_MS = 10_000
 const CACHE_TTL_MS = 60_000
 const cache = new Map<string, { expiresAt: number; value: ModelDiscoveryResult }>()
 const pending = new Map<string, Promise<ModelDiscoveryResult>>()
+const DOMAIN_TYPES = new Map<string, DiscoveredModelType>([
+  ['llm', 'llm'], ['vlm', 'llm'], ['imagegeneration', 'image'], ['videogeneration', 'video'], ['audio', 'audio'],
+])
 
 export class ModelDiscoveryError extends Error {
   constructor(
@@ -82,7 +85,7 @@ function endpointCandidates(baseUrl: string): URL[] {
     candidates.add(url.toString())
   }
   if (path.endsWith('/models')) add(path)
-  else if (path.endsWith('/v1')) add(`${path}/models`)
+  else if (/\/v\d+$/.test(path)) add(`${path}/models`)
   else {
     add(`${path}/v1/models`)
     add(`${path}/models`)
@@ -119,6 +122,15 @@ function textField(record: Record<string, unknown>, keys: string[]): string | un
 }
 
 function inferType(record: Record<string, unknown>, id: string): Pick<DiscoveredModel, 'suggestedType' | 'confidence' | 'reason'> {
+  const domain = typeof record.domain === 'string' ? record.domain.toLowerCase() : ''
+  const domainType = DOMAIN_TYPES.get(domain)
+  if (domainType) return { suggestedType: domainType, confidence: 'high', reason: `domain:${domain}` }
+  const outputModalities = asRecord(record.modalities)?.output_modalities
+  if (Array.isArray(outputModalities)) {
+    for (const [modality, type] of [['video', 'video'], ['image', 'image'], ['audio', 'audio'], ['text', 'llm']] as const) {
+      if (outputModalities.includes(modality)) return { suggestedType: type, confidence: 'high', reason: `output:${modality}` }
+    }
+  }
   const metadata = [record.type, record.modality, record.task, record.capability, record.object]
     .filter((value): value is string => typeof value === 'string').join(' ').toLowerCase()
   const modalities = Array.isArray(record.modalities) ? record.modalities.join(' ').toLowerCase() : ''
@@ -128,8 +140,8 @@ function inferType(record: Record<string, unknown>, id: string): Pick<Discovered
   if (/\b(audio|speech|tts|voice|transcription)\b/.test(explicit)) return { suggestedType: 'audio', confidence: 'high', reason: 'metadata:audio' }
   if (/\b(llm|chat|text|language)\b/.test(explicit)) return { suggestedType: 'llm', confidence: 'high', reason: 'metadata:llm' }
   const name = id.toLowerCase()
-  if (/(dall-e|stable-diffusion|flux|image)/.test(name)) return { suggestedType: 'image', confidence: 'medium', reason: 'name:image' }
-  if (/(sora|veo|kling|video)/.test(name)) return { suggestedType: 'video', confidence: 'medium', reason: 'name:video' }
+  if (/(dall-e|stable-diffusion|flux|seedream|image)/.test(name)) return { suggestedType: 'image', confidence: 'medium', reason: 'name:image' }
+  if (/(sora|veo|kling|seedance|video)/.test(name)) return { suggestedType: 'video', confidence: 'medium', reason: 'name:video' }
   if (/(whisper|tts|speech|audio|voice)/.test(name)) return { suggestedType: 'audio', confidence: 'medium', reason: 'name:audio' }
   return { suggestedType: 'llm', confidence: 'low', reason: 'fallback:llm' }
 }
@@ -145,6 +157,8 @@ export function parseDiscoveredModels(payload: unknown): DiscoveredModel[] {
     }
     const record = asRecord(item)
     if (!record) continue
+    // These domains have no matching generator or configuration type in this app.
+    if (typeof record.domain === 'string' && /^(embedding|3dgeneration)$/i.test(record.domain)) continue
     const id = textField(record, ['id', 'model', 'modelId', 'name'])
     if (!id) continue
     const name = textField(record, ['name', 'display_name', 'displayName'])
@@ -192,6 +206,7 @@ async function discoverUncached(input: { baseUrl: string; apiKey: string; fetchI
   for (const candidate of endpointCandidates(base.toString())) {
     let current: URL | null = candidate
     const collected = new Map<string, DiscoveredModel>()
+    let receivedModelList = false
     for (let pageIndex = 0; current && pageIndex < MAX_PAGES; pageIndex += 1) {
       try {
         const safeUrl = await validateDiscoveryUrl(current, { lookup: input.lookup })
@@ -211,6 +226,8 @@ async function discoverUncached(input: { baseUrl: string; apiKey: string; fetchI
           throw new ModelDiscoveryError(code, `Upstream returned HTTP ${response.status}`, response.status)
         }
         const payload = await readJsonLimited(response)
+        if (!findModelArray(payload)) throw new ModelDiscoveryError('UPSTREAM_RESPONSE', 'Upstream returned no model list')
+        receivedModelList = true
         for (const model of parseDiscoveredModels(payload)) {
           if (!collected.has(model.id)) collected.set(model.id, model)
           if (collected.size >= MAX_MODELS) break
@@ -230,7 +247,7 @@ async function discoverUncached(input: { baseUrl: string; apiKey: string; fetchI
         break
       }
     }
-    if (collected.size) {
+    if (receivedModelList) {
       return {
         models: [...collected.values()].sort((a, b) => a.id.localeCompare(b.id, 'en')),
         discoveredAt: new Date().toISOString(), partial: warnings.length > 0, warnings, cacheHit: false,
