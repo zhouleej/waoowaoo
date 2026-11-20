@@ -65,6 +65,7 @@
   "modelDisplayName": "Display Name (for your reference)",
   "modelActualId": "Actual Model ID (API parameter)",
   "noModelsForProvider": "No models configured for this provider",
+  "noModelsForType": "No models of this type yet. Click Add to configure one.",
   "defaultModels": "Default Model Configuration",
   "textDefault": "Text Model",
   "characterDefault": "Character Model",

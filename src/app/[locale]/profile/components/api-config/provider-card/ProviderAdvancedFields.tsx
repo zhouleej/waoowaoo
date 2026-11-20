@@ -83,7 +83,7 @@ export function shouldShowOpenAICompatVideoHint(
 
 function shouldShowDefaultTabs(providerId: string): boolean {
   const providerKey = getProviderKey(providerId)
-  return providerKey === 'openai-compatible' || providerKey === 'gemini-compatible' || providerKey === 'maas-seedance'
+  return providerKey === 'ark' || providerKey === 'openai-compatible' || providerKey === 'gemini-compatible' || providerKey === 'maas-seedance'
 }
 
 export function getVisibleModelTypesForProvider(
@@ -292,23 +292,29 @@ export function ProviderAdvancedFields({
         <div
           className="app-scrollbar h-[280px] overflow-y-auto pr-1"
         >
-          <div className="space-y-2">
-            {currentModels.map((model, index) => (
-              <ModelRow
-                key={`${model.modelKey}-${index}`}
-                model={model}
-                t={t}
-                state={state}
-                onToggleModel={onToggleModel}
-                onDeleteModel={onDeleteModel}
-                onUpdateModel={onUpdateModel}
-                hasApiKey={!!provider.hasApiKey}
-                health={healthStatuses?.[model.modelKey]}
-                checking={checkingModelKeys?.has(model.modelKey) === true}
-                onCheckModelHealth={onCheckModelHealth}
-              />
-            ))}
-          </div>
+          {currentModels.length === 0 ? (
+            <p className="flex h-full items-center justify-center px-3 text-center text-[12px] text-[var(--glass-text-tertiary)]">
+              {t('noModelsForType')}
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {currentModels.map((model, index) => (
+                <ModelRow
+                  key={`${model.modelKey}-${index}`}
+                  model={model}
+                  t={t}
+                  state={state}
+                  onToggleModel={onToggleModel}
+                  onDeleteModel={onDeleteModel}
+                  onUpdateModel={onUpdateModel}
+                  hasApiKey={!!provider.hasApiKey}
+                  health={healthStatuses?.[model.modelKey]}
+                  checking={checkingModelKeys?.has(model.modelKey) === true}
+                  onCheckModelHealth={onCheckModelHealth}
+                />
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

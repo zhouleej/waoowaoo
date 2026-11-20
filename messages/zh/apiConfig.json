@@ -65,6 +65,7 @@
   "modelDisplayName": "外显名称（你自己看的）",
   "modelActualId": "实际调用 ID（模型参数）",
   "noModelsForProvider": "该厂商暂无配置模型",
+  "noModelsForType": "该类型暂无模型，请点击「添加」配置。",
   "defaultModels": "默认模型配置",
   "textDefault": "文本模型",
   "characterDefault": "角色模型",
